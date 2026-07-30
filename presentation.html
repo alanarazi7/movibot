@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MoviBot — AI Agents Project</title>
+<style>
+  :root{
+    --bg:#0b0d12; --panel:#141822; --panel2:#1b2130;
+    --ink:#f2f5fa; --muted:#9aa6bd; --faint:#6b7690;
+    --accent:#ffb300; --accent2:#4f8cff; --good:#37d67a; --bad:#ff5c6c;
+    --line:#28304180;
+    --font:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--ink);font-family:var(--font);overflow:hidden}
+
+  .deck{height:100vh;width:100vw;position:relative}
+  .slide{
+    position:absolute;inset:0;display:none;flex-direction:column;
+    padding:6vh 7vw;opacity:0;transition:opacity .35s ease;
+  }
+  .slide.active{display:flex;opacity:1}
+
+  /* helpers */
+  .kicker{font-size:1.05rem;letter-spacing:.28em;text-transform:uppercase;color:var(--accent);font-weight:700}
+  h1{font-size:5.2rem;line-height:1.02;font-weight:800;letter-spacing:-.02em}
+  h2{font-size:3.2rem;line-height:1.08;font-weight:800;letter-spacing:-.015em}
+  h3{font-size:1.5rem;font-weight:700}
+  p.lead{font-size:1.6rem;color:var(--muted);line-height:1.5;max-width:60ch}
+  .big-quote{font-size:3.1rem;line-height:1.25;font-weight:700;max-width:22ch}
+  .accent{color:var(--accent)} .blue{color:var(--accent2)}
+  .good{color:var(--good)} .bad{color:var(--bad)} .muted{color:var(--muted)}
+  .spacer{flex:1}
+  .center{align-items:center;justify-content:center;text-align:center}
+  .row{display:flex;gap:2rem}
+  .grow{flex:1}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:1.6rem 1.8rem}
+  .card h3{margin-bottom:.4rem}
+  .card p{color:var(--muted);font-size:1.15rem;line-height:1.45}
+  .pill{display:inline-block;background:var(--panel2);border:1px solid var(--line);
+        border-radius:999px;padding:.5rem 1.1rem;font-size:1.05rem;color:var(--ink);font-weight:600}
+  .tag{font-size:.95rem;color:var(--faint);letter-spacing:.04em}
+
+  ul.clean{list-style:none;display:flex;flex-direction:column;gap:1.1rem;margin-top:.5rem}
+  ul.clean li{font-size:1.5rem;line-height:1.4;display:flex;gap:1rem;align-items:flex-start}
+  ul.clean li .dot{color:var(--accent);font-weight:800;flex:none}
+
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:1.5rem}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1.4rem}
+  .grid4{display:grid;grid-template-columns:repeat(4,1fr);gap:1rem}
+
+  /* flow diagram */
+  .flow{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
+  .node{background:var(--panel2);border:1px solid var(--line);border-radius:12px;
+        padding:.8rem 1rem;font-weight:700;font-size:1.05rem;text-align:center}
+  .node.small{font-size:.95rem;padding:.6rem .8rem;color:var(--muted)}
+  .arrow{color:var(--faint);font-size:1.4rem}
+  .loopwrap{position:relative}
+
+  /* footer / progress */
+  .foot{position:absolute;bottom:2.2vh;left:7vw;right:7vw;display:flex;
+        justify-content:space-between;align-items:center;color:var(--faint);font-size:.95rem}
+  .progress{position:absolute;bottom:0;left:0;height:4px;background:var(--accent);transition:width .3s}
+  .brandmark{font-weight:800;letter-spacing:.02em}
+  kbd{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:.1rem .5rem;font-size:.85rem}
+
+  .stepnum{width:2.4rem;height:2.4rem;border-radius:50%;background:var(--accent);color:#1a1200;
+           font-weight:800;display:flex;align-items:center;justify-content:center;flex:none;font-size:1.1rem}
+  .callout{background:linear-gradient(90deg,#1b2130,#141822);border-left:4px solid var(--accent2);
+           border-radius:10px;padding:1rem 1.3rem;color:var(--muted);font-size:1.15rem}
+
+  .arch{display:grid;grid-template-columns:1fr;gap:1rem}
+  .lane{display:flex;align-items:center;gap:1rem;flex-wrap:wrap}
+  .lane .label{width:9rem;color:var(--faint);font-weight:700;font-size:.95rem;text-transform:uppercase;letter-spacing:.08em}
+  .chip{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:.7rem 1rem;font-weight:700;font-size:1rem}
+  .chip.core{background:#22283a;border-color:#3a4256}
+  .chip.accent{border-color:var(--accent);color:var(--accent)}
+  .chip.blue{border-color:var(--accent2);color:var(--accent2)}
+
+  @media (max-width:900px){
+    h1{font-size:3rem}h2{font-size:2.2rem}.big-quote{font-size:2rem}
+    p.lead{font-size:1.2rem}ul.clean li{font-size:1.15rem}
+    .grid2,.grid3,.grid4{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+<div class="deck" id="deck">
+
+  <!-- 1 TITLE -->
+  <section class="slide center">
+    <div class="kicker">Introduction to Modern AI Agents · Project</div>
+    <h1 style="margin:2.5rem 0 1rem">MoviBot <span style="font-size:4rem">🎬🤖</span></h1>
+    <p class="lead" style="text-align:center">Ask for the movie you actually mean.</p>
+    <div class="spacer" style="max-height:6vh"></div>
+    <div class="row" style="gap:1rem">
+      <span class="pill">Yair Zack</span>
+      <span class="pill">Andrei Nekliudov</span>
+      <span class="pill">Alan Arazi</span>
+    </div>
+  </section>
+
+  <!-- 2 WHY: the real request -->
+  <section class="slide">
+    <div class="kicker">Why</div>
+    <div class="spacer"></div>
+    <p class="big-quote">
+      “Bring me a not-too-old <span class="accent">Disney</span> movie,
+      <span class="accent">no deaths</span>, ideally with <span class="accent">animals</span>
+      — for my <span class="accent">3-year-old</span>.”
+    </p>
+    <div class="spacer"></div>
+    <p class="lead">A real request. From a real dad. <span class="muted">(one of us.)</span></p>
+  </section>
+
+  <!-- 3 WHY: the tools fail -->
+  <section class="slide">
+    <div class="kicker">Why · the tools we have all miss</div>
+    <h2 style="margin:1rem 0 2rem">So he asked the best tools we have.</h2>
+    <div class="grid3 grow">
+      <div class="card">
+        <h3>🔎 IMDb search</h3>
+        <p>Needs near-exact matches. Can't express “no deaths” or “involves animals.”</p>
+        <p class="tag" style="margin-top:.8rem">r/imdb: “Why is IMDb search so bad?”</p>
+      </div>
+      <div class="card">
+        <h3>📺 Netflix</h3>
+        <p>Recommends <i>at</i> you, passively. You can't <i>ask</i> it a precise question.</p>
+        <p class="tag" style="margin-top:.8rem">Great engine — wrong flow.</p>
+      </div>
+      <div class="card" style="border-color:var(--accent)">
+        <h3>✨ Gemini (Thinking)</h3>
+        <p>Tries hard… then <b class="accent">never knows when it's done</b>.</p>
+        <p class="tag" style="margin-top:.8rem">“…there are actually <b>several more titles</b>” — after claiming “complete, exhaustive list.”</p>
+      </div>
+    </div>
+    <div class="callout" style="margin-top:1.8rem">
+      The one tool that should nail this — an LLM — <b class="accent">can't guarantee it found them all.</b>
+    </div>
+  </section>
+
+  <!-- 4 WHY: why it's hard -->
+  <section class="slide">
+    <div class="kicker">Why · the query is four things at once</div>
+    <h2 style="margin:1rem 0 2rem">One sentence. Four different problems.</h2>
+    <div class="grid4 grow">
+      <div class="card"><h3 class="blue">Structured</h3><p>year ≥ 1990, studio = Disney</p><p class="tag" style="margin-top:.6rem">a database filter</p></div>
+      <div class="card"><h3 class="blue">Semantic</h3><p>“involves animals”</p><p class="tag" style="margin-top:.6rem">meaning, not keywords</p></div>
+      <div class="card"><h3 class="blue">Judgment</h3><p>“no on-screen death”</p><p class="tag" style="margin-top:.6rem">read the plot, decide</p></div>
+      <div class="card" style="border-color:var(--accent)"><h3 class="accent">Exhaustive</h3><p>every match, miss nothing</p><p class="tag" style="margin-top:.6rem">completeness</p></div>
+    </div>
+    <div class="callout" style="margin-top:1.8rem">
+      Fixed-K retrieval returns <b>“top 5 similar.”</b> It can never promise <b class="accent">“all of them.”</b>
+    </div>
+  </section>
+
+  <!-- 5 HOW: the insight -->
+  <section class="slide center">
+    <div class="kicker">How · the insight</div>
+    <div class="spacer"></div>
+    <p class="big-quote" style="max-width:26ch;text-align:center">
+      Don't retrieve <span class="bad">K guesses</span>.<br>
+      Bound the universe — then <span class="accent">check every candidate</span>.
+    </p>
+    <div class="spacer"></div>
+    <p class="lead" style="text-align:center;max-width:70ch">
+      Use the database to get the <b>full set</b> that matches the hard constraints.
+      Then let the agent sweep it. Now <span class="accent">“exhaustive” is a fact, not a hope.</span>
+    </p>
+  </section>
+
+  <!-- 6 pipeline vs agent -->
+  <section class="slide">
+    <div class="kicker">How · pipeline vs agent</div>
+    <h2 style="margin:1rem 0 2rem">A pipeline runs steps. An agent makes decisions.</h2>
+    <div class="grid2 grow">
+      <div class="card" style="border-color:#3a2130">
+        <h3 class="bad">❌ Pipeline</h3>
+        <div class="flow" style="margin:1.4rem 0">
+          <div class="node small">Parse</div><span class="arrow">→</span>
+          <div class="node small">SQL</div><span class="arrow">→</span>
+          <div class="node small">Top-K</div><span class="arrow">→</span>
+          <div class="node small">Answer</div>
+        </div>
+        <p>Same steps, same order — every query. K-limited. <b class="bad">Can't promise “all.”</b></p>
+      </div>
+      <div class="card" style="border-color:#1f3a2a">
+        <h3 class="good">✅ Agent</h3>
+        <div class="flow" style="margin:1.4rem 0">
+          <div class="node">Plan</div><span class="arrow">→</span>
+          <div class="node">Act</div><span class="arrow">→</span>
+          <div class="node">Observe</div><span class="arrow">↻</span>
+          <div class="node accent" style="border-color:var(--accent);color:var(--accent)">Finish</div>
+        </div>
+        <p>Chooses tools <b>per query</b>. Loops until the goal is met. <b class="good">Self-corrects.</b></p>
+      </div>
+    </div>
+    <div class="callout" style="margin-top:1.6rem">
+      This is the difference the feedback asked for: <b class="accent">the model decides the control flow at runtime.</b>
+    </div>
+  </section>
+
+  <!-- 7 the agent + tools -->
+  <section class="slide">
+    <div class="kicker">What · the agent and its tools</div>
+    <h2 style="margin:1rem 0 1.6rem">The Controller decides. The tools do the work.</h2>
+    <div class="row grow" style="align-items:center;gap:3rem">
+      <div class="card center" style="min-width:16rem;border-color:var(--accent)">
+        <div style="font-size:3rem">🤖</div>
+        <h3 class="accent" style="margin-top:.5rem">Controller</h3>
+        <p style="text-align:center">Reads what it knows so far.<br>Picks the next action.</p>
+      </div>
+      <div class="grid2 grow" style="gap:1rem">
+        <div class="chip"><span class="blue">structured_filter</span> — full SQL match set</div>
+        <div class="chip"><span class="blue">semantic_search</span> — plot meaning (Pinecone)</div>
+        <div class="chip"><span class="blue">inspect_movie</span> — read one plot deeply</div>
+        <div class="chip"><span class="blue">judge_predicate</span> — subtle check, batched</div>
+        <div class="chip"><span class="blue">ask_user</span> — clarify if ambiguous</div>
+        <div class="chip"><span class="accent">finish</span> — goal met, answer</div>
+      </div>
+    </div>
+    <div class="callout" style="margin-top:1.6rem">
+      Which tool, how many times, and <b>when to stop</b> — all decided at runtime.
+    </div>
+  </section>
+
+  <!-- 8 walkthrough -->
+  <section class="slide">
+    <div class="kicker">Watch it think</div>
+    <h2 style="margin:1rem 0 1.4rem">“Every 1990+ Disney movie, no deaths, with animals — be exhaustive.”</h2>
+    <ul class="clean grow">
+      <li><span class="stepnum">1</span><div>“Disney + ≥1990 are structured” → <span class="blue">structured_filter</span> → <b>80 films</b> — the whole universe is now known.</div></li>
+      <li><span class="stepnum">2</span><div>“‘animals’ is about meaning” → <span class="blue">semantic_search</span> over those 80.</div></li>
+      <li><span class="stepnum">3</span><div>“‘no death’ needs judgment” → <span class="blue">judge_predicate</span> (batched, cheap).</div></li>
+      <li><span class="stepnum">4</span><div>Unsure about <i>Ratatouille</i>? → <span class="blue">inspect_movie</span> → re-judge. <span class="good">(self-correct)</span></div></li>
+      <li><span class="stepnum">5</span><div>All 80 classified → <span class="accent">finish ✓</span> — an exhaustive list, and <i>why</i> each qualifies.</div></li>
+    </ul>
+    <div class="callout" style="margin-top:.6rem">
+      A “movies that feel like a warm hug” query would <b>skip SQL entirely</b> — the path changes with the question.
+    </div>
+  </section>
+
+  <!-- 9 architecture -->
+  <section class="slide">
+    <div class="kicker">What · high-level architecture</div>
+    <h2 style="margin:1rem 0 1.6rem">Architecture</h2>
+    <div class="arch grow">
+      <div class="lane"><span class="label">Interface</span>
+        <div class="chip">Web GUI</div><span class="arrow">→</span>
+        <div class="chip">POST /api/execute</div>
+      </div>
+      <div class="lane"><span class="label">Agent core</span>
+        <div class="chip accent">Controller (loop)</div><span class="arrow">⇄</span>
+        <div class="chip">ConstraintTranslator</div>
+        <div class="chip">PredicateJudge</div>
+        <div class="chip">ClarificationAsker</div>
+        <div class="chip">AnswerComposer</div>
+      </div>
+      <div class="lane"><span class="label">Tools</span>
+        <div class="chip blue">StructuredFilter</div><span class="arrow">→</span><span class="tag">Supabase (SQL)</span>
+        <div class="chip blue">SemanticRetriever</div><span class="arrow">→</span><span class="tag">Pinecone (vectors)</span>
+        <div class="chip blue">MovieInspector</div><span class="arrow">→</span><span class="tag">Supabase</span>
+      </div>
+      <div class="lane"><span class="label">Model</span>
+        <div class="chip">gpt-5.4-mini</div>
+        <div class="chip">text-embedding-3-small</div>
+        <span class="tag">every LLM call is logged to <b>steps</b></span>
+      </div>
+    </div>
+    <div class="callout" style="margin-top:1.4rem">
+      The Controller is a real loop; the rest are tools it <b>may or may not</b> call, in an order it chooses.
+    </div>
+  </section>
+
+  <!-- 10 why agent not pipeline -->
+  <section class="slide">
+    <div class="kicker">The one thing the feedback asked for</div>
+    <h2 style="margin:1rem 0 2rem">Why this is an agent, not a pipeline.</h2>
+    <div class="grid3 grow">
+      <div class="card"><h3 class="accent">1 · Different question,<br>different trace</h3><p>Tool choice happens at runtime. The <b>steps</b> log looks different for every prompt.</p></div>
+      <div class="card"><h3 class="accent">2 · Loops to a goal</h3><p>Not a fixed number of steps — it iterates until every candidate is resolved.</p></div>
+      <div class="card"><h3 class="accent">3 · Self-corrects</h3><p>Uncertain judgment → inspect deeper → re-decide.</p></div>
+    </div>
+    <div class="callout" style="margin-top:1.8rem">
+      Every <b>/api/execute</b> returns the full step trace — <b class="accent">you can watch it decide.</b>
+    </div>
+  </section>
+
+  <!-- 11 scope + vision -->
+  <section class="slide">
+    <div class="kicker">Scope & vision</div>
+    <h2 style="margin:1rem 0 1.6rem">Small, real POC → a feature that ships.</h2>
+    <div class="row" style="gap:1rem;flex-wrap:wrap;margin-bottom:2rem">
+      <span class="pill">TMDB-5000 · 13&nbsp;MB</span>
+      <span class="pill">Supabase</span>
+      <span class="pill">Pinecone</span>
+      <span class="pill">gpt-5.4-mini</span>
+      <span class="pill">Vercel</span>
+      <span class="pill accent" style="border-color:var(--accent);color:var(--accent)">Budget $13</span>
+    </div>
+    <div class="grid2 grow">
+      <div class="card"><h3>Today (POC)</h3><p>Compound, exhaustive queries over 5K movies — metadata + plots.</p></div>
+      <div class="card"><h3 class="accent">Next</h3><p>Transcripts &amp; Wikipedia for multi-hop questions · personalization from past interactions · a real Netflix/IMDb “ask” feature.</p></div>
+    </div>
+  </section>
+
+  <!-- 12 close -->
+  <section class="slide center">
+    <div class="kicker">Thank you</div>
+    <h1 style="margin:2rem 0 1rem">MoviBot <span style="font-size:3.2rem">🎬🤖</span></h1>
+    <p class="lead" style="text-align:center">Ask for the movie you actually mean.</p>
+    <div class="spacer" style="max-height:5vh"></div>
+    <div class="card" style="border-color:var(--accent2)">
+      <p style="color:var(--ink);font-size:1.25rem">Try it live:</p>
+      <p class="accent" style="font-size:1.35rem;margin-top:.4rem;font-weight:700">
+        “Post-2000 movies where a dog is the main character and no one dies.”
+      </p>
+    </div>
+  </section>
+
+</div>
+
+<div class="progress" id="progress"></div>
+<div class="foot">
+  <span class="brandmark">MoviBot 🎬</span>
+  <span><kbd>←</kbd> <kbd>→</kbd> to navigate · <span id="counter"></span></span>
+</div>
+
+<script>
+  const slides=[...document.querySelectorAll('.slide')];
+  let i=0;
+  const counter=document.getElementById('counter');
+  const progress=document.getElementById('progress');
+  function show(n){
+    i=Math.max(0,Math.min(slides.length-1,n));
+    slides.forEach((s,k)=>s.classList.toggle('active',k===i));
+    counter.textContent=(i+1)+' / '+slides.length;
+    progress.style.width=((i+1)/slides.length*100)+'%';
+  }
+  document.addEventListener('keydown',e=>{
+    if(e.key==='ArrowRight'||e.key==='PageDown'||e.key===' ')show(i+1);
+    else if(e.key==='ArrowLeft'||e.key==='PageUp')show(i-1);
+    else if(e.key==='Home')show(0);
+    else if(e.key==='End')show(slides.length-1);
+    else if(e.key==='f'){document.documentElement.requestFullscreen?.();}
+  });
+  document.addEventListener('click',e=>{
+    if(e.clientX < window.innerWidth*0.25) show(i-1); else show(i+1);
+  });
+  show(0);
+</script>
+</body>
+</html>

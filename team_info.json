@@ -1,0 +1,9 @@
+{
+  "group_batch_order_number": "2_10",
+  "team_name": "MoviBot",
+  "students": [
+    { "name": "Yair Zack", "email": "TODO_FILL_IN@example.com" },
+    { "name": "Andrei Nekliudov", "email": "TODO_FILL_IN@example.com" },
+    { "name": "Alan Arazi", "email": "alanarazi7@gmail.com" }
+  ]
+}

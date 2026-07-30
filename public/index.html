@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MoviBot</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f5f5f5;
+      color: #1a1a1a;
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+    .container { max-width: 800px; margin: 0 auto; }
+    h1 { font-size: 1.6rem; font-weight: 700; margin-bottom: 0.3rem; }
+    .subtitle { color: #666; font-size: 0.9rem; margin-bottom: 2rem; }
+    .card {
+      background: #fff;
+      border-radius: 10px;
+      padding: 1.5rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+      margin-bottom: 1.2rem;
+    }
+    label { font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 0.5rem; }
+    textarea {
+      width: 100%;
+      min-height: 100px;
+      padding: 0.75rem;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      resize: vertical;
+      font-family: inherit;
+    }
+    textarea:focus { outline: none; border-color: #0070f3; }
+    button {
+      margin-top: 0.75rem;
+      padding: 0.65rem 1.4rem;
+      background: #0070f3;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    button:disabled { background: #aaa; cursor: not-allowed; }
+    #status { font-size: 0.85rem; color: #666; margin-top: 0.5rem; min-height: 1.2em; }
+    #response-card { display: none; }
+    .response-text {
+      font-size: 0.95rem;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .error-text { color: #d32f2f; font-size: 0.9rem; }
+    .examples { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem; }
+    .example-btn {
+      background: none;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      padding: 0.5rem 0.75rem;
+      font-size: 0.82rem;
+      color: #333;
+      text-align: left;
+      cursor: pointer;
+      margin-top: 0;
+    }
+    .example-btn:hover { background: #f0f0f0; border-color: #bbb; }
+
+    #steps-card { display: none; }
+    .step {
+      background: #f9f9f9;
+      border-left: 3px solid #0070f3;
+      border-radius: 4px;
+      padding: 0.75rem 1rem;
+      margin-top: 0.75rem;
+    }
+    .step .module {
+      font-weight: 700;
+      font-size: 0.85rem;
+      color: #0070f3;
+      margin-bottom: 0.5rem;
+    }
+    .step .step-idx { color: #999; font-weight: 400; }
+    .step pre {
+      background: #fff;
+      border: 1px solid #eee;
+      border-radius: 4px;
+      padding: 0.6rem;
+      font-size: 0.78rem;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      margin-top: 0.3rem;
+    }
+    .step .field-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: #666;
+      margin-top: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>MoviBot</h1>
+    <p class="subtitle">Movie discovery for mixed constraints — structured facts (year, studio, runtime) plus fuzzy, subjective ones (mood, tone, "no deaths") verified per-title, not guessed.</p>
+
+    <div class="card">
+      <label for="prompt">Your request</label>
+      <textarea id="prompt" placeholder="e.g. Bring me all not-too-old (1990+) Disney movies with no deaths, that involve animals, for my 3 year old kid. Please be exhaustive."></textarea>
+      <button id="submit-btn" onclick="runAgent()">Run Agent</button>
+      <div id="status"></div>
+    </div>
+
+    <div class="card" id="response-card">
+      <label>Response</label>
+      <div class="response-text" id="response-text"></div>
+    </div>
+
+    <div class="card" id="steps-card">
+      <label>Steps trace</label>
+      <div id="steps-list"></div>
+    </div>
+
+    <div class="card">
+      <label>Example requests</label>
+      <div class="examples">
+        <button class="example-btn" onclick="fillExample(this)">Bring me all not-too-old (1990+) Disney movies with no deaths, that involve animals, for my 3 year old kid. Please be exhaustive - don't miss a single movie.</button>
+        <button class="example-btn" onclick="fillExample(this)">Find Pixar movies from the last 10 years that are lighthearted and don't have any major character deaths.</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    function fillExample(btn) {
+      document.getElementById('prompt').value = btn.textContent.trim();
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function renderSteps(steps) {
+      const list = document.getElementById('steps-list');
+      list.innerHTML = '';
+      (steps || []).forEach((step, i) => {
+        const div = document.createElement('div');
+        div.className = 'step';
+        const promptObj = step.prompt || {};
+        div.innerHTML = `
+          <div class="module"><span class="step-idx">[${i + 1}]</span> ${escapeHtml(step.module || '')}</div>
+          <div class="field-label">System prompt</div>
+          <pre>${escapeHtml(promptObj.system_prompt || '')}</pre>
+          <div class="field-label">User prompt</div>
+          <pre>${escapeHtml(promptObj.user_prompt || '')}</pre>
+          <div class="field-label">Response</div>
+          <pre>${escapeHtml(JSON.stringify(step.response, null, 2))}</pre>
+        `;
+        list.appendChild(div);
+      });
+    }
+
+    async function runAgent() {
+      const prompt = document.getElementById('prompt').value.trim();
+      if (!prompt) return;
+
+      const btn = document.getElementById('submit-btn');
+      const status = document.getElementById('status');
+      const responseCard = document.getElementById('response-card');
+      const responseText = document.getElementById('response-text');
+      const stepsCard = document.getElementById('steps-card');
+
+      btn.disabled = true;
+      responseCard.style.display = 'none';
+      stepsCard.style.display = 'none';
+      status.textContent = '🎬 Running MoviBot...';
+
+      try {
+        const res = await fetch('/api/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ prompt }),
+        });
+        const data = await res.json();
+
+        status.textContent = '';
+
+        if (data.status !== 'ok') {
+          responseText.innerHTML = `<span class="error-text">Error: ${escapeHtml(data.error || res.statusText)}</span>`;
+          responseCard.style.display = 'block';
+          renderSteps(data.steps);
+          if ((data.steps || []).length) stepsCard.style.display = 'block';
+          return;
+        }
+
+        responseText.textContent = data.response;
+        responseCard.style.display = 'block';
+
+        renderSteps(data.steps);
+        if ((data.steps || []).length) stepsCard.style.display = 'block';
+      } catch (err) {
+        status.textContent = '';
+        responseText.innerHTML = `<span class="error-text">Network error: ${escapeHtml(err.message)}</span>`;
+        responseCard.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    document.getElementById('prompt').addEventListener('keydown', e => {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) runAgent();
+    });
+  </script>
+</body>
+</html>

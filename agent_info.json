@@ -1,0 +1,56 @@
+{
+  "description": "MoviBot is a movie discovery agent for complex, mixed-constraint queries that combine structured facts (year, studio, runtime, genre) with fuzzy, subjective conditions (\"no deaths\", \"not scary\", \"safe for a toddler\") that no catalog column can pre-encode. Instead of a single fixed-K RAG pass, MoviBot runs a ReAct loop: it plans which tool to use next, narrows candidates with structured filtering and thematic plot search, then reasons per-candidate over deeper story text to verify the subjective constraints, before producing a final, exhaustive answer.\n\nWhat it CAN do: combine structured filters (year/studio/runtime/genre) with semantic plot search; verify subjective, per-title constraints (e.g. character deaths, tone, scary content) by reasoning over each candidate's story rather than relying on a pre-built column; return an exhaustive, evidence-backed list rather than a fixed top-K guess.\n\nWhat it CANNOT do (constraints): it only reasons over the movies present in its catalog (a curated subset, not the full IMDb/TMDB corpus); it does not stream or play any content; and for out-of-scope requests (non-movie questions, requests for pirated content, etc.) it returns a short refusal instead of a fabricated answer.",
+  "purpose": "Let users find the exact movie that fits both their hard constraints and their fuzzy, personal ones, with an exhaustive and verifiable answer instead of a passive or incomplete recommendation.",
+  "prompt_template": {
+    "template": "Query: <your movie request in natural language, combining any of: structured constraints (year range, studio, genre, runtime) and subjective constraints (mood, tone, content to avoid, audience e.g. 'safe for a toddler'). Ask to 'be exhaustive' if you want the full matching set rather than a few suggestions.>",
+    "example": "Query: Find Pixar movies from the last 10 years that are lighthearted and don't have any major character deaths."
+  },
+  "prompt_examples": [
+    {
+      "prompt": "Bring me all not-too-old (1990+) Disney movies with no deaths, that involve animals, for my 3 year old kid. Please be exhaustive - don't miss a single movie.",
+      "full_response": "STUB EXAMPLE - not from a real agent run yet. Illustrative placeholder for the required response shape; will be replaced with a captured real run before submission.\n\nBased on catalog filtering, plot search, and a per-title check for character deaths, movies matching all constraints include: Homeward Bound: The Incredible Journey (1993), 101 Dalmatians (1996), The Tigger Movie (2000), and The Emperor's New Groove (2000). Each was verified individually against the 'no deaths' constraint by reasoning over its story rather than a fixed catalog column.",
+      "steps": [
+        {
+          "module": "Reasoner",
+          "prompt": {
+            "system_prompt": "STUB - You are MoviBot's planner. Given the user's request and everything gathered so far, decide the next action: call CatalogFilter, PlotSearch, SceneSearch, ExternalContext, or Stop and answer. Return JSON only.",
+            "user_prompt": "STUB - User request: Disney movies, 1990+, animals, no deaths, for a 3 year old, exhaustive. Nothing gathered yet."
+          },
+          "response": { "action": "CatalogFilter", "reason": "STUB - Narrow by studio and year first, it's the cheapest structured cut." }
+        },
+        {
+          "module": "CatalogFilter",
+          "prompt": {
+            "system_prompt": "STUB - Translate the structured part of the request into a catalog filter.",
+            "user_prompt": "STUB - studio=Disney, release_year>=1990"
+          },
+          "response": { "matched_count": 0, "note": "STUB - placeholder, no real catalog queried yet" }
+        },
+        {
+          "module": "PlotSearch",
+          "prompt": {
+            "system_prompt": "STUB - Semantic search over plot overviews for the given theme.",
+            "user_prompt": "STUB - theme: animal characters"
+          },
+          "response": { "matches": [], "note": "STUB - placeholder, no real vector search run yet" }
+        },
+        {
+          "module": "SceneSearch",
+          "prompt": {
+            "system_prompt": "STUB - For each candidate title, check whether any character dies in the story.",
+            "user_prompt": "STUB - candidate titles: [placeholder]"
+          },
+          "response": { "checked": [], "note": "STUB - placeholder, no real per-title check run yet" }
+        },
+        {
+          "module": "Synthesizer",
+          "prompt": {
+            "system_prompt": "STUB - Compose the final answer from the verified candidate list.",
+            "user_prompt": "STUB - verified candidates: [placeholder]"
+          },
+          "response": { "answer": "STUB - placeholder final answer text" }
+        }
+      ]
+    }
+  ]
+}
