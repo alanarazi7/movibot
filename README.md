@@ -6,7 +6,7 @@ Team: Yair Zack, Andrei Nekliudov, Alan Arazi (batch 2, order 10).
 
 ## The problem
 
-Classic RAG fails on queries like *"bring me a not-too-old Disney movie with no deaths, ideally involving animals, for my 3-year-old"*: fixed-K retrieval can't guarantee an exhaustive answer, and there's no pre-built "no deaths" column to filter on. Even asking an LLM directly gives incomplete, falsely-confident lists (see `presentation.html` for the full writeup and a live example of this failure).
+Classic RAG fails on queries like *"bring me a not-too-old Disney movie with no deaths, ideally involving animals, for my 3-year-old"*: fixed-K retrieval can't guarantee an exhaustive answer, and there's no pre-built "no deaths" column to filter on. Even asking an LLM directly gives incomplete, falsely-confident lists (see `docs/pitch-deck.html` for the full writeup and a live example of this failure).
 
 ## How it works
 
@@ -33,6 +33,12 @@ Blocked on:
 - Supabase project creation (web dashboard, not scriptable) — `scripts/schema.sql` is ready to run the moment it exists.
 - Team review of this skeleton before any real ingestion or agent calls (which will spend LLMod.ai budget).
 - Yair's and Andrei's emails for `team_info.json` (currently placeholders).
+
+## Docs
+
+- `docs/course-assignment-instructions.pdf` — the course's official assignment spec (API contract, deployment, budget, deadline).
+- `docs/team-idea-proposal-and-data-sources.pdf` — the team's own idea writeup, including the dataset decision (Kaggle "The Movies Dataset," downsampled to ~5K movies).
+- `docs/pitch-deck.pptx` / `docs/pitch-deck.html` — the pitch deck (problem, architecture, demo).
 
 ## API
 
