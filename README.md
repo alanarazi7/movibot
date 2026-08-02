@@ -34,6 +34,8 @@ Blocked on:
 - Team review of this skeleton before any real ingestion or agent calls (which will spend LLMod.ai budget).
 - Yair's and Andrei's emails for `team_info.json` (currently placeholders).
 
+See **[`TODO.md`](TODO.md)** for the full technical checklist of what's left, in build order.
+
 ## Docs
 
 - `docs/course-assignment-instructions.pdf` — the course's official assignment spec (API contract, deployment, budget, deadline).
