@@ -6,7 +6,8 @@ Technical checklist, in build order, grouped by blocker. Due date: **2026-08-23*
 
 - [ ] Yair's email → `team_info.json`
 - [ ] Andrei's email → `team_info.json`
-- [ ] Create the Supabase project (web dashboard, not scriptable) → fill `SUPABASE_URL` / `SUPABASE_KEY` in `.env`
+- [x] Create the Supabase project — done, project URL in hand. Keys intentionally **not yet** written to `.env` (holding per Alan's instruction until go-ahead). Note: the publishable/anon key alone likely won't be enough for `scripts/ingest.py`'s writes — will need the secret/service_role key too, since RLS defaults block anon inserts.
+- [ ] Wire `SUPABASE_URL` / `SUPABASE_KEY` into `.env` when ready to proceed
 - [ ] Go-ahead to start spending LLMod.ai budget (first real ingestion + agent test calls)
 
 ## 1. Data layer
