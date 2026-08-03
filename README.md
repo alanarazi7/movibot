@@ -29,12 +29,9 @@ See `assets/architecture.png` (served at `GET /api/model_architecture`) — modu
 
 **Current state: skeleton only.** All 4 required API routes exist and return correctly-shaped data, but `/api/execute` returns a **hardcoded stub response** — no LLMod.ai, Pinecone, or Supabase calls have been made yet. The `agent/` package has the intended module structure and prompts written, but every tool raises `NotImplementedError` until the real ReAct loop is wired in and reviewed.
 
-Blocked on:
-- Supabase project creation (web dashboard, not scriptable) — `scripts/schema.sql` is ready to run the moment it exists.
-- Team review of this skeleton before any real ingestion or agent calls (which will spend LLMod.ai budget).
-- Yair's and Andrei's emails for `team_info.json` (currently placeholders).
+Build is split into cost-gated chunks — a free track (dataset filtering, Supabase writes) finished and reviewed before the paid track (Pinecone embeddings, agent LLM calls) starts. Currently on **Chunk 1: fetch & filter the dataset** (not yet started). Supabase project exists (credentials in local `.env`, gitignored); the `movies` table itself hasn't been created yet.
 
-See **[`TODO.md`](TODO.md)** for the full technical checklist of what's left, in build order.
+See **[`TODO.md`](TODO.md)** for the full chunk-by-chunk technical checklist.
 
 ## Docs
 
