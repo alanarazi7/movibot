@@ -81,29 +81,28 @@ data_ready/
 
 ### `supabase_movies.csv`
 
-Contains **all usable cleaned Kaggle movies within the demo studio scope**
-(all 303 Disney + Pixar movies by default — including ones with no MPST
+Contains **all usable Kaggle movies within the demo studio scope**
+(303 Disney + Pixar movies by default — including ones with no MPST
 synopsis; pass `--all-studios` for the full 43,270-movie catalog instead).
+The studio filter runs first, straight off the raw data, before any
+cleaning — see step 1 in the script's own docstring.
 
-Columns:
+Columns (all 24 original movies_metadata.csv columns are kept — row count
+is small enough that column count is no longer a size concern — plus 2):
 
 ```text
-id
-imdb_id
-title
-release_year
-runtime_minutes
-genres
-production_companies
-popularity
-overview
-keywords
-has_mpst_synopsis
+id, imdb_id, title, original_title, release_year, release_date,
+runtime_minutes, genres, production_companies, production_countries,
+spoken_languages, belongs_to_collection, popularity, vote_average,
+vote_count, budget, revenue, overview, tagline, status,
+original_language, adult, video, poster_path, homepage,
+keywords, has_mpst_synopsis
 ```
 
 This is the source file for the Supabase catalog.
 
-`genres`, `production_companies`, and `keywords` are JSON arrays stored as CSV strings.
+`genres`, `production_companies`, `production_countries`, `spoken_languages`,
+and `keywords` are JSON arrays stored as CSV strings.
 
 ### `pinecone_candidates.csv`
 
@@ -113,16 +112,15 @@ exact IMDb-ID match to MPST (170 of the 303 Disney + Pixar movies —
 full, so there's no ranking/cutoff column; rows are simply sorted by
 descending Kaggle popularity for readability.
 
-Columns:
+Columns: everything `supabase_movies.csv` has (renamed `id` → `movie_id`,
+`has_mpst_synopsis` dropped since every row here has one by definition),
+plus the MPST fields and `embedding_text`:
 
 ```text
-movie_id
-imdb_id
-title
-release_year
-popularity
-genres
-production_companies
+... (all supabase_movies.csv columns except has_mpst_synopsis) ...
+mpst_title
+plot_synopsis
+mpst_tags
 synopsis_source
 embedding_text
 ```
@@ -184,12 +182,18 @@ The local synopsis text can remain local after vectors are generated.
 With the dataset snapshots used during development, a default (demo-scope) run produces approximately:
 
 ```text
-Raw Kaggle movies:               45,466
-Clean Kaggle movies:              43,270
-  ...within demo studio scope:      303
-Raw MPST movies:                 14,828
-Exact matches within scope:         170  (56% coverage)
+Raw Kaggle movies:                       45,466
+  ...after the Disney + Pixar filter:       304  (filter runs first)
+  ...after cleaning/dedup:                  303
+Raw MPST movies:                        14,828
+Exact matches within scope:                170  (56% coverage)
 ```
+
+At this scope, cleaning/dedup only ever removes a handful of rows (1, in the
+snapshot above — a nonpositive runtime) — most of what it exists to catch
+(duplicate ids, bad dates) simply doesn't occur within such a small,
+well-known set of movies. It's still run, since nothing guarantees a future
+re-download won't have a bad row.
 
 Running with `--all-studios` reproduces the original full-catalog numbers instead
 (43,270 clean movies, 11,328 exact MPST matches).

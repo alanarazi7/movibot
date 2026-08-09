@@ -3,11 +3,14 @@
 > **Update — demo scope added.** Everything below describes the original
 > full-catalog design (~43K movies, ~11K Pinecone candidates, popularity-ranked
 > and cut at `priority_rank <= 3000`). By default the script now narrows
-> further, right after cleaning, to `DEMO_STUDIOS` (Disney + Pixar) — 303
-> movies, 170 with an MPST synopsis — which is small enough to embed in full,
-> so `priority_rank`/cutoff no longer applies. The full-catalog behavior
-> described here is still reachable via `--all-studios`; see
-> `prepare_movibot_data usage.md` for current numbers of both modes.
+> FIRST, straight off the raw data before any cleaning, to `DEMO_STUDIOS`
+> (Disney + Pixar) — 45,466 raw → 304 raw Disney + Pixar → 303 clean, 170
+> with an MPST synopsis — which is small enough to embed in full, so
+> `priority_rank`/cutoff no longer applies. Row count also dropped low
+> enough that every original `movies_metadata.csv` column is now kept
+> rather than a curated subset. The full-catalog behavior described here is
+> still reachable via `--all-studios`; see `prepare_movibot_data usage.md`
+> for current numbers of both modes.
 
 ## 1. Goal
 

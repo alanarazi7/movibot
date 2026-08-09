@@ -28,12 +28,13 @@ Each chunk below is meant to be picked up cold in a fresh session — it says wh
 
 Implemented in `scripts/prepare_movibot_data.py` (design rationale in `scripts/data cleaning rules.md`, usage in `scripts/prepare_movibot_data usage.md`). Ended up broader than the original single-CSV/~5K-downsample sketch below — kept for history, see the actual design instead:
 
-- [x] Download 3 raw Kaggle CSVs into `data_full/` (gitignored): `movies_metadata.csv` + `keywords.csv` (`rounakbanik/the-movies-dataset`), `mpst_full_data.csv` (`cryptexcode/mpst-movie-plot-synopses-with-tags` — richer plot synopses, median ~693 words vs. ~48 for the Kaggle overview; not in the original team proposal doc but adopted for the semantic-search tool)
-- [x] Clean Kaggle movies: drop rows with invalid id, blank title, invalid/missing release date, invalid/non-positive runtime, or blank overview; dedupe by id
+- [x] Download 2 raw Kaggle sources into `data_full/` (gitignored): *The Movies Dataset* (`rounakbanik/the-movies-dataset`, 2 tables — `movies_metadata.csv` + `keywords.csv`) and MPST (`cryptexcode/mpst-movie-plot-synopses-with-tags`, `mpst_full_data.csv` — richer plot synopses, median ~693 words vs. ~48 for the Kaggle overview; not in the original team proposal doc but adopted for the semantic-search tool)
+- [x] Narrow to a demo scope FIRST, straight off the raw data: `DEMO_STUDIOS` = Disney + Pixar (`--all-studios` reproduces the original full-catalog behavior instead) — **45,466 raw → 304 raw Disney + Pixar movies**
+- [x] Clean that (now small) set: drop rows with invalid id, blank title, invalid/missing release date, invalid/non-positive runtime, or blank overview; dedupe by id — **304 → 303** (at this scope cleaning is nearly a no-op: only 1 row dropped, 0 duplicates)
 - [x] Clean + merge keywords; clean MPST (skipping the huge irrelevant `review` column); match Kaggle↔MPST by exact normalized IMDb ID
-- [x] Narrowed to a demo scope right after cleaning: `DEMO_STUDIOS` = Disney + Pixar (`--all-studios` reproduces the original full-catalog behavior instead) — **45,466 raw → 43,270 clean & deduped → 303 in scope** (Disney + Pixar movies, kept regardless of whether they have an MPST synopsis)
-- [x] Write two reviewable outputs to `data_ready/` (gitignored): `supabase_movies.csv` (303 movies, 0.16 MiB), `pinecone_candidates.csv` (170 of those 303 with an exact MPST match — 56% coverage, 1.32 MiB). Combined ~1.5 MiB, comfortably under the course's 50MB constraint — no ranking/cutoff column needed at this size, so `priority_rank` was dropped
-- [x] Review together before moving to Chunk 2 — ran locally, sample rows sanity-checked (incl. tracing one movie, *Frozen* 2013, through all 5 files)
+- [x] Keep every column `movies_metadata.csv` has (27 in `supabase_movies.csv` incl. `keywords`/`has_mpst_synopsis`) — column count stopped being a size concern once row count dropped this far
+- [x] Write two reviewable outputs to `data_ready/` (gitignored): `supabase_movies.csv` (303 movies, 0.23 MiB), `pinecone_candidates.csv` (170 of those 303 with an exact MPST match — 56% coverage, 2.70 MiB, full movie + MPST columns + `embedding_text`). Combined ~2.9 MiB — no ranking/cutoff column needed at this size, so `priority_rank` was dropped
+- [x] Review together before moving to Chunk 2 — ran locally, sample rows sanity-checked (incl. tracing one movie, *Frozen* 2013, through all files)
 
 This is pure pandas/CSV work — no network calls beyond the one-time Kaggle download, no LLM API keys needed, nothing that costs money.
 
