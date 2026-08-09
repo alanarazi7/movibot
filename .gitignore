@@ -7,5 +7,5 @@ venv/
 *.egg-info/
 .DS_Store
 *.log
-data_full/
-data_ready/
+data_preprocessing/data_full/
+data_preprocessing/data_ready/

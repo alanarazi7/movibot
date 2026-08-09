@@ -1,7 +1,7 @@
 -- MoviBot Supabase schema for the `movies` table (CatalogFilter's data source).
 -- Run this in the Supabase SQL editor once the project exists, before running
--- scripts/ingest.py. Columns match scripts/prepare_movibot_data.py's
--- data_ready/supabase_movies.csv output exactly.
+-- scripts/ingest.py. Columns match data_preprocessing/prepare_movibot_data.py's
+-- data_preprocessing/data_ready/supabase_movies.csv output exactly.
 
 create table if not exists movies (
   id bigint primary key,

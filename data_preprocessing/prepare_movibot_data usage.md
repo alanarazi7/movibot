@@ -7,7 +7,7 @@ This folder contains the final offline preparation pipeline for the MoviBot cour
 Place these **three original CSVs** in `data_full/`:
 
 ```text
-project/
+data_preprocessing/
 ├── prepare_movibot_data.py
 └── data_full/
     ├── movies_metadata.csv
@@ -41,7 +41,7 @@ Or install it explicitly through the project environment on Windows:
 
 ## 3. Run
 
-From the project root:
+From `data_preprocessing/` (all paths below are relative to this folder):
 
 ```powershell
 .\.venv\Scripts\python.exe prepare_movibot_data.py
@@ -87,15 +87,16 @@ synopsis; pass `--all-studios` for the full 43,270-movie catalog instead).
 The studio filter runs first, straight off the raw data, before any
 cleaning — see step 1 in the script's own docstring.
 
-Columns (all 24 original movies_metadata.csv columns are kept — row count
-is small enough that column count is no longer a size concern — plus 2):
+Columns (almost all original movies_metadata.csv columns are kept — row count
+is small enough that column count is no longer a size concern. Dropped:
+`poster_path`, `homepage` — neither is used by any agent tool. Plus 2):
 
 ```text
 id, imdb_id, title, original_title, release_year, release_date,
 runtime_minutes, genres, production_companies, production_countries,
 spoken_languages, belongs_to_collection, popularity, vote_average,
 vote_count, budget, revenue, overview, tagline, status,
-original_language, adult, video, poster_path, homepage,
+original_language, adult, video,
 keywords, has_mpst_synopsis
 ```
 

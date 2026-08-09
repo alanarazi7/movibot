@@ -229,8 +229,7 @@ def clean_movies(
         "genres", "production_companies", "production_countries",
         "spoken_languages", "popularity", "overview", "tagline", "status",
         "original_language", "adult", "video", "budget", "revenue",
-        "vote_average", "vote_count", "poster_path", "homepage",
-        "belongs_to_collection",
+        "vote_average", "vote_count", "belongs_to_collection",
     ]
 
     header = pd.read_csv(path, nrows=0).columns.tolist()
@@ -296,8 +295,6 @@ def clean_movies(
     df["tagline"] = clean_text(df["tagline"])
     df["status"] = clean_text(df["status"])
     df["original_language"] = clean_text(df["original_language"])
-    df["poster_path"] = clean_text(df["poster_path"])
-    df["homepage"] = clean_text(df["homepage"])
     df["release_year"] = df["release_date_parsed"].dt.year.astype("int64")
     df["release_date"] = df["release_date_parsed"].dt.strftime("%Y-%m-%d")
 
@@ -366,8 +363,6 @@ def clean_movies(
             "original_language": df["original_language"],
             "adult": df["adult"],
             "video": df["video"],
-            "poster_path": df["poster_path"],
-            "homepage": df["homepage"],
         }
     )
 
