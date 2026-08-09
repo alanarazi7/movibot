@@ -23,13 +23,13 @@ MoviBot runs a ReAct loop (`Reason -> Act -> Observe -> Stop?`) over four tools,
 
 See `assets/architecture.png` (served at `GET /api/model_architecture`) — module names there match the `steps` trace exactly.
 
-**Data**: Kaggle "The Movies Dataset," downsampled to ~5K movies. Structured fields live in Supabase; `overview` text is embedded into Pinecone; Wikipedia is fetched live per-candidate rather than pre-indexed.
+**Data**: 3 Kaggle sources — "The Movies Dataset" (`movies_metadata.csv` + `keywords.csv`) and MPST (`mpst_full_data.csv`, richer plot synopses matched by exact IMDb ID). The full cleaned catalog (43,270 movies) goes to Supabase for structured filtering; the MPST-matched subset (11,328 movies, popularity-ranked) is embedded into Pinecone for semantic search. Wikipedia is fetched live per-candidate rather than pre-indexed. See `scripts/data cleaning rules.md` for the full design rationale.
 
 ## Status
 
 **Current state: skeleton only.** All 4 required API routes exist and return correctly-shaped data, but `/api/execute` returns a **hardcoded stub response** — no LLMod.ai, Pinecone, or Supabase calls have been made yet. The `agent/` package has the intended module structure and prompts written, but every tool raises `NotImplementedError` until the real ReAct loop is wired in and reviewed.
 
-Build is split into cost-gated chunks — a free track (dataset filtering, Supabase writes) finished and reviewed before the paid track (Pinecone embeddings, agent LLM calls) starts. Currently on **Chunk 1: fetch & filter the dataset** (not yet started). Supabase project exists (credentials in local `.env`, gitignored); the `movies` table itself hasn't been created yet.
+Build is split into cost-gated chunks — a free track (dataset filtering, Supabase writes) finished and reviewed before the paid track (Pinecone embeddings, agent LLM calls) starts. **Chunk 1 (fetch & filter the dataset) is done** — `scripts/prepare_movibot_data.py` produces `data_ready/supabase_movies.csv` (43,270 movies) and `data_ready/pinecone_candidates.csv` (11,328 movies), both gitignored/regenerable from the 3 raw Kaggle CSVs. Next up is **Chunk 2: load into Supabase**. Supabase project exists (credentials in local `.env`, gitignored); the `movies` table itself hasn't been created yet.
 
 See **[`TODO.md`](TODO.md)** for the full chunk-by-chunk technical checklist.
 
