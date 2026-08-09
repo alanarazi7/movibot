@@ -1,5 +1,14 @@
 # MoviBot Data Design and Cleaning Rationale
 
+> **Update — demo scope added.** Everything below describes the original
+> full-catalog design (~43K movies, ~11K Pinecone candidates, popularity-ranked
+> and cut at `priority_rank <= 3000`). By default the script now narrows
+> further, right after cleaning, to `DEMO_STUDIOS` (Disney + Pixar) — 303
+> movies, 170 with an MPST synopsis — which is small enough to embed in full,
+> so `priority_rank`/cutoff no longer applies. The full-catalog behavior
+> described here is still reachable via `--all-studios`; see
+> `prepare_movibot_data usage.md` for current numbers of both modes.
+
 ## 1. Goal
 
 MoviBot needs two different kinds of data:

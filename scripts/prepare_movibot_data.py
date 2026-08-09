@@ -14,11 +14,15 @@ OUTPUTS (default: data_ready/)
 The script:
 1. Cleans Kaggle movie metadata.
 2. Cleans/merges Kaggle keywords.
-3. Cleans MPST without loading its irrelevant `review` column.
-4. Matches Kaggle <-> MPST by exact normalized IMDb ID.
-5. Builds one Supabase-ready catalog containing ALL usable Kaggle movies.
-6. Builds one Pinecone-ingestion candidate file containing ALL exact MPST matches,
-   sorted by descending Kaggle popularity.
+3. Narrows to the demo studio scope (DEMO_STUDIOS below, default Disney + Pixar) --
+   keeps every movie from those studios regardless of whether it has an MPST
+   synopsis. Pass --all-studios to skip this and keep the full catalog.
+4. Cleans MPST without loading its irrelevant `review` column.
+5. Matches Kaggle <-> MPST by exact normalized IMDb ID.
+6. Builds one Supabase-ready catalog containing ALL usable movies in scope.
+7. Builds one Pinecone-ingestion candidate file containing the exact MPST matches
+   within scope, sorted by descending Kaggle popularity. At demo scope this is
+   small enough to embed in full -- no further ranking/cutoff is applied.
 
 No APIs are called.
 No embeddings are generated.
@@ -35,6 +39,16 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+
+# Demo scope: keep only movies from these studios (matched against the
+# cleaned `production_companies` list). This is a studio-membership filter,
+# not a content-rating one -- it will still admit PG-13 titles a studio
+# distributes. Pass --all-studios to bypass it and keep the full catalog.
+DEMO_STUDIOS = (
+    "Walt Disney Pictures",
+    "Walt Disney Animation Studios",
+    "Pixar Animation Studios",
+)
 
 
 # ---------------------------------------------------------------------
@@ -56,6 +70,11 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=Path("data_ready"),
         help="Output folder (default: data_ready).",
+    )
+    parser.add_argument(
+        "--all-studios",
+        action="store_true",
+        help="Skip the DEMO_STUDIOS filter and keep the full multi-studio catalog.",
     )
     return parser.parse_args()
 
@@ -152,6 +171,13 @@ def stable_union(list_series: pd.Series) -> list[str]:
                 out.append(value)
 
     return out
+
+
+def has_demo_studio(companies_json: str, studios: tuple[str, ...]) -> bool:
+    """`production_companies` here is already the cleaned JSON-array-of-names
+    string produced by clean_movies(), not the raw TMDB nested dict format."""
+    companies = json.loads(companies_json) if companies_json else []
+    return any(c in studios for c in companies)
 
 
 def tags_to_list(value: Any) -> list[str]:
@@ -481,10 +507,10 @@ def main() -> None:
     for path in [movies_path, keywords_path, mpst_path]:
         require(path)
 
-    print("1/5 Cleaning Kaggle movies...")
+    print("1/6 Cleaning Kaggle movies...")
     movies, movie_stats = clean_movies(movies_path)
 
-    print("2/5 Cleaning Kaggle keywords...")
+    print("2/6 Cleaning Kaggle keywords...")
     keywords, keyword_stats = clean_keywords(
         keywords_path,
         set(movies["id"].astype(int)),
@@ -499,10 +525,24 @@ def main() -> None:
     )
     movies["keywords"] = movies["keywords"].fillna("[]")
 
-    print("3/5 Cleaning MPST...")
+    studio_stats = {"before_filter": len(movies)}
+    if args.all_studios:
+        print("3/6 Skipping studio filter (--all-studios)...")
+        studio_stats["studios"] = "ALL"
+        studio_stats["after_filter"] = len(movies)
+    else:
+        print(f"3/6 Narrowing to demo studios ({', '.join(DEMO_STUDIOS)})...")
+        in_scope = movies["production_companies"].apply(
+            lambda c: has_demo_studio(c, DEMO_STUDIOS)
+        )
+        movies = movies.loc[in_scope].reset_index(drop=True)
+        studio_stats["studios"] = ", ".join(DEMO_STUDIOS)
+        studio_stats["after_filter"] = len(movies)
+
+    print("4/6 Cleaning MPST...")
     mpst, mpst_stats = clean_mpst(mpst_path)
 
-    print("4/5 Exact IMDb-ID matching...")
+    print("5/6 Exact IMDb-ID matching...")
     matched = movies[movies["imdb_id"].notna()].merge(
         mpst,
         on="imdb_id",
@@ -538,32 +578,27 @@ def main() -> None:
     supabase.to_csv(supabase_out, index=False)
 
     # -------------------------------------------------------------
-    # PINECONE OUTPUT: ALL exact MPST matches, NO row deletion
+    # PINECONE OUTPUT: every exact MPST match within the demo scope.
+    # At this scope the pool is small enough to embed in full, so there's
+    # no ranking/cutoff column -- every row here gets embedded.
     # -------------------------------------------------------------
-    print("5/5 Building ranked Pinecone candidate file...")
-
-    # Pure popularity priority, as chosen for the course demo.
-    matched["_priority_popularity"] = pd.to_numeric(
-        matched["popularity"], errors="coerce"
-    ).fillna(float("-inf"))
+    print("6/6 Building Pinecone candidate file...")
 
     pinecone = (
         matched.sort_values(
-            ["_priority_popularity", "release_year", "id"],
+            ["popularity", "release_year", "id"],
             ascending=[False, False, True],
         )
         .reset_index(drop=True)
         .copy()
     )
 
-    pinecone.insert(0, "priority_rank", range(1, len(pinecone) + 1))
     pinecone["embedding_text"] = pinecone.apply(build_embedding_text, axis=1)
 
     # This file is an INGESTION CANDIDATE file.
     # Only movie_id/title/release_year are proposed as persistent Pinecone metadata.
     pinecone = pd.DataFrame(
         {
-            "priority_rank": pinecone["priority_rank"],
             "movie_id": pinecone["id"],
             "imdb_id": pinecone["imdb_id"],
             "title": pinecone["title"],
@@ -584,13 +619,24 @@ def main() -> None:
     # -------------------------------------------------------------
     print("\n=== MOVIBOT DATA PREPARATION COMPLETE ===")
 
-    print("\nKaggle movies:")
+    print(
+        f"\nScope: {movie_stats['raw_rows']:,} raw movies -> "
+        f"{movie_stats['final_movies']:,} clean & deduped -> "
+        f"{studio_stats['after_filter']:,} after the demo studio filter "
+        f"({studio_stats['studios']})"
+    )
+
+    print("\nKaggle movies (cleaning, before studio filter):")
     for k, v in movie_stats.items():
         print(f"  {k}: {v:,}")
 
     print("\nKaggle keywords:")
     for k, v in keyword_stats.items():
         print(f"  {k}: {v:,}")
+
+    print("\nDemo studio filter:")
+    for k, v in studio_stats.items():
+        print(f"  {k}: {v}")
 
     print("\nMPST:")
     for k, v in mpst_stats.items():
@@ -607,12 +653,7 @@ def main() -> None:
         f"  Pinecone candidates: {len(pinecone):,} movies | "
         f"{file_mib(pinecone_out):.2f} MiB local ingestion file | {pinecone_out}"
     )
-    print(f"  Exact MPST coverage: {coverage:.2f}%")
-
-    if len(pinecone) >= 3000:
-        print("\nFor the planned demo-sized Pinecone index:")
-        print("  use priority_rank <= 3000")
-        print("  (the file intentionally keeps every exact MPST match).")
+    print(f"  Exact MPST coverage within scope: {coverage:.2f}%")
 
     print("\nPersistent Pinecone metadata recommendation:")
     print("  movie_id, title, release_year")

@@ -59,6 +59,16 @@ Optional custom paths:
 python prepare_movibot_data.py --data-full data_full --out-dir data_ready
 ```
 
+By default the script narrows to a demo scope: only movies produced by
+Walt Disney Pictures, Walt Disney Animation Studios, or Pixar Animation
+Studios (`DEMO_STUDIOS` in the script) — including ones with no MPST
+synopsis. Pass `--all-studios` to skip this and keep the full multi-studio
+catalog (the original, much larger, output):
+
+```bash
+python prepare_movibot_data.py --all-studios
+```
+
 ## 4. Outputs
 
 The script creates exactly two final data files:
@@ -71,7 +81,9 @@ data_ready/
 
 ### `supabase_movies.csv`
 
-Contains **all usable cleaned Kaggle movies**.
+Contains **all usable cleaned Kaggle movies within the demo studio scope**
+(all 303 Disney + Pixar movies by default — including ones with no MPST
+synopsis; pass `--all-studios` for the full 43,270-movie catalog instead).
 
 Columns:
 
@@ -95,20 +107,15 @@ This is the source file for the Supabase catalog.
 
 ### `pinecone_candidates.csv`
 
-Contains **all movies that have an exact IMDb-ID match between the cleaned Kaggle catalog and MPST**.
-
-Nothing is removed to reach a fixed Pinecone size.
-
-Rows are sorted by pure Kaggle popularity and receive:
-
-```text
-priority_rank = 1, 2, 3, ...
-```
+Contains every movie **within the demo studio scope** that also has an
+exact IMDb-ID match to MPST (170 of the 303 Disney + Pixar movies —
+56% coverage). At this size the whole file is meant to be embedded in
+full, so there's no ranking/cutoff column; rows are simply sorted by
+descending Kaggle popularity for readability.
 
 Columns:
 
 ```text
-priority_rank
 movie_id
 imdb_id
 title
@@ -131,15 +138,14 @@ MPST story tags
 Kaggle keywords
 ```
 
-## 5. Building the demo Pinecone index later
+## 5. Building the Pinecone index
 
-For the current demo plan, use the first 3,000 ranked rows:
+At demo scope (170 rows), embed the whole file — no subsampling needed:
 
 ```python
 import pandas as pd
 
 df = pd.read_csv("data_ready/pinecone_candidates.csv")
-df = df[df["priority_rank"] <= 3000]
 ```
 
 Do **not** permanently store `embedding_text` in Pinecone metadata.
@@ -175,14 +181,18 @@ The local synopsis text can remain local after vectors are generated.
 
 ## 6. Expected sanity checks
 
-With the dataset snapshots used during development, previous runs produced approximately:
+With the dataset snapshots used during development, a default (demo-scope) run produces approximately:
 
 ```text
-Raw Kaggle movies:        45,466
-Clean Kaggle movies:      43,270
-Raw MPST movies:          14,828
-Exact Kaggle/MPST matches:11,328
+Raw Kaggle movies:               45,466
+Clean Kaggle movies:              43,270
+  ...within demo studio scope:      303
+Raw MPST movies:                 14,828
+Exact matches within scope:         170  (56% coverage)
 ```
+
+Running with `--all-studios` reproduces the original full-catalog numbers instead
+(43,270 clean movies, 11,328 exact MPST matches).
 
 The exact console output from this script is the authority for the files on your machine.
 
