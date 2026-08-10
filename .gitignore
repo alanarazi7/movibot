@@ -8,3 +8,5 @@ venv/
 .DS_Store
 *.log
 data_preprocessing/data_full/
+.vercel
+.env*
