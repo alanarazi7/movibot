@@ -12,6 +12,9 @@ venv/
 data_full/
 data_ready/
 
+# Local agent/editor tooling state -- never part of the project
+.claude/
+
 # Test and tooling artifacts
 .pytest_cache/
 .coverage

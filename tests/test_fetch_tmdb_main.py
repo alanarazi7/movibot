@@ -152,6 +152,39 @@ class TestMain:
         assert run_main(monkeypatch, tmp_path) == 1
         assert not (tmp_path / "tmdb_new_movies.csv").exists()
 
+    def test_drops_shorts_below_the_feature_length_threshold(
+        self, monkeypatch, tmp_path, fake_tmdb
+    ):
+        # TMDB lists Pixar SparkShorts and "Forky Asks a Question" episodes as
+        # standalone movies. They are 3-9 minutes long and would pollute any
+        # "recommend me a movie" answer.
+        fake_tmdb[100] = detail(100, "Luca", runtime=95)
+        fake_tmdb[101] = detail(101, "Forky Asks a Question: What Is Money?", runtime=3)
+        fake_tmdb[102] = detail(102, "Bao", runtime=8)
+
+        run_main(monkeypatch, tmp_path)
+
+        assert [r["title"] for r in read_output(tmp_path)] == ["Luca"]
+
+    def test_min_runtime_zero_keeps_everything(self, monkeypatch, tmp_path, fake_tmdb):
+        fake_tmdb[100] = detail(100, "Luca", runtime=95)
+        fake_tmdb[101] = detail(101, "Bao", runtime=8)
+
+        run_main(monkeypatch, tmp_path, "--min-runtime", "0")
+
+        assert len(read_output(tmp_path)) == 2
+
+    def test_min_runtime_is_configurable(self, monkeypatch, tmp_path, fake_tmdb):
+        fake_tmdb[100] = detail(100, "Luca", runtime=95)
+        fake_tmdb[101] = detail(101, "Mid-length special", runtime=45)
+
+        run_main(monkeypatch, tmp_path, "--min-runtime", "60")
+
+        assert [r["title"] for r in read_output(tmp_path)] == ["Luca"]
+
+    def test_negative_min_runtime_is_rejected(self, monkeypatch, tmp_path, fake_tmdb):
+        assert run_main(monkeypatch, tmp_path, "--min-runtime", "-5") == 2
+
     def test_creates_the_output_directory(self, monkeypatch, tmp_path, fake_tmdb):
         fake_tmdb[100] = detail(100, "Luca")
         nested = tmp_path / "deep" / "nested"

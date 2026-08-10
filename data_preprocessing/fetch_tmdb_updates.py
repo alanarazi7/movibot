@@ -71,6 +71,14 @@ STUDIO_NAME_ALIASES = {
 # The Kaggle catalog stops here; everything from this date on is the gap.
 DEFAULT_RELEASE_FLOOR = "2017-07-01"
 
+# TMDB catalogues Pixar SparkShorts, "Forky Asks a Question" episodes, promo
+# clips and making-of featurettes as standalone movies. On the Disney/Pixar
+# scope they are 39% of everything released since 2017, and recommending a
+# 3-minute Disney+ clip to someone asking for a movie is simply wrong. 40
+# minutes is the long-standing Academy threshold for a feature film.
+# Pass --min-runtime 0 to keep every entry.
+MIN_FEATURE_RUNTIME_MINUTES = 40
+
 # Run from the repo root, so this must be the package-qualified path -- it is
 # the same folder prepare_movibot_data.py writes to when run from inside
 # data_preprocessing/, and it is gitignored.
@@ -307,6 +315,14 @@ def parse_args() -> argparse.Namespace:
         "--limit", type=int, default=None,
         help="Only fetch the first N discovered movies (cheap test run).",
     )
+    parser.add_argument(
+        "--min-runtime", type=int, default=MIN_FEATURE_RUNTIME_MINUTES,
+        help=(
+            "Drop entries shorter than this many minutes "
+            f"(default: {MIN_FEATURE_RUNTIME_MINUTES}, the feature-film threshold). "
+            "Use 0 to keep shorts and featurettes."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -315,6 +331,10 @@ def main() -> int:
 
     if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", args.since):
         print(f"--since must be YYYY-MM-DD, got {args.since!r}", file=sys.stderr)
+        return 2
+
+    if args.min_runtime < 0:
+        print(f"--min-runtime must be >= 0, got {args.min_runtime}", file=sys.stderr)
         return 2
 
     try:
@@ -332,6 +352,7 @@ def main() -> int:
         rows: list[dict[str, Any]] = []
         skipped_scope = 0
         skipped_unusable = 0
+        skipped_short = 0
 
         for index, movie_id in enumerate(movie_ids, start=1):
             detail = get_json(session, f"/movie/{movie_id}")
@@ -344,6 +365,12 @@ def main() -> int:
             row = build_row(detail, names_of(keywords_payload.get("keywords")))
             if row is None:
                 skipped_unusable += 1
+                continue
+
+            # Genre is never filtered: animated and live-action features are
+            # both in scope. Only sub-feature runtimes are dropped.
+            if row["runtime_minutes"] < args.min_runtime:
+                skipped_short += 1
                 continue
 
             rows.append(row)
@@ -367,9 +394,11 @@ def main() -> int:
     print(f"Discovered:        {len(movie_ids):,}")
     print(f"Dropped, scope:    {skipped_scope:,} (no DEMO_STUDIOS credit on the full record)")
     print(f"Dropped, unusable: {skipped_unusable:,} (missing date/runtime/overview)")
+    print(f"Dropped, short:    {skipped_short:,} (under {args.min_runtime} min)")
     print(f"Written:           {len(rows):,} -> {out_path}")
     if rows:
-        print(f"Year range:        {rows[0]['release_year']}-{max(r['release_year'] for r in rows)}")
+        years = [r["release_year"] for r in rows]
+        print(f"Year range:        {min(years)}-{max(years)}")
     return 0
 
 
