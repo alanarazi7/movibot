@@ -14,7 +14,7 @@
 - [ ] Commit and redeploy
 - **Status:** Alan's email ✅, two blanks remain
 
-### Chunk 2: Supabase (FREE, no LLM)
+### Chunk 2: Supabase (FREE, no LLM - Cost-Gated)
 **Prerequisite:** Supabase project exists (URL + key in `.env`, gitignored)
 
 1. [ ] **Create `movies` table in Supabase**
@@ -40,7 +40,39 @@
 
 ---
 
-### Chunk 3: Pinecone Embeddings (PAID: first LLMod.ai spend)
+### Local Sandbox: Full Agent Test (OPTIONAL but RECOMMENDED - ~$0.50)
+**Prerequisite:** Chunk 2 complete  
+**Status:** No budget wasted; catches issues before Chunks 3-4 ($13 spend)  
+**See:** [LOCAL_SANDBOX.md](LOCAL_SANDBOX.md)
+
+1. [ ] **Install local dependencies**
+   ```bash
+   pip install sentence-transformers chromadb torch
+   ```
+
+2. [ ] **Setup local embeddings (Chroma DB)**
+   - Embed 170 movies with `all-MiniLM-L6-v2` (fast, local, free)
+   - Store in `data_chroma/` (not gitignored, regenerable)
+   - `python scripts/local_sandbox_setup.py`
+
+3. [ ] **Test agent end-to-end locally**
+   - Use Claude API for LLM calls (~$0.50 for 20 test queries)
+   - Use Supabase for CatalogFilter (already loaded in Chunk 2)
+   - Use Chroma for PlotSearch (just embedded)
+   - Verify: all 6 steps in trace, module names match architecture.png
+
+4. [ ] **Iterate on prompts + system messages**
+   - Run Disney/toddler demo query locally
+   - If results look good → proceed to Chunk 3
+   - If hallucinations/poor results → tune prompts before spending $13
+
+5. [ ] **Validate architecture before production spend**
+   - This is the last checkpoint before paid services
+   - Confirm responses are sensible, not made-up
+
+---
+
+### Chunk 3: Pinecone Embeddings (PAID: first LLMod.ai spend - Cost-Gated)
 **Prerequisite:** Chunk 2 complete, LLMod.ai key in `.env`, Pinecone key in `.env`  
 **Approval gate:** Explicit go-ahead needed (will spend budget)
 
@@ -152,9 +184,13 @@ git add . && git commit -m "..." && git push origin master && vercel --prod
 | Phase | Service | Est. Cost | Status |
 |-------|---------|-----------|--------|
 | Chunks 1-2 | (none) | Free | ✅ Complete |
+| **Local Sandbox** | **Claude API** | **~$0.50** | 🟡 Optional (recommended) |
 | Chunk 3 | Pinecone + LLMod.ai embeddings | ~$0.03 | 🟡 Planned |
 | Chunk 4 | LLMod.ai LLM calls | ~$12.97 | 🟡 Planned |
-| **Total** | | **~$13.00** | 🎯 On budget |
+| **Total (with Sandbox)** | | **~$13.50** | 🎯 Slight overage OK |
+| **Total (without Sandbox)** | | **~$13.00** | 🎯 On budget |
+
+**Note:** Local Sandbox ($0.50) is worthwhile to catch issues before committing to Chunk 4 ($12.97). Paying $0.50 to validate before $13 spend = good ROI.
 
 All estimates based on 170 embeddings + ~3 LLM calls per user query (conservatively ~20 queries max before hitting budget cap).
 
