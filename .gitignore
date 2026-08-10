@@ -7,5 +7,15 @@ venv/
 *.egg-info/
 .DS_Store
 *.log
-data_preprocessing/data_full/
-data_preprocessing/data_ready/
+# Raw downloads and generated CSVs -- always regenerable, never committed.
+# Bare patterns so they match no matter which directory a script is run from.
+data_full/
+data_ready/
+
+# Test and tooling artifacts
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.ruff_cache/
+.mypy_cache/

@@ -1,0 +1,6 @@
+# Development-only dependencies. Not installed on Vercel -- keep the
+# serverless bundle to requirements.txt.
+-r requirements.txt
+
+pytest>=8.0,<10
+pytest-cov>=5.0,<8

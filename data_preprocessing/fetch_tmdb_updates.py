@@ -1,0 +1,377 @@
+"""Fetches Disney/Pixar releases newer than the Kaggle catalog, from TMDB.
+
+WHY THIS EXISTS
+    "The Movies Dataset" is a MovieLens dump covering releases up to July
+    2017, so the prepared catalog contains nothing after that. The project's
+    flagship demo query asks for a "not-too-old Disney movie", which the data
+    currently cannot answer: Encanto, Turning Red, Luca, Soul, Onward, Raya,
+    Strange World, Wish, Lightyear, Elemental, Inside Out 2, Moana 2 and
+    Zootopia 2 are all missing.
+
+WHY TMDB AND NOT ANOTHER DUMP
+    The prepared catalog is already TMDB-shaped: `id` is a TMDB movie id and
+    every list column comes from TMDB's nested-dict fields. Pulling the gap
+    straight from TMDB keeps the same id space, the same column names and the
+    same `production_companies` values the DEMO_STUDIOS filter matches on, so
+    new rows append to `supabase_movies.csv` with no reconciliation step and
+    no title-based guessing. A static IMDb scrape would need all three.
+
+USAGE
+    Unlike prepare_movibot_data.py (run from inside data_preprocessing/),
+    this module imports from the package, so run it from the repo root:
+
+        python -m data_preprocessing.fetch_tmdb_updates
+        python -m data_preprocessing.fetch_tmdb_updates --limit 10   # test run
+
+OUTPUT
+    data_preprocessing/data_ready/tmdb_new_movies.csv -- same 25 columns in
+    the same order as supabase_movies.csv, ready to concatenate. Gitignored
+    and regenerable, like every other file under data_ready/.
+
+CREDENTIALS
+    Set TMDB_ACCESS_TOKEN (v4 bearer, preferred) or TMDB_API_KEY (v3) in the
+    environment. A TMDB key is free. No LLM budget is spent by this script.
+"""
+
+from __future__ import annotations
+
+import argparse
+import csv
+import os
+import re
+import sys
+import time
+from pathlib import Path
+from typing import Any, Iterator
+
+import requests
+
+from data_preprocessing.prepare_movibot_data import DEMO_STUDIOS, json_list
+
+TMDB_BASE_URL = "https://api.themoviedb.org/3"
+
+# TMDB company ids for DEMO_STUDIOS. Verified at runtime against the live
+# company names before any discovery call, so a wrong id fails loudly instead
+# of silently returning somebody else's catalog.
+STUDIO_COMPANY_IDS = {
+    2: "Walt Disney Pictures",
+    3: "Pixar",
+    6125: "Walt Disney Animation Studios",
+}
+
+# TMDB has since renamed company 3 to plain "Pixar", but the 2017 Kaggle dump
+# -- and therefore DEMO_STUDIOS and every existing catalog row -- spells it
+# "Pixar Animation Studios". New rows are rewritten to the catalog spelling so
+# the studio column stays internally consistent and the DEMO_STUDIOS filter
+# keeps working on both halves of the data.
+STUDIO_NAME_ALIASES = {
+    "Pixar": "Pixar Animation Studios",
+}
+
+# The Kaggle catalog stops here; everything from this date on is the gap.
+DEFAULT_RELEASE_FLOOR = "2017-07-01"
+
+# Run from the repo root, so this must be the package-qualified path -- it is
+# the same folder prepare_movibot_data.py writes to when run from inside
+# data_preprocessing/, and it is gitignored.
+DEFAULT_OUT_DIR = Path("data_preprocessing") / "data_ready"
+
+# Column order must stay identical to prepare_movibot_data.py's Supabase output.
+OUTPUT_COLUMNS = [
+    "id", "imdb_id", "title", "original_title", "release_year", "release_date",
+    "runtime_minutes", "genres", "production_companies", "production_countries",
+    "spoken_languages", "belongs_to_collection", "popularity", "vote_average",
+    "vote_count", "budget", "revenue", "overview", "tagline", "status",
+    "original_language", "adult", "video", "keywords", "has_mpst_synopsis",
+]
+
+_IMDB_ID = re.compile(r"^tt\d+$")
+_REQUEST_PAUSE_SECONDS = 0.05
+
+
+class TmdbError(RuntimeError):
+    pass
+
+
+# ---------------------------------------------------------------------
+# HTTP
+# ---------------------------------------------------------------------
+
+def build_session() -> requests.Session:
+    token = (os.environ.get("TMDB_ACCESS_TOKEN") or "").strip()
+    api_key = (os.environ.get("TMDB_API_KEY") or "").strip()
+
+    if not token and not api_key:
+        raise TmdbError(
+            "No TMDB credentials found. Set TMDB_ACCESS_TOKEN (v4 bearer) or "
+            "TMDB_API_KEY (v3) in your environment/.env. Both are free."
+        )
+
+    session = requests.Session()
+    session.headers.update({"Accept": "application/json"})
+    if token:
+        session.headers["Authorization"] = f"Bearer {token}"
+    else:
+        session.params = {"api_key": api_key}
+    return session
+
+
+def get_json(
+    session: requests.Session, path: str, params: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    url = f"{TMDB_BASE_URL}{path}"
+
+    for attempt in range(4):
+        try:
+            response = session.get(url, params=params, timeout=20)
+        except requests.RequestException as exc:
+            if attempt == 3:
+                raise TmdbError(f"Network error calling {path}: {exc}") from exc
+            time.sleep(2 ** attempt)
+            continue
+
+        if response.status_code == 429:
+            time.sleep(int(response.headers.get("Retry-After", "2")) + 1)
+            continue
+        if response.status_code == 401:
+            raise TmdbError(
+                f"TMDB rejected the credentials (401) on {path}. "
+                "Check TMDB_ACCESS_TOKEN / TMDB_API_KEY."
+            )
+        if response.status_code >= 500:
+            if attempt == 3:
+                raise TmdbError(f"TMDB server error {response.status_code} on {path}")
+            time.sleep(2 ** attempt)
+            continue
+        if not response.ok:
+            raise TmdbError(f"TMDB returned {response.status_code} on {path}")
+
+        time.sleep(_REQUEST_PAUSE_SECONDS)
+        return response.json()
+
+    raise TmdbError(f"Gave up calling {path} after retries")
+
+
+# ---------------------------------------------------------------------
+# Discovery
+# ---------------------------------------------------------------------
+
+def verify_company_ids(session: requests.Session) -> None:
+    """Fails loudly if a hardcoded company id no longer means what we think."""
+    for company_id, expected in STUDIO_COMPANY_IDS.items():
+        actual = (get_json(session, f"/company/{company_id}").get("name") or "").strip()
+        if actual.lower() != expected.lower():
+            raise TmdbError(
+                f"TMDB company id {company_id} resolves to {actual!r}, "
+                f"expected {expected!r}. Refusing to fetch a wrong catalog."
+            )
+
+
+def discover_movie_ids(
+    session: requests.Session, release_floor: str
+) -> Iterator[int]:
+    seen: set[int] = set()
+    company_filter = "|".join(str(i) for i in STUDIO_COMPANY_IDS)
+    page = 1
+
+    while True:
+        payload = get_json(
+            session,
+            "/discover/movie",
+            {
+                "with_companies": company_filter,
+                "primary_release_date.gte": release_floor,
+                "sort_by": "primary_release_date.asc",
+                "include_adult": "false",
+                "page": page,
+            },
+        )
+
+        results = payload.get("results") or []
+        if not results:
+            return
+
+        for item in results:
+            movie_id = item.get("id")
+            if isinstance(movie_id, int) and movie_id not in seen:
+                seen.add(movie_id)
+                yield movie_id
+
+        if page >= min(int(payload.get("total_pages") or 1), 500):
+            return
+        page += 1
+
+
+# ---------------------------------------------------------------------
+# Row building
+# ---------------------------------------------------------------------
+
+def names_of(items: Any) -> list[str]:
+    if not isinstance(items, list):
+        return []
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        name = str((item or {}).get("name", "")).strip() if isinstance(item, dict) else ""
+        if name and name not in seen:
+            seen.add(name)
+            out.append(name)
+    return out
+
+
+def canonicalize_companies(names: list[str]) -> list[str]:
+    """Rewrites TMDB's current studio spellings to the catalog's, order-stable."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for name in names:
+        canonical = STUDIO_NAME_ALIASES.get(name, name)
+        if canonical not in seen:
+            seen.add(canonical)
+            out.append(canonical)
+    return out
+
+
+def is_in_demo_scope(companies: list[str]) -> bool:
+    """Same studio-membership rule prepare_movibot_data.py applies."""
+    return any(name in DEMO_STUDIOS for name in canonicalize_companies(companies))
+
+
+def build_row(detail: dict[str, Any], keywords: list[str]) -> dict[str, Any] | None:
+    """Applies the same usability rules as clean_movies(); None means unusable."""
+    movie_id = detail.get("id")
+    title = str(detail.get("title") or "").strip()
+    overview = str(detail.get("overview") or "").strip()
+    release_date = str(detail.get("release_date") or "").strip()
+    runtime = detail.get("runtime")
+
+    if not isinstance(movie_id, int) or not title or not overview:
+        return None
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", release_date):
+        return None
+    if not isinstance(runtime, (int, float)) or runtime <= 0:
+        return None
+
+    imdb_id = str(detail.get("imdb_id") or "").strip()
+    collection = detail.get("belongs_to_collection") or {}
+
+    return {
+        "id": movie_id,
+        "imdb_id": imdb_id if _IMDB_ID.fullmatch(imdb_id) else "",
+        "title": title,
+        "original_title": str(detail.get("original_title") or "").strip(),
+        "release_year": int(release_date[:4]),
+        "release_date": release_date,
+        "runtime_minutes": int(runtime),
+        "genres": json_list(names_of(detail.get("genres"))),
+        "production_companies": json_list(
+            canonicalize_companies(names_of(detail.get("production_companies")))
+        ),
+        "production_countries": json_list(names_of(detail.get("production_countries"))),
+        "spoken_languages": json_list(names_of(detail.get("spoken_languages"))),
+        "belongs_to_collection": str(collection.get("name", "")).strip()
+        if isinstance(collection, dict) else "",
+        "popularity": detail.get("popularity"),
+        "vote_average": detail.get("vote_average"),
+        "vote_count": detail.get("vote_count") or 0,
+        "budget": detail.get("budget") or 0,
+        "revenue": detail.get("revenue") or 0,
+        "overview": overview,
+        "tagline": str(detail.get("tagline") or "").strip(),
+        "status": str(detail.get("status") or "").strip(),
+        "original_language": str(detail.get("original_language") or "").strip(),
+        "adult": bool(detail.get("adult")),
+        "video": bool(detail.get("video")),
+        "keywords": json_list(keywords),
+        # MPST is a static 2018 corpus, so nothing released after the Kaggle
+        # cutoff can have a synopsis in it. Transcripts are a separate track.
+        "has_mpst_synopsis": False,
+    }
+
+
+# ---------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--out-dir", type=Path, default=DEFAULT_OUT_DIR,
+        help=f"Output folder (default: {DEFAULT_OUT_DIR}, relative to the repo root).",
+    )
+    parser.add_argument(
+        "--since", default=DEFAULT_RELEASE_FLOOR,
+        help=f"Earliest primary release date, YYYY-MM-DD (default: {DEFAULT_RELEASE_FLOOR}).",
+    )
+    parser.add_argument(
+        "--limit", type=int, default=None,
+        help="Only fetch the first N discovered movies (cheap test run).",
+    )
+    return parser.parse_args()
+
+
+def main() -> int:
+    args = parse_args()
+
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", args.since):
+        print(f"--since must be YYYY-MM-DD, got {args.since!r}", file=sys.stderr)
+        return 2
+
+    try:
+        session = build_session()
+        print("1/3 Verifying TMDB company ids...")
+        verify_company_ids(session)
+
+        print(f"2/3 Discovering {'/'.join(STUDIO_COMPANY_IDS.values())} releases since {args.since}...")
+        movie_ids = list(discover_movie_ids(session, args.since))
+        if args.limit is not None:
+            movie_ids = movie_ids[: args.limit]
+        print(f"    {len(movie_ids):,} candidate movies")
+
+        print("3/3 Fetching details...")
+        rows: list[dict[str, Any]] = []
+        skipped_scope = 0
+        skipped_unusable = 0
+
+        for index, movie_id in enumerate(movie_ids, start=1):
+            detail = get_json(session, f"/movie/{movie_id}")
+
+            if not is_in_demo_scope(names_of(detail.get("production_companies"))):
+                skipped_scope += 1
+                continue
+
+            keywords_payload = get_json(session, f"/movie/{movie_id}/keywords")
+            row = build_row(detail, names_of(keywords_payload.get("keywords")))
+            if row is None:
+                skipped_unusable += 1
+                continue
+
+            rows.append(row)
+            if index % 25 == 0:
+                print(f"    {index}/{len(movie_ids)}...")
+
+    except TmdbError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+
+    rows.sort(key=lambda r: r["id"])
+
+    args.out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = args.out_dir / "tmdb_new_movies.csv"
+    with out_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=OUTPUT_COLUMNS)
+        writer.writeheader()
+        writer.writerows(rows)
+
+    print("\n=== TMDB CATALOG UPDATE COMPLETE ===")
+    print(f"Discovered:        {len(movie_ids):,}")
+    print(f"Dropped, scope:    {skipped_scope:,} (no DEMO_STUDIOS credit on the full record)")
+    print(f"Dropped, unusable: {skipped_unusable:,} (missing date/runtime/overview)")
+    print(f"Written:           {len(rows):,} -> {out_path}")
+    if rows:
+        print(f"Year range:        {rows[0]['release_year']}-{max(r['release_year'] for r in rows)}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
