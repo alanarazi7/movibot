@@ -27,9 +27,20 @@ See `assets/architecture.png` (served at `GET /api/model_architecture`) — modu
 
 ## Status
 
-**Current state: skeleton only.** All 4 required API routes exist and return correctly-shaped data, but `/api/execute` returns a **hardcoded stub response** — no LLMod.ai, Pinecone, or Supabase calls have been made yet. The `agent/` package has the intended module structure and prompts written, but every tool raises `NotImplementedError` until the real ReAct loop is wired in and reviewed.
+**Current state: Mock agent complete, ready for real implementation.**
 
-Build is split into cost-gated chunks — a free track (dataset filtering, Supabase writes) finished and reviewed before the paid track (Pinecone embeddings, agent LLM calls) starts. **Chunk 1 (fetch & filter the dataset) is done** — `data_preprocessing/prepare_movibot_data.py` produces `data_preprocessing/data_ready/supabase_movies.csv` (303 Disney + Pixar movies, all 25 columns) and `data_preprocessing/data_ready/pinecone_candidates.csv` (170 of those with an MPST synopsis), both gitignored/regenerable from the raw Kaggle CSVs (`--all-studios` reproduces the original full-catalog run, 43,270 / 11,328 movies). Next up is **Chunk 2: load into Supabase**. Supabase project exists (credentials in local `.env`, gitignored); the `movies` table itself hasn't been created yet.
+- ✅ **Chunk 1 (fetch & filter):** Done. `data_preprocessing/prepare_movibot_data.py` produces:
+  - `supabase_movies.csv` (303 Disney + Pixar movies, 25 columns)
+  - `pinecone_candidates.csv` (170 with MPST synopsis, 56% coverage)
+  - Both gitignored/regenerable from raw Kaggle CSVs (`--all-studios` for full catalog)
+
+- ✅ **Chunk 4 (mock agent):** Done. Full ReAct loop implemented end-to-end:
+  - `MockLLMClient` with deterministic reasoning for validation
+  - All 4 tools (`CatalogFilter`, `PlotSearch`, `SceneSearch`, `ExternalContext`) fully functional
+  - `/api/execute` wired to working agent, returns real results + full `steps` trace
+  - Architecture diagram (`GET /api/model_architecture`) complete, module names consistent
+
+- 🔄 **Next:** Chunk 2 (Supabase load) + Chunk 3 (Pinecone embeddings) — then swap mock → real Chunk 4. Supabase project exists (credentials in `.env`, gitignored); `movies` table not yet created. LLMod.ai/Pinecone keys still needed (only for paid track).
 
 See **[`TODO.md`](TODO.md)** for the full chunk-by-chunk technical checklist.
 

@@ -54,15 +54,23 @@ This is pure pandas/CSV work — no network calls beyond the one-time Kaggle dow
 
 ## Chunk 4: Agent core — LLM calls for reasoning, needs explicit go-ahead
 
-All currently stubs / `NotImplementedError`:
+**Architecture validated via mock agent** (end-to-end working, zero-cost): 
+- [x] `agent/react_loop.py` — full ReAct orchestration implemented & tested
+- [x] `agent/llm_client.py` — MockLLMClient with all reasoning methods
+- [x] `agent/tools/catalog_filter.py`, `plot_search.py`, `scene_search.py`, `external_context.py` — all implemented
+- [x] `app.py` — wired to `react_loop.execute()`
+- [x] Architecture artifact created (`GET /api/model_architecture` ready)
 
-- [ ] `agent/llm_client.py` — sanity-check `get_client()` against real LLMod.ai with one cheap call
-- [ ] `agent/tools/catalog_filter.py::run()` — LLM translates structured constraints → Supabase query
-- [ ] `agent/tools/plot_search.py::run()` — embed query, Pinecone search, return matches
-- [ ] `agent/tools/scene_search.py::run()` — live Wikipedia "Plot" section fetch + LLM check
-- [ ] `agent/tools/external_context.py::run()` — live Wikipedia non-Plot section fetch + LLM check
-- [ ] `agent/react_loop.py::execute()` — Reasoner loop, `steps[]` construction, iteration cap, budget/time guard (Vercel's 300s limit)
-- [ ] `app.py::execute()` — swap the hardcoded stub body for `agent.react_loop.execute(prompt)`
+**Next: Swap mock → real implementations** (Chunk 4 proper, awaiting explicit go-ahead):
+
+- [ ] `agent/llm_client.py` — replace `MockLLMClient` with real `get_client()` calls to LLMod.ai
+  - `reason_next_action()` → call `REASONER_SYSTEM_PROMPT`
+  - `verify_scene_constraint()` / `verify_external_constraint()` → call `SCENE_SEARCH_SYSTEM_PROMPT` / `EXTERNAL_CONTEXT_SYSTEM_PROMPT`
+  - Sanity-check with one cheap call before full run
+- [ ] `agent/tools/catalog_filter.py` — replace CSV mock with Supabase queries (Chunk 2 prerequisite)
+- [ ] `agent/tools/plot_search.py` — replace IDF mock with Pinecone cosine search (Chunk 3 prerequisite)
+- [ ] Test all 4 tools end-to-end against real data
+- [ ] Monitor budget: track LLMod.ai spend against $13 cap
 
 ## Chunk 5: Deploy & polish
 
