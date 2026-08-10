@@ -47,9 +47,18 @@ import pandas as pd
 # cleaned `production_companies` list). This is a studio-membership filter,
 # not a content-rating one -- it will still admit PG-13 titles a studio
 # distributes. Pass --all-studios to bypass it and keep the full catalog.
+# Disney has traded under several names, and TMDB credits each film to the one
+# in use at the time. "Walt Disney Pictures" only exists from 1983 on, so
+# listing it alone silently truncates the catalog to 1983+ and drops the entire
+# golden age -- Snow White, Pinocchio, Fantasia, Dumbo, Bambi, Cinderella,
+# Peter Pan, Lady and the Tramp, Sleeping Beauty, 101 Dalmatians, The Jungle
+# Book -- which is precisely the era a parent asking for a toddler-safe classic
+# cares about most.
 DEMO_STUDIOS = (
     "Walt Disney Pictures",
+    "Walt Disney Productions",        # pre-1986 company, holds the classics
     "Walt Disney Animation Studios",
+    "Walt Disney Feature Animation",  # the 1986-2007 name of the above
     "Pixar Animation Studios",
 )
 

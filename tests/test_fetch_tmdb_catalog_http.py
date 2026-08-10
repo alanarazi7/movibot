@@ -1,4 +1,4 @@
-"""Tests for the TMDB HTTP/discovery layer in fetch_tmdb_updates.py.
+"""Tests for the TMDB HTTP/discovery layer in fetch_tmdb_catalog.py.
 
 No real network calls. What is pinned down here is the failure behaviour:
 credentials must fail loudly rather than silently fetching nothing, rate
@@ -9,8 +9,8 @@ before it can pull somebody else's catalog into the movie table.
 import pytest
 import requests
 
-from data_preprocessing import fetch_tmdb_updates as mod
-from data_preprocessing.fetch_tmdb_updates import (
+from data_preprocessing import fetch_tmdb_catalog as mod
+from data_preprocessing.fetch_tmdb_catalog import (
     TmdbError,
     build_session,
     discover_movie_ids,
@@ -217,6 +217,17 @@ class TestDiscoverMovieIds:
         list(discover_movie_ids(session, "2017-07-01"))
 
         _, params = session.calls[0]
-        assert params["with_companies"] == "2|3|6125"
+        # Derived, not hardcoded: adding a studio must not break this test.
+        assert params["with_companies"] == "|".join(
+            str(i) for i in mod.STUDIO_COMPANY_IDS
+        )
         assert params["primary_release_date.gte"] == "2017-07-01"
         assert params["include_adult"] == "false"
+
+    def test_queries_every_configured_studio(self):
+        session = FakeSession(FakeResponse(200, {"results": [{"id": 1}], "total_pages": 1}))
+
+        list(discover_movie_ids(session, "1920-01-01"))
+
+        requested = set(session.calls[0][1]["with_companies"].split("|"))
+        assert requested == {str(i) for i in mod.STUDIO_COMPANY_IDS}

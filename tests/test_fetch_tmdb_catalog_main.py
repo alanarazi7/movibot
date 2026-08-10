@@ -1,4 +1,4 @@
-"""End-to-end test of fetch_tmdb_updates.main() with the network mocked out.
+"""End-to-end test of fetch_tmdb_catalog.main() with the network mocked out.
 
 Covers the part that actually touches the catalog: which movies survive the
 scope and usability filters, and that the CSV written is byte-compatible with
@@ -9,8 +9,8 @@ import csv
 
 import pytest
 
-from data_preprocessing import fetch_tmdb_updates as mod
-from data_preprocessing.fetch_tmdb_updates import OUTPUT_COLUMNS, TmdbError
+from data_preprocessing import fetch_tmdb_catalog as mod
+from data_preprocessing.fetch_tmdb_catalog import OUTPUT_COLUMNS, TmdbError
 
 
 def detail(movie_id, title, year=2021, companies=None, **overrides):
@@ -64,13 +64,13 @@ def fake_tmdb(monkeypatch):
 
 def run_main(monkeypatch, tmp_path, *extra):
     monkeypatch.setattr(
-        mod.sys, "argv", ["fetch_tmdb_updates", "--out-dir", str(tmp_path), *extra]
+        mod.sys, "argv", ["fetch_tmdb_catalog", "--out-dir", str(tmp_path), *extra]
     )
     return mod.main()
 
 
 def read_output(tmp_path):
-    with (tmp_path / "tmdb_new_movies.csv").open(encoding="utf-8") as handle:
+    with (tmp_path / "tmdb_catalog.csv").open(encoding="utf-8") as handle:
         return list(csv.DictReader(handle))
 
 
@@ -136,7 +136,7 @@ class TestMain:
         assert run_main(monkeypatch, tmp_path) == 0
 
         assert read_output(tmp_path) == []
-        assert (tmp_path / "tmdb_new_movies.csv").exists()
+        assert (tmp_path / "tmdb_catalog.csv").exists()
 
     def test_malformed_since_is_rejected(self, monkeypatch, tmp_path, fake_tmdb):
         assert run_main(monkeypatch, tmp_path, "--since", "July 2017") == 2
@@ -150,7 +150,7 @@ class TestMain:
         monkeypatch.setattr(mod, "build_session", boom)
 
         assert run_main(monkeypatch, tmp_path) == 1
-        assert not (tmp_path / "tmdb_new_movies.csv").exists()
+        assert not (tmp_path / "tmdb_catalog.csv").exists()
 
     def test_drops_shorts_below_the_feature_length_threshold(
         self, monkeypatch, tmp_path, fake_tmdb
@@ -190,4 +190,4 @@ class TestMain:
         nested = tmp_path / "deep" / "nested"
 
         assert run_main(monkeypatch, nested) == 0
-        assert (nested / "tmdb_new_movies.csv").exists()
+        assert (nested / "tmdb_catalog.csv").exists()

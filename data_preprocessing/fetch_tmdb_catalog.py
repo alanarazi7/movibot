@@ -1,30 +1,29 @@
-"""Fetches Disney/Pixar releases newer than the Kaggle catalog, from TMDB.
+"""Builds the whole Disney/Pixar movie catalog from the TMDB API.
 
 WHY THIS EXISTS
-    "The Movies Dataset" is a MovieLens dump covering releases up to July
-    2017, so the prepared catalog contains nothing after that. The project's
-    flagship demo query asks for a "not-too-old Disney movie", which the data
-    currently cannot answer: Encanto, Turning Red, Luca, Soul, Onward, Raya,
-    Strange World, Wish, Lightyear, Elemental, Inside Out 2, Moana 2 and
-    Zootopia 2 are all missing.
+    The catalog originally came from Kaggle's "The Movies Dataset", a
+    MovieLens dump ending in July 2017. It could not answer the project's own
+    flagship demo query for a "not-too-old Disney movie", and regenerating it
+    needed Kaggle credentials. TMDB turned out to serve the entire history --
+    1,626 Disney/Pixar entries from the 1930s to today -- so it replaces the
+    dump outright rather than merely topping it up. Kaggle is no longer a
+    dependency for the catalog.
 
 WHY TMDB AND NOT ANOTHER DUMP
-    The prepared catalog is already TMDB-shaped: `id` is a TMDB movie id and
-    every list column comes from TMDB's nested-dict fields. Pulling the gap
-    straight from TMDB keeps the same id space, the same column names and the
-    same `production_companies` values the DEMO_STUDIOS filter matches on, so
-    new rows append to `supabase_movies.csv` with no reconciliation step and
-    no title-based guessing. A static IMDb scrape would need all three.
+    The catalog schema is already TMDB-shaped: `id` is a TMDB movie id and
+    every list column comes from TMDB's nested-dict fields. One live source
+    means one id space, one spelling of every studio, and no cross-dataset
+    reconciliation or title-based guessing anywhere in the pipeline.
 
 USAGE
     Unlike prepare_movibot_data.py (run from inside data_preprocessing/),
     this module imports from the package, so run it from the repo root:
 
-        python -m data_preprocessing.fetch_tmdb_updates
-        python -m data_preprocessing.fetch_tmdb_updates --limit 10   # test run
+        python -m data_preprocessing.fetch_tmdb_catalog
+        python -m data_preprocessing.fetch_tmdb_catalog --limit 10   # test run
 
 OUTPUT
-    data_preprocessing/data_ready/tmdb_new_movies.csv -- same 25 columns in
+    data_preprocessing/data_ready/tmdb_catalog.csv -- same 25 columns in
     the same order as supabase_movies.csv, ready to concatenate. Gitignored
     and regenerable, like every other file under data_ready/.
 
@@ -55,8 +54,10 @@ TMDB_BASE_URL = "https://api.themoviedb.org/3"
 # of silently returning somebody else's catalog.
 STUDIO_COMPANY_IDS = {
     2: "Walt Disney Pictures",
-    3: "Pixar",
+    3166: "Walt Disney Productions",
     6125: "Walt Disney Animation Studios",
+    171656: "Walt Disney Feature Animation",
+    3: "Pixar",
 }
 
 # TMDB has since renamed company 3 to plain "Pixar", but the 2017 Kaggle dump
@@ -68,8 +69,10 @@ STUDIO_NAME_ALIASES = {
     "Pixar": "Pixar Animation Studios",
 }
 
-# The Kaggle catalog stops here; everything from this date on is the gap.
-DEFAULT_RELEASE_FLOOR = "2017-07-01"
+# The whole catalog by default. TMDB covers Disney's entire history, so there
+# is no reason to start at the Kaggle dump's July 2017 cutoff -- that dump is
+# no longer a source. Disney's first feature is 1937; 1920 is a safe floor.
+DEFAULT_RELEASE_FLOOR = "1920-01-01"
 
 # TMDB catalogues Pixar SparkShorts, "Forky Asks a Question" episodes, promo
 # clips and making-of featurettes as standalone movies. On the Disney/Pixar
@@ -375,7 +378,9 @@ def main() -> int:
 
             rows.append(row)
             if index % 25 == 0:
-                print(f"    {index}/{len(movie_ids)}...")
+                # flush: a full-catalog run takes many minutes, and buffered
+                # stdout makes it look hung when piped to a file.
+                print(f"    {index}/{len(movie_ids)}...", flush=True)
 
     except TmdbError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
@@ -384,7 +389,7 @@ def main() -> int:
     rows.sort(key=lambda r: r["id"])
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = args.out_dir / "tmdb_new_movies.csv"
+    out_path = args.out_dir / "tmdb_catalog.csv"
     with out_path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=OUTPUT_COLUMNS)
         writer.writeheader()

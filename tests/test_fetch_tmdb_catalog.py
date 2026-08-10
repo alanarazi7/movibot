@@ -1,4 +1,4 @@
-"""Tests for data_preprocessing/fetch_tmdb_updates.py.
+"""Tests for data_preprocessing/fetch_tmdb_catalog.py.
 
 Network calls are not exercised here; what matters for correctness is that
 rows built from live TMDB payloads are indistinguishable from rows the
@@ -9,7 +9,7 @@ would have been dropped there corrupts the catalog silently.
 
 import json
 
-from data_preprocessing.fetch_tmdb_updates import (
+from data_preprocessing.fetch_tmdb_catalog import (
     OUTPUT_COLUMNS,
     build_row,
     canonicalize_companies,
@@ -83,6 +83,31 @@ class TestCanonicalizeCompanies:
         assert canonicalize_companies(["Pixar", "Pixar Animation Studios"]) == [
             "Pixar Animation Studios"
         ]
+
+
+class TestStudioCoverage:
+    """The studio list must span every name Disney has traded under.
+
+    Walt Disney Pictures was only founded in 1983. Everything before it --
+    Snow White, Pinocchio, Fantasia, Dumbo, Bambi, Cinderella, Peter Pan,
+    Lady and the Tramp, Sleeping Beauty, 101 Dalmatians, The Jungle Book --
+    is credited to "Walt Disney Productions", and the 1986-2007 animated
+    features to "Walt Disney Feature Animation". Omitting either silently
+    truncates the catalog to 1983+, which is exactly the era a parent asking
+    for a toddler-safe classic cares about most.
+    """
+
+    def test_covers_the_pre_1983_company(self):
+        assert is_in_demo_scope(["Walt Disney Productions"]) is True
+
+    def test_covers_the_1986_to_2007_animation_label(self):
+        assert is_in_demo_scope(["Walt Disney Feature Animation"]) is True
+
+    def test_every_configured_company_id_is_in_scope_after_canonicalization(self):
+        from data_preprocessing.fetch_tmdb_catalog import STUDIO_COMPANY_IDS
+
+        for name in STUDIO_COMPANY_IDS.values():
+            assert is_in_demo_scope([name]) is True, f"{name} would be dropped"
 
 
 class TestIsInDemoScope:
