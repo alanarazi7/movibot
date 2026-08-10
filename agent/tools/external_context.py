@@ -1,19 +1,27 @@
-"""ExternalContext tool - subtext/tone/reception not covered by catalog or plot.
+"""ExternalContext tool - tone/reception/themes not covered by plot.
 
-TODO (next pass):
-  1. Fetch relevant Wikipedia page sections beyond "Plot" (e.g. Reception,
-     Themes) live, only for candidates that still need this check.
-  2. Use EXTERNAL_CONTEXT_SYSTEM_PROMPT (agent/prompts.py) to reason over
-     that text for the specific constraint being checked.
-  3. Return {title, constraint, satisfied, evidence} for the Reasoner/Synthesizer.
-
-Only called when Reasoner decides SceneSearch's plot text isn't enough to
-resolve a constraint. Not called anywhere yet - app.py's /api/execute is
-fully stubbed.
+Mock: live Wikipedia fetch for non-Plot sections + keyword heuristic.
+Real (Chunk 4): LLM reasoning over fetched text per EXTERNAL_CONTEXT_SYSTEM_PROMPT.
 """
 
 from typing import Any
 
+from agent import llm_client
+from agent.tools import wikipedia_client
+
 
 def run(title: str, constraint: str) -> dict[str, Any]:
-    raise NotImplementedError("ExternalContext is not wired up yet - skeleton pass only.")
+    """Verify a per-candidate constraint against tone/reception/themes."""
+    text = wikipedia_client.get_non_plot_text(title)
+
+    if not text:
+        return {
+            "title": title,
+            "constraint": constraint,
+            "satisfied": None,
+            "evidence": "No supplementary Wikipedia text (Reception, Themes, etc.) could be found for this title."
+        }
+
+    # Use mock LLM client to verify
+    client = llm_client.get_mock_client()
+    return client.verify_external_constraint(title, constraint, text)

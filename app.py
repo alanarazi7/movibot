@@ -3,6 +3,8 @@ import os
 
 from flask import Flask, jsonify, request, send_file
 
+from agent import react_loop
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEAM_INFO_PATH = os.path.join(BASE_DIR, "team_info.json")
 AGENT_INFO_PATH = os.path.join(BASE_DIR, "agent_info.json")
@@ -64,48 +66,22 @@ def execute():
             )
         ), 400
 
-    # SKELETON STUB: no LLMod.ai / Pinecone / Supabase calls yet. This
-    # returns a hardcoded response in the exact required shape so the API
-    # contract and GUI can be reviewed before the real ReAct loop
-    # (agent/react_loop.py) is wired in.
-    stub_response = (
-        "STUB RESPONSE - the real agent is not wired up yet in this skeleton pass. "
-        f"You asked: \"{user_prompt}\". Once the ReAct loop (agent/react_loop.py) is "
-        "connected, this will run CatalogFilter / PlotSearch / SceneSearch / "
-        "ExternalContext against real data and return a verified answer."
-    )
-    stub_steps = [
-        {
-            "module": "Reasoner",
-            "prompt": {
-                "system_prompt": "STUB - You are MoviBot's planner. Decide the next action.",
-                "user_prompt": f"STUB - User request: {user_prompt}",
-            },
-            "response": {
-                "action": "CatalogFilter",
-                "reason": "STUB - placeholder plan, no real reasoning performed.",
-            },
-        },
-        {
-            "module": "Synthesizer",
-            "prompt": {
-                "system_prompt": "STUB - Compose the final answer from gathered evidence.",
-                "user_prompt": "STUB - no real evidence gathered in this skeleton pass.",
-            },
-            "response": {"answer": stub_response},
-        },
-    ]
+    try:
+        result = react_loop.execute(user_prompt)
+    except Exception as exc:
+        # Defense-in-depth: react_loop already catches internally
+        return _cors(
+            jsonify(
+                {
+                    "status": "error",
+                    "error": f"Internal agent error: {exc}",
+                    "response": None,
+                    "steps": [],
+                }
+            )
+        ), 200
 
-    return _cors(
-        jsonify(
-            {
-                "status": "ok",
-                "error": None,
-                "response": stub_response,
-                "steps": stub_steps,
-            }
-        )
-    )
+    return _cors(jsonify(result)), 200
 
 
 if __name__ == "__main__":
