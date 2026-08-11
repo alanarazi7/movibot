@@ -15,8 +15,10 @@ from agent.tools import wikipedia_client
 
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _CSV_PATH = os.path.join(_BASE_DIR, "data_preprocessing", "data_ready", "pinecone_candidates.csv")
+_WIKI_CACHE_PATH = os.path.join(_BASE_DIR, "data_preprocessing", "data_ready", "wikipedia_cache.csv")
 
 _candidates_cache = None
+_wiki_cache = None
 
 
 def _load_candidates():
@@ -27,19 +29,38 @@ def _load_candidates():
     _candidates_cache = pd.read_csv(_CSV_PATH)
 
 
+def _load_wiki_cache():
+    """Load Wikipedia cache CSV (pre-scraped Wikipedia pages) once."""
+    global _wiki_cache
+    if _wiki_cache is not None:
+        return
+    if os.path.exists(_WIKI_CACHE_PATH):
+        _wiki_cache = pd.read_csv(_WIKI_CACHE_PATH)
+    else:
+        _wiki_cache = pd.DataFrame()  # Empty fallback
+
+
 def _get_plot_text(title: str) -> str | None:
-    """Get plot text: prefer local plot_synopsis, fall back to live Wikipedia."""
+    """Get plot text: prefer local plot_synopsis, then Wikipedia cache, finally live Wikipedia."""
     _load_candidates()
 
-    # Try to find in local candidates by exact title match (case-insensitive)
+    # 1. Try local MPST synopsis
     row = _candidates_cache[
         _candidates_cache["title"].str.lower() == title.lower()
     ]
-
     if not row.empty and pd.notna(row.iloc[0].get("plot_synopsis")):
         return row.iloc[0]["plot_synopsis"]
 
-    # Fall back to live Wikipedia
+    # 2. Try Wikipedia cache
+    _load_wiki_cache()
+    if not _wiki_cache.empty:
+        wiki_row = _wiki_cache[
+            _wiki_cache["title"].str.lower() == title.lower()
+        ]
+        if not wiki_row.empty and pd.notna(wiki_row.iloc[0].get("plot_text")):
+            return wiki_row.iloc[0]["plot_text"]
+
+    # 3. Fall back to live Wikipedia (if cache not available)
     return wikipedia_client.get_section(title, ["Plot", "Plot summary", "Synopsis"])
 
 

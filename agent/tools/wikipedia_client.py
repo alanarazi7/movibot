@@ -5,17 +5,21 @@ import requests
 
 WIKIPEDIA_API_URL = "https://en.wikipedia.org/w/api.php"
 TIMEOUT = 5.0
+HEADERS = {
+    "User-Agent": "MoviBot/1.0 (Educational; +https://github.com/alanarazi7/movibot)"
+}
 
 
-def fetch_page_extract(title: str) -> str | None:
+def fetch_page_extract(title: str, year: int | None = None) -> str | None:
     """Fetch plaintext extract from Wikipedia for a movie title.
 
     Args:
         title: movie title to look up.
+        year: optional release year for disambiguation.
 
     Returns:
         Plaintext extract, or None on any failure (network, timeout, missing page).
-        Retries with "{title} (film)" if the initial lookup returns short/missing result.
+        Retries with "{title} (year film)" and "{title} (film)" if needed.
     """
     def _fetch_attempt(t: str) -> str | None:
         try:
@@ -26,7 +30,7 @@ def fetch_page_extract(title: str) -> str | None:
                 "titles": t,
                 "format": "json"
             }
-            resp = requests.get(WIKIPEDIA_API_URL, params=params, timeout=TIMEOUT)
+            resp = requests.get(WIKIPEDIA_API_URL, params=params, timeout=TIMEOUT, headers=HEADERS)
             resp.raise_for_status()
             data = resp.json()
 
@@ -40,10 +44,19 @@ def fetch_page_extract(title: str) -> str | None:
         except Exception:
             return None
 
-    extract = _fetch_attempt(title)
-    if not extract or len(extract) < 200:
-        # Retry with "(film)" suffix
-        extract = _fetch_attempt(f"{title} (film)")
+    # Try variants in order: exact title, with year, with (film), with year + (film)
+    attempts = [title]
+    if year:
+        attempts.append(f"{title} ({year} film)")
+    attempts.append(f"{title} (film)")
+    if year:
+        attempts.append(f"{title} {year}")
+
+    extract = None
+    for attempt in attempts:
+        extract = _fetch_attempt(attempt)
+        if extract and len(extract) > 200:  # Found a substantial result
+            return extract
 
     return extract
 

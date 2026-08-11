@@ -85,6 +85,8 @@ This is pure pandas/CSV work — no network calls beyond the one-time Kaggle dow
 
 - [ ] Track LLMod.ai spend against the $13 cap starting from Chunk 3, the first real spend
 
-## Open design decision (not yet made)
+## Data improvements (Chunk 1+)
 
-`SceneSearch`/`ExternalContext` data sourcing: live Wikipedia fetch (current default per code comments) vs. pre-indexing ~5K pages upfront. Revisit once Chunk 4 is underway.
+✅ **Wikipedia pre-indexing** — Resolved in favor of offline pre-cache. `data_preprocessing/scrape_wikipedia.py` scrapes all 303 catalog movies once, cached in `data_ready/wikipedia_cache.csv`. `SceneSearch` and `ExternalContext` tools now use the cache instead of live Wikipedia fetches at agent runtime. See `DATA_SOURCES.md` §3 for details.
+
+🔄 **Movie Transcripts** — Coverage discovery complete. 10 of 303 catalog movies have transcripts in HuggingFace `mocboch/movie_scripts` (~3.3% coverage). See `data_ready/transcript_matches.csv` for per-movie match details. Usage (if any) TBD — may be useful for future `SceneSearch` enhancements but not integrated into pipeline yet.

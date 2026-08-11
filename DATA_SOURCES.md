@@ -73,48 +73,81 @@ MoviBot uses three main data sources:
 
 ---
 
-## 3. Wikipedia (Live API)
+## 3. Wikipedia (Pre-Cached Offline)
 
-**Source:** Wikipedia REST API  
-**URL:** `https://en.wikipedia.org/api/rest_v1/`  
+**Source:** Wikipedia REST API (scraped once, cached offline)  
 **License:** CC-BY-SA 3.0  
+**Cache location:** `data_preprocessing/data_ready/wikipedia_cache.csv`  
 **Used by:** `SceneSearch` & `ExternalContext` tools
 
 ### How It Works
 
-1. **SceneSearch Tool:** Fetches Wikipedia plot section for each movie candidate
-   - Looks for "Plot" section in movie's Wikipedia page
+1. **SceneSearch Tool:** Uses cached Wikipedia plot section for each movie candidate
+   - Looks for "Plot" section in movie's pre-cached Wikipedia page
    - Searches for keywords: "dies", "death", "killed", "scary", "horror"
    - Returns: true/false/null for "does this movie satisfy the constraint?"
-   - Example: "Find movies with no deaths" → checks plot text for death mentions
+   - Fallback: If cache miss, fetches live Wikipedia (same as before)
 
-2. **ExternalContext Tool:** Fetches Wikipedia reception/audience info
-   - Looks for "Reception", "Themes", "Audience", "Critical response" sections
+2. **ExternalContext Tool:** Uses cached Wikipedia reception/audience info
+   - Looks for "Reception", "Themes", "Audience", "Critical response" sections in cache
    - Searches for tone descriptors: "lighthearted", "dark", "intense", "family-friendly"
    - Returns: true/false/null for subjective constraints
+   - Fallback: If cache miss, fetches live Wikipedia
 
-### Current Implementation (Mock)
-- **Location:** `agent/tools/wikipedia_client.py`
-- **Mock behavior:** Returns deterministic results based on keywords in plot text
-- **Real implementation (Chunk 4):** Will fetch live Wikipedia pages via REST API
+### Pre-Caching Strategy
+- **Scraper:** `data_preprocessing/scrape_wikipedia.py` fetches all 303 catalog movies once
+- **Cache format:** CSV with columns `id`, `title`, `imdb_id`, `wiki_page_found`, `plot_text`, `non_plot_text`
+- **Coverage:** ~75% of 303 movies have Wikipedia pages; ~50% have explicit Plot sections
+- **Size:** Comparable to `pinecone_candidates.csv` (~3 MB)
+- **Benefit:** No live Wikipedia calls at agent runtime (faster, no rate limits, reproducible)
 
-### Example Query
+### Example Query (via cache)
 ```python
-from agent.tools.wikipedia_client import fetch_movie_plot
+from agent.tools import scene_search
 
-plot = fetch_movie_plot("Frozen")
-# Returns: Wikipedia plot section (or None if not found)
-
-# SceneSearch checks for deaths:
-if "dies" in plot.lower():
-    satisfied = False  # Has deaths
-else:
-    satisfied = True   # No deaths found
+result = scene_search.run("Frozen", "no deaths")
+# Returns: {
+#   "title": "Frozen",
+#   "constraint": "no deaths",
+#   "satisfied": true,
+#   "evidence": "... plot synopsis text from Wikipedia cache ..."
+# }
 ```
 
 ---
 
-## 4. LLMod.ai (Embeddings & LLM)
+## 4. Movie Transcripts (Coverage Discovery)
+
+**Source:** HuggingFace `mocboch/movie_scripts` dataset  
+**License:** Dataset-specific (verify before use)  
+**Size:** ~423 movie scripts in HF; 10 of 303 catalog movies matched (3.3% coverage)  
+**Match report:** `data_preprocessing/data_ready/transcript_matches.csv`  
+
+### Coverage & Matched Movies
+
+From the 303 Disney/Pixar catalog:
+- **10 movies with transcripts found:**
+  - Finding Nemo, Tron, Aladdin, Toy Story, Mulan, Up, Newsies, Frankenweenie, Saving Mr. Banks, Into the Woods
+- **93% of catalog has no matching transcript** in this source
+
+### Why Transcripts Are Not Yet Used
+
+The original design explicitly avoids full-script inclusion because:
+- Scripts require many chunks/vectors per movie (expensive for semantic indexing)
+- MPST synopses (170 movies, 56% coverage) already provide rich plot text for `PlotSearch`
+- Live Wikipedia Plot sections (fallback) handle `SceneSearch` verification cases
+
+### Future Enhancement Opportunity
+
+For the 10 matched titles, transcripts could supplement:
+- **SceneSearch:** Verify scene-level constraints (deaths, scary moments) with more precision than synopsis
+- **PlotSearch:** Richer dialogue/character analysis for subjective themes ("lighthearted", "family-friendly")
+
+Requires: (1) Transcript text loaded into `data_full/`, (2) Document chunking strategy, (3) Separate embedding index if pursuing semantic search over transcripts. **Not in scope for Chunk 1 (data preparation) — listed here for future reference.**
+
+---
+
+## 5. LLMod.ai (Embeddings & LLM)
 
 **Service:** LLMod.ai (OpenAI-compatible endpoint)  
 **Used for:**
@@ -133,7 +166,7 @@ else:
 
 ---
 
-## 5. Supabase (Structured Data)
+## 6. Supabase (Structured Data)
 
 **Service:** Supabase (PostgreSQL + REST API)  
 **Purpose:** Store 303 movies for CatalogFilter queries (year, studio, genre, runtime)  
@@ -161,7 +194,7 @@ CREATE TABLE movies (
 
 ---
 
-## 6. Pinecone (Vector Search)
+## 7. Pinecone (Vector Search)
 
 **Service:** Pinecone  
 **Purpose:** Semantic search on 170 plot synopses (1536-dim vectors from text-embedding-3-small)  
