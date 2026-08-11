@@ -1,6 +1,54 @@
 # Data Sources
 
-MoviBot uses three main data sources:
+## Original Proposal: Three Candidate Categories
+
+The team's proposal identified three broad data-source patterns. Here's what we investigated and adopted:
+
+| Category | Candidate Source | Investigated | Adopted | Finding |
+|----------|------------------|--------------|---------|---------|
+| **Movies Database** | Kaggle "The Movies Dataset" | ✅ | ✅ Yes | 303 Disney+Pixar movies, 25 columns. Primary source for structured queries. |
+| **Movies Database** | HuggingFace tmdb-5000 (13MB) | ❌ | ❌ No | Not investigated; Kaggle source already sufficient. |
+| **Movies Database** | Kaggle IMDB datasets (241–312MB) | ❌ | ❌ No | Not investigated; Kaggle source already sufficient. |
+| **Movie Transcripts** | HuggingFace mocboch/movie_scripts (90MB) | ✅ | ❌ No | Only 10/303 coverage (3.3%) — too sparse to be useful. |
+| **Movie Transcripts** | Kaggle fayaznoor10 (2.28GB) | ❌ | ❌ No | Not investigated (mocboch result was too low; larger corpus unlikely to help Disney+Pixar). |
+| **Movie Transcripts** | Kaggle gufukuro (2.22GB) | ❌ | ❌ No | Not investigated. |
+| **Movie Transcripts** | Kaggle ismaeldwikat (246MB) | ❌ | ❌ No | Not investigated. |
+| **Wikipedia/Wikidata** | Wikipedia REST API | ✅ | ✅ Yes | 287/303 pages (94.7%), 213/303 Plot sections (70.3%). Pre-cached offline. |
+| **Wikipedia/Wikidata** | Wikidata API | ❌ | ❌ No | Not investigated; Wikipedia alone sufficient. |
+
+## Detailed: What We Found
+
+### ✅ Adopted Sources
+
+1. **Kaggle "The Movies Dataset"** — primary structured catalog
+   - 303 Disney+Pixar movies after cleaning
+   - 25 columns (id, title, year, genres, companies, keywords, etc.)
+   - Used by: `CatalogFilter` tool (Supabase)
+
+2. **Kaggle MPST (Movie Plot Synopses)** — rich plot text
+   - 170 of 303 movies matched (56% coverage)
+   - Median 693-word synopses (vs. 48-word Kaggle overviews)
+   - Used by: `PlotSearch` tool (Pinecone embeddings)
+
+3. **Wikipedia** — verification & context (pre-cached)
+   - 287/303 pages found (94.7%)
+   - Plot sections: 213/303 (70.3%)
+   - Non-Plot text (Reception, Themes): 259/303 (85.5%)
+   - Used by: `SceneSearch` & `ExternalContext` tools (cached offline)
+
+### ❌ Rejected Sources
+
+1. **Movie Transcripts (HuggingFace mocboch/movie_scripts)**
+   - Coverage: 10/303 (3.3%) — **too sparse**
+   - Matched movies: Finding Nemo, Tron, Aladdin, Toy Story, Mulan, Up, Newsies, Frankenweenie, Saving Mr. Banks, Into the Woods
+   - Why rejected: Low coverage makes per-movie transcript enhancement unviable at current scope
+   - Future: Could revisit if scope expands beyond Disney+Pixar demo
+
+---
+
+## Current Data Sources in Use
+
+MoviBot currently uses three main data sources:
 
 ## 1. Kaggle: The Movies Dataset
 
@@ -271,6 +319,73 @@ python data_preprocessing/prepare_movibot_data.py                # Disney + Pixa
 # 3. Output appears in data_preprocessing/data_ready/
 ls -lh data_preprocessing/data_ready/
 ```
+
+---
+
+## Investigation & Decisions (2026-08-11/12)
+
+### Why We Adopted Wikipedia (§3)
+
+**Decision:** Pre-cache Wikipedia offline instead of live fetches.
+
+**Rationale:**
+- High coverage: 94.7% of catalog has Wikipedia pages; 70.3% have explicit Plot sections
+- Verification use case perfect for cached text (risky-event detection: deaths, scary content, tone)
+- No live API dependency at agent runtime → faster, no rate limits, reproducible
+- Pre-cache cost: one-time scrape (~2.5 min), then reusable offline
+
+**Implementation:** `data_preprocessing/scrape_wikipedia.py` produces `wikipedia_cache.csv`, used by `SceneSearch` and `ExternalContext` tools with fallback to live fetch if needed.
+
+---
+
+### Why We Rejected Movie Transcripts (§4)
+
+**Decision:** Transcripts not adopted for current pipeline.
+
+**Coverage Finding:**
+- Searched: HuggingFace `mocboch/movie_scripts` (423 scripts)
+- Result: 10 of 303 catalog movies (3.3%) — **too sparse**
+- Matched: Finding Nemo, Tron, Aladdin, Toy Story, Mulan, Up, Newsies, Frankenweenie, Saving Mr. Banks, Into the Woods
+
+**Rationale for Rejection:**
+1. **Low coverage:** 3.3% means 293 movies would need fallback (synopsis or Wikipedia)
+2. **Complexity:** Transcripts require chunking & separate embedding strategy (vs. one vector per movie via MPST)
+3. **Cost:** Multi-chunk embedding per movie would exceed Pinecone budget for minimal marginal benefit
+4. **Data quality:** MPST synopses (56% coverage) already provide rich plot text; transcripts add little signal for the demo scope
+
+**Future Consideration:**
+If scope expands beyond Disney+Pixar (e.g., full ~43K catalog), larger transcript corpora may become viable, especially for fine-grained constraint verification (scene-level deaths, character-specific content).
+
+**Note:** Transcript coverage data preserved in `transcript_matches.csv` for future reference.
+
+---
+
+### Why We Didn't Investigate Other Database Variants
+
+**Other candidate movie databases** (HuggingFace tmdb-5000, Kaggle IMDB datasets):
+- Kaggle "The Movies Dataset" already provides sufficient coverage & rich metadata for demo scope
+- Additional variants would redundantly add similar fields (year, genre, companies) without new signal
+- Column overlap with existing data makes integration unwarranted at current scale
+
+**Wikidata:**
+- Wikipedia free-text provides sufficient context for SceneSearch/ExternalContext tasks
+- Wikidata structured fields (ratings, awards, cast) not required for current agent tool set
+- Can be added later if filtering on those fields becomes a requirement
+
+---
+
+## Summary: Current Data Pipeline
+
+**Adopted sources (in order of query):**
+
+1. **Kaggle "The Movies Dataset"** → `supabase_movies.csv` (303 movies, Supabase, structured filters)
+2. **Kaggle MPST synopses** → `pinecone_candidates.csv` (170 movies, Pinecone, semantic search)
+3. **Wikipedia (pre-cached)** → `wikipedia_cache.csv` (287 movies, agent verification)
+
+**Rejected sources:**
+- Movie Transcripts: 3.3% coverage (too sparse)
+- Other movie databases: redundant with Kaggle source
+- Wikidata: not required for current tasks
 
 ---
 
