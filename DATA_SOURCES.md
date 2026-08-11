@@ -360,12 +360,31 @@ If scope expands beyond Disney+Pixar (e.g., full ~43K catalog), larger transcrip
 
 ---
 
-### Why We Didn't Investigate Other Database Variants
+### Why We Didn't Adopt Other Database Variants
 
-**Other candidate movie databases** (HuggingFace tmdb-5000, Kaggle IMDB datasets):
-- Kaggle "The Movies Dataset" already provides sufficient coverage & rich metadata for demo scope
-- Additional variants would redundantly add similar fields (year, genre, companies) without new signal
-- Column overlap with existing data makes integration unwarranted at current scale
+**HuggingFace tmdb-5000-movies (13 MB, 4,803 movies):**
+
+Investigated in detail. **Unique fields not in our data:**
+- **Cast** — structured list of actors & character names
+- **Crew** — structured list of directors, writers, producers, etc.
+- Better **budget/revenue coverage**: 78% & 70% (vs. our 54% & 51%)
+
+**Potential value:**
+- Actor/director filtering: "movies with [actor name]", "directed by [director]"
+- Collaborative filtering ("if you like actor X...")
+- Financial-based queries ("big-budget blockbusters")
+
+**Why not adopted:**
+- Our demo scope (Disney+Pixar, 303 movies, fixed set) has no actor/director queries
+- Queries focus on: kid-friendliness, no deaths, family-suitable tone — none require cast/crew data
+- Cast/crew would be **highly valuable for full catalog** (43K+ movies) but overkill for demo
+
+**Future consideration:** If expanding beyond Disney+Pixar demo, TMDB-5000 becomes attractive for cast/crew filtering.
+
+**Kaggle IMDB datasets** (ahmedosamamath 312MB, raedaddala 241MB):
+- Not investigated in detail (large downloads without clear upside)
+- Likely overlap significantly with existing Kaggle "The Movies Dataset"
+- Would need explicit review if project moves beyond demo scope
 
 **Wikidata:**
 - Wikipedia free-text provides sufficient context for SceneSearch/ExternalContext tasks
