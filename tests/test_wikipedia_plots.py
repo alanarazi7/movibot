@@ -63,6 +63,23 @@ class TestExtractPlot:
 
         assert extract_plot(text) == "Simba flees."
 
+    def test_reads_anthology_segment_headings(self):
+        # Disney's package films (Fantasia, Make Mine Music, Melody Time) have
+        # no single plot -- their articles use Program / Film segments /
+        # Vignettes instead, and were the only well-known titles missing.
+        for name in ("Program", "Film segments", "Vignettes"):
+            text = article((name, "Segment one. Segment two."), ("Cast", "Actors."))
+            assert extract_plot(text) == "Segment one. Segment two.", name
+
+    def test_plot_wins_over_a_segment_heading(self):
+        text = article(
+            ("Program", "Segments listing."),
+            ("Plot", "The actual story."),
+            ("Cast", "Actors."),
+        )
+
+        assert extract_plot(text) == "The actual story."
+
     def test_returns_none_when_there_is_no_plot_section(self):
         text = article(("Cast", "Actors."), ("Production", "Filmed in 1993."))
 

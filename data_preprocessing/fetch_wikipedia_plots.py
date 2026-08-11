@@ -66,8 +66,21 @@ SPARQL_BATCH = 150
 # section sits well below the intro. So: one article per request.
 EXTRACT_BATCH = 1
 
-# Headings used for the plot on film articles, in preference order.
-PLOT_SECTION_NAMES = ("plot", "plot summary", "synopsis", "story", "premise")
+# Headings used for the story on film articles, in preference order. The last
+# four cover Disney's package films -- Fantasia, Fantasia 2000, Saludos Amigos,
+# Melody Time, Make Mine Music -- which are anthologies of shorts and so have
+# no single "Plot" section, listing their segments instead.
+PLOT_SECTION_NAMES = (
+    "plot",
+    "plot summary",
+    "synopsis",
+    "story",
+    "premise",
+    "program",
+    "film segments",
+    "segments",
+    "vignettes",
+)
 
 OUTPUT_COLUMNS = [
     "movie_id", "imdb_id", "title", "release_year",
