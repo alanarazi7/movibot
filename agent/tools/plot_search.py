@@ -1,6 +1,7 @@
 """PlotSearch tool - semantic search over plot text.
 
-Mock: word-overlap + IDF-based scoring over embedding_text.
+Mock: word-overlap + IDF-based scoring over embedding_text (default).
+Local Sandbox: E5-small-v2 embeddings (set PLOT_SEARCH_BACKEND=embedding).
 Real (Chunk 3+4): cosine similarity search via Pinecone embeddings.
 """
 
@@ -18,6 +19,9 @@ _CSV_PATH = os.path.join(_BASE_DIR, "data_preprocessing", "data_ready", "pinecon
 
 _candidates_cache = None
 _idf_cache = None
+
+# Backend selection: default "idf" (mock), "embedding" (local sandbox with E5)
+_BACKEND = os.environ.get("PLOT_SEARCH_BACKEND", "idf").lower()
 
 
 def _tokenize(text: str) -> set[str]:
@@ -80,7 +84,7 @@ def run(
     top_k: int = 10,
     candidate_ids: list[int] | None = None
 ) -> list[dict[str, Any]]:
-    """Score candidates using word overlap + IDF + tag boost.
+    """Score candidates using word overlap + IDF + tag boost (or E5 embeddings if backend=embedding).
 
     Args:
         query: search query string.
@@ -90,6 +94,12 @@ def run(
     Returns:
         List of {"movie_id", "title", "release_year", "score", "matched_terms"}.
     """
+    if _BACKEND == "embedding":
+        # Delegate to local E5 embedding backend
+        from agent.tools import plot_search_embed
+        return plot_search_embed.run(query, top_k=top_k, candidate_ids=candidate_ids)
+
+    # Default: IDF-based mock backend
     _load_candidates()
 
     df = _candidates_cache.copy()

@@ -40,35 +40,36 @@
 
 ---
 
-### Local Sandbox: Full Agent Test (OPTIONAL but RECOMMENDED - ~$0.50)
-**Prerequisite:** Chunk 2 complete  
-**Status:** No budget wasted; catches issues before Chunks 3-4 ($13 spend)  
+### Local Sandbox: E5 Embedding Backend Test (OPTIONAL but RECOMMENDED - FREE)
+**Prerequisite:** Chunk 1 complete (data ready)  
+**Status:** No budget wasted; test semantic search quality before Chunks 3-4 ($13 spend)  
 **See:** [LOCAL_SANDBOX.md](LOCAL_SANDBOX.md)
 
 1. [ ] **Install local dependencies**
    ```bash
-   pip install sentence-transformers chromadb torch
+   pip install -r requirements-local.txt
    ```
 
-2. [ ] **Setup local embeddings (Chroma DB)**
-   - Embed 170 movies with `all-MiniLM-L6-v2` (fast, local, free)
-   - Store in `data_chroma/` (not gitignored, regenerable)
+2. [ ] **Build embedding cache**
+   - Embed 170 movies with E5-small-v2 (384-dim, local, free)
+   - Store in `data_preprocessing/data_ready/plot_embeddings.*` (gitignored, regenerable)
    - `python scripts/local_sandbox_setup.py`
 
-3. [ ] **Test agent end-to-end locally**
-   - Use Claude API for LLM calls (~$0.50 for 20 test queries)
-   - Use Supabase for CatalogFilter (already loaded in Chunk 2)
-   - Use Chroma for PlotSearch (just embedded)
-   - Verify: all 6 steps in trace, module names match architecture.png
+3. [ ] **Test PlotSearch with embedding backend**
+   - Enable: `export PLOT_SEARCH_BACKEND=embedding`
+   - Run queries via: `python app.py` then `/api/execute`
+   - Verify: embedding results are more semantic than IDF mock (different matches on thematic queries)
+   - Disable: `unset PLOT_SEARCH_BACKEND` to revert to mock (IDF) for regression testing
 
-4. [ ] **Iterate on prompts + system messages**
-   - Run Disney/toddler demo query locally
-   - If results look good → proceed to Chunk 3
-   - If hallucinations/poor results → tune prompts before spending $13
+4. [ ] **Verify full ReAct loop with embeddings**
+   - Run Disney/toddler demo query with embedding backend enabled
+   - Confirm all 6 steps in trace (Reasoner → CatalogFilter → PlotSearch → SceneSearch → ExternalContext → Synthesizer)
+   - Confirm PlotSearch step shows embedding-based results
+   - Confirm zero external API calls (MockLLMClient still used for reasoning)
 
-5. [ ] **Validate architecture before production spend**
-   - This is the last checkpoint before paid services
-   - Confirm responses are sensible, not made-up
+5. [ ] **Decision point: proceed to Chunks 2-4?**
+   - If semantic search quality looks good → proceed with Chunks 2-4 (Supabase, Pinecone, LLMod.ai)
+   - If results need tuning → iterate on prompts/queries locally before spending budget
 
 ---
 
