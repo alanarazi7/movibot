@@ -1,82 +1,41 @@
-"""PlotSearch tool - semantic search over plot text.
-
-Mock: word-overlap + IDF-based scoring over embedding_text (default).
-Local Sandbox: E5-small-v2 embeddings (set PLOT_SEARCH_BACKEND=embedding).
-Real (Chunk 3+4): cosine similarity search via Pinecone embeddings.
-"""
+"""PlotSearch tool - semantic search over plot text via Pinecone."""
 
 import os
-import re
 import json
 from typing import Any
-from collections import Counter
-import math
 
 import pandas as pd
+from pinecone import Pinecone
 
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _CSV_PATH = os.path.join(_BASE_DIR, "data_preprocessing", "data_ready", "pinecone_candidates.csv")
 
 _candidates_cache = None
-_idf_cache = None
-
-# Backend selection: default "idf" (mock), "embedding" (local sandbox with E5)
-_BACKEND = os.environ.get("PLOT_SEARCH_BACKEND", "idf").lower()
+_pinecone_index = None
 
 
-def _tokenize(text: str) -> set[str]:
-    """Tokenize text: lowercase, alphanumeric + apostrophe, drop stopwords and short tokens."""
-    stopwords = frozenset([
-        "a", "an", "and", "are", "as", "at", "be", "by", "for", "from",
-        "has", "have", "he", "her", "hers", "him", "his", "how", "i",
-        "if", "in", "into", "is", "it", "its", "me", "my", "myself",
-        "no", "nor", "not", "of", "on", "or", "other", "our", "ours",
-        "out", "over", "own", "same", "she", "should", "so", "some",
-        "such", "than", "that", "the", "their", "theirs", "them",
-        "then", "there", "these", "they", "this", "those", "to",
-        "too", "under", "until", "up", "very", "was", "we", "were",
-        "what", "when", "where", "which", "while", "who", "whom",
-        "why", "will", "with", "you", "your", "yours", "yourself"
-    ])
-    tokens = re.findall(r"[a-z0-9']+", text.lower())
-    return set(t for t in tokens if t not in stopwords and len(t) > 2)
+def _get_pinecone_index():
+    """Get or initialize Pinecone index."""
+    global _pinecone_index
+    if _pinecone_index is None:
+        api_key = os.environ.get("PINECONE_API_KEY")
+        index_name = os.environ.get("PINECONE_INDEX_NAME", "movibot-plots")
+
+        if not api_key:
+            raise ValueError("PINECONE_API_KEY environment variable not set")
+
+        pc = Pinecone(api_key=api_key)
+        _pinecone_index = pc.Index(index_name)
+
+    return _pinecone_index
 
 
 def _load_candidates():
-    """Load candidates CSV and build IDF index once."""
-    global _candidates_cache, _idf_cache
+    """Load candidates CSV for metadata (title, year)."""
+    global _candidates_cache
     if _candidates_cache is not None:
         return
-
     _candidates_cache = pd.read_csv(_CSV_PATH)
-
-    # Parse JSON columns
-    _candidates_cache["keywords_list"] = _candidates_cache["keywords"].apply(
-        lambda x: json.loads(x) if isinstance(x, str) else []
-    )
-    _candidates_cache["mpst_tags_list"] = _candidates_cache["mpst_tags"].apply(
-        lambda x: json.loads(x) if isinstance(x, str) else []
-    )
-
-    # Tokenize embedding_text and compute document frequency
-    doc_freq = Counter()
-    doc_tokens_by_id = {}
-
-    for _, row in _candidates_cache.iterrows():
-        tokens = _tokenize(row["embedding_text"])
-        doc_tokens_by_id[int(row["movie_id"])] = tokens
-        doc_freq.update(tokens)
-
-    # Compute IDF: log(N / df)
-    N = len(_candidates_cache)
-    idf = {}
-    for token, freq in doc_freq.items():
-        idf[token] = math.log(N / (freq + 1))  # +1 to avoid division by zero
-
-    _idf_cache = idf
-    _candidates_cache["_doc_tokens"] = _candidates_cache["movie_id"].apply(
-        lambda mid: doc_tokens_by_id.get(int(mid), set())
-    )
 
 
 def run(
@@ -84,54 +43,68 @@ def run(
     top_k: int = 10,
     candidate_ids: list[int] | None = None
 ) -> list[dict[str, Any]]:
-    """Score candidates using word overlap + IDF + tag boost (or E5 embeddings if backend=embedding).
+    """Search plot embeddings via Pinecone cosine similarity.
 
     Args:
         query: search query string.
         top_k: return top K results (default 10).
-        candidate_ids: if provided, restrict scoring to these movie IDs.
+        candidate_ids: if provided, restrict scoring to these movie IDs (via Pinecone filter).
 
     Returns:
         List of {"movie_id", "title", "release_year", "score", "matched_terms"}.
     """
-    if _BACKEND == "embedding":
-        # Delegate to local E5 embedding backend
-        from agent.tools import plot_search_embed
-        return plot_search_embed.run(query, top_k=top_k, candidate_ids=candidate_ids)
-
-    # Default: IDF-based mock backend
-    _load_candidates()
-
-    df = _candidates_cache.copy()
-    if candidate_ids:
-        df = df[df["movie_id"].isin(candidate_ids)]
-
-    query_tokens = _tokenize(query)
-    if not query_tokens:
+    if not query.strip():
         return []
 
-    results = []
-    for _, row in df.iterrows():
-        doc_tokens = row["_doc_tokens"]
-        tag_tokens = set(row["keywords_list"]) | set(row["mpst_tags_list"])
+    _load_candidates()
+    index = _get_pinecone_index()
 
-        # Score: IDF-weighted token overlap
-        overlap = doc_tokens & query_tokens
-        score = sum(_idf_cache.get(token, 0) for token in overlap)
+    # Embed query using LLMod.ai text-embedding-3-small
+    from openai import OpenAI
 
-        # Bonus for tag matches
-        tag_overlap = tag_tokens & query_tokens
-        score += len(tag_overlap) * 0.5  # Fixed boost per tag match
+    client = OpenAI(
+        api_key=os.environ.get("OPENAI_API_KEY"),
+        base_url=os.environ.get("OPENAI_BASE_URL"),
+    )
 
-        if score > 0:
-            results.append({
-                "movie_id": int(row["movie_id"]),
-                "title": row["title"],
-                "release_year": int(row["release_year"]) if pd.notna(row["release_year"]) else None,
-                "score": round(score, 3),
-                "matched_terms": sorted(list(overlap | tag_overlap))[:5]  # Top 5 matched terms
-            })
+    query_embedding = client.embeddings.create(
+        model="MB5R2CF-azure/text-embedding-3-small",
+        input=query
+    ).data[0].embedding
 
-    # Sort by score descending
-    results.sort(key=lambda x: x["score"], reverse=True)
-    return results[:top_k]
+    # Search Pinecone
+    if candidate_ids:
+        # Filter to candidate_ids only
+        filter_dict = {"movie_id": {"$in": candidate_ids}}
+        results = index.query(
+            vector=query_embedding,
+            top_k=top_k,
+            include_metadata=True,
+            filter=filter_dict
+        )
+    else:
+        results = index.query(
+            vector=query_embedding,
+            top_k=top_k,
+            include_metadata=True
+        )
+
+    # Transform Pinecone results to match contract
+    matches = []
+    for match in results.get("matches", []):
+        movie_id = match["metadata"]["movie_id"]
+        movie_row = _candidates_cache[_candidates_cache["movie_id"] == movie_id]
+
+        if movie_row.empty:
+            continue
+
+        row = movie_row.iloc[0]
+        matches.append({
+            "movie_id": int(movie_id),
+            "title": row["title"],
+            "release_year": int(row["release_year"]) if pd.notna(row["release_year"]) else None,
+            "score": float(match["score"]),
+            "matched_terms": []  # Pinecone doesn't provide discrete terms
+        })
+
+    return matches

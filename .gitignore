@@ -8,7 +8,5 @@ venv/
 .DS_Store
 *.log
 data_preprocessing/data_full/
-data_preprocessing/data_ready/plot_embeddings.npy
-data_preprocessing/data_ready/plot_embeddings_mapping.json
 .vercel
 .env*
