@@ -1,0 +1,25 @@
+# What NOT to upload when deploying with the Vercel CLI.
+#
+# The CLI uploads this directory, so without this file the deploy would carry
+# 113 MB of raw Kaggle input and the local .env files. Note that
+# data_preprocessing/data_ready/ is deliberately NOT ignored: agent/catalog.py
+# and agent/embeddings.py read those CSVs at runtime.
+
+# Credentials. .env.example is a placeholder file and not needed at runtime.
+.env
+.env.*
+
+# Raw Kaggle downloads: 113 MB, inputs to the preparation script only. Nothing
+# at runtime touches them, and data_ready/ is generated from them offline.
+data_preprocessing/data_full/
+
+# Course PDFs and the pitch deck: 15 MB, not served by any route.
+docs/
+
+# Local-only
+.git
+.venv
+venv
+__pycache__
+*.pyc
+*.log
