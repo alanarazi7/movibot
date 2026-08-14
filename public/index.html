@@ -425,6 +425,7 @@
       <button class="tab-button" onclick="switchTab('agentinfo')">🤖 Agent Info</button>
       <button class="tab-button" onclick="switchTab('arch')">🏗️ Architecture</button>
       <button class="tab-button" onclick="switchTab('decisions')">📋 Project Decisions</button>
+      <button class="tab-button" onclick="switchTab('datanav')">🗃️ Data</button>
     </div>
 
     <!-- TAB 1: Agent Query -->
@@ -525,7 +526,7 @@
     <div id="decisions" class="tab-content">
 
       <details class="panel" open>
-        <summary><span class="emoji">📀</span> Data</summary>
+        <summary><span class="emoji">📀</span> Data pipeline</summary>
         <div class="panel-body">
 
           <p>
@@ -621,57 +622,6 @@ C = 6.199 catalog mean    m = 300 vote prior</pre>
             broad queries, and still win narrow ones where they are the right answer.
           </p>
 
-        </div>
-      </details>
-
-      <details class="panel" id="navigator-panel">
-        <summary><span class="emoji">🗃️</span> Data Navigator</summary>
-        <div class="panel-body">
-          <p>
-            Every film in the catalog, with everything the pipeline stores for it.
-            Search, filter, and sort the table, then open any row for its full record &mdash;
-            metadata, keywords, plot synopsis, the passages it was split into, and its
-            Wikipedia text.
-          </p>
-
-          <div class="nav-stats" id="nav-stats"></div>
-
-          <div class="nav-controls">
-            <input type="search" id="nav-q" placeholder="Search title, keyword, or tagline…" aria-label="Search films" />
-            <select id="nav-genre" aria-label="Filter by genre"><option value="">All genres</option></select>
-            <select id="nav-studio" aria-label="Filter by studio"><option value="">All studios</option></select>
-            <select id="nav-sort" aria-label="Sort by">
-              <option value="weighted_rating">Best rated</option>
-              <option value="popularity">Most popular</option>
-              <option value="vote_count">Most voted</option>
-              <option value="year">Newest</option>
-              <option value="year_asc">Oldest</option>
-              <option value="runtime">Longest</option>
-              <option value="title">Title A&ndash;Z</option>
-            </select>
-            <label class="check"><input type="checkbox" id="nav-syn" /> has synopsis</label>
-            <label class="check"><input type="checkbox" id="nav-wiki" /> has wiki plot</label>
-          </div>
-
-          <div class="nav-count" id="nav-count">Loading&hellip;</div>
-
-          <div class="nav-table">
-            <table>
-              <thead>
-                <tr>
-                  <th>Title</th>
-                  <th class="n">Year</th>
-                  <th class="n">Runtime</th>
-                  <th class="n">Rating</th>
-                  <th class="n">Votes</th>
-                  <th>Genres</th>
-                  <th class="n">Passages</th>
-                  <th class="n">Wiki</th>
-                </tr>
-              </thead>
-              <tbody id="nav-rows"></tbody>
-            </table>
-          </div>
         </div>
       </details>
 
@@ -830,6 +780,60 @@ Development began in 2008, when Lasseter convinced Chris Buck (who co-directed t
         </div>
       </details>
     </div>
+
+    <!-- TAB 6: Data -->
+    <div id="datanav" class="tab-content">
+      <div class="card">
+        <h2>Data</h2>
+        <p>
+          Every film in the catalog, with everything the pipeline stores for it.
+          Search, filter, and sort the table, then open any row for its full record &mdash;
+          metadata, keywords, plot synopsis, the passages it was split into, and its
+          Wikipedia text.
+        </p>
+
+        <div class="nav-stats" id="nav-stats"></div>
+      </div>
+
+      <div class="card">
+        <div class="nav-controls">
+          <input type="search" id="nav-q" placeholder="Search title, keyword, or tagline…" aria-label="Search films" />
+          <select id="nav-genre" aria-label="Filter by genre"><option value="">All genres</option></select>
+          <select id="nav-studio" aria-label="Filter by studio"><option value="">All studios</option></select>
+          <select id="nav-sort" aria-label="Sort by">
+            <option value="weighted_rating">Best rated</option>
+            <option value="popularity">Most popular</option>
+            <option value="vote_count">Most voted</option>
+            <option value="year">Newest</option>
+            <option value="year_asc">Oldest</option>
+            <option value="runtime">Longest</option>
+            <option value="title">Title A&ndash;Z</option>
+          </select>
+          <label class="check"><input type="checkbox" id="nav-syn" /> has synopsis</label>
+          <label class="check"><input type="checkbox" id="nav-wiki" /> has wiki plot</label>
+        </div>
+
+        <div class="nav-count" id="nav-count">Loading&hellip;</div>
+
+        <div class="nav-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th class="n">Year</th>
+                <th class="n">Runtime</th>
+                <th class="n">Rating</th>
+                <th class="n">Votes</th>
+                <th>Genres</th>
+                <th class="n">Passages</th>
+                <th class="n">Wiki</th>
+              </tr>
+            </thead>
+            <tbody id="nav-rows"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -838,6 +842,9 @@ Development began in 2008, when Lasseter convinced Chris Buck (who co-directed t
       document.querySelectorAll('.tab-button').forEach(el => el.classList.remove('active'));
       document.getElementById(tabName).classList.add('active');
       event.target.classList.add('active');
+      // The catalog is 261 KB, so it loads the first time the tab is opened
+      // rather than on every page load. navLoad() is idempotent.
+      if (tabName === 'datanav') navLoad();
     }
 
     function copyCurl(cmd) {
@@ -1067,9 +1074,7 @@ Development began in 2008, when Lasseter convinced Chris Buck (who co-directed t
     }
 
     document.addEventListener('DOMContentLoaded', function () {
-      const panel = document.getElementById('navigator-panel');
-      if (!panel) return;
-      panel.addEventListener('toggle', function () { if (panel.open) navLoad(); });
+      if (!document.getElementById('nav-rows')) return;
 
       ['nav-q', 'nav-genre', 'nav-studio', 'nav-sort', 'nav-syn', 'nav-wiki'].forEach(id => {
         const el = document.getElementById(id);
