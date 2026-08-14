@@ -9,8 +9,9 @@ explicit go-ahead first — nothing has been spent to date.
 
 ## Blocked on other people
 
-- [ ] Yair Zack's email → `team_info.json`
-- [ ] Andrei Nekliudov's email → `team_info.json`
+- [ ] Yair Zack's email → `team_info.json` — the GUI shows a warning banner
+      until this lands; it is driven from `/api/team_info`, so it clears itself
+- [x] Andrei Nekliudov's email → `team_info.json`
 
 ## Blocked on credentials
 

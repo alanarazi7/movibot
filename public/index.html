@@ -161,6 +161,19 @@
       margin-top: 0.5rem;
     }
 
+    .warning-banner {
+      display: none;
+      background: #fff8e6;
+      border: 1px solid #f0dca8;
+      border-left: 4px solid #e0a800;
+      border-radius: 8px;
+      padding: 0.85rem 1.1rem;
+      margin-bottom: 1.2rem;
+      font-size: 0.88rem;
+      color: #6b5312;
+    }
+    .warning-banner b { font-weight: 700; }
+
     /* Project Decisions: collapsible topic panels. */
     .panel {
       background: #fff;
@@ -418,6 +431,8 @@
   <div class="container">
     <h1>MoviBot API</h1>
     <p class="subtitle">Test all endpoints: run queries, view team info, agent details, and architecture.</p>
+
+    <div class="warning-banner" id="team-warning"></div>
 
     <div class="tabs">
       <button class="tab-button active" onclick="switchTab('agent')">🎬 Agent Query</button>
@@ -802,6 +817,32 @@ C = 6.199 catalog mean    m = 300 vote prior</pre>
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;');
     }
+
+    // Surfaces missing team emails on load. Driven from /api/team_info rather
+    // than hardcoding a name, so the banner names whoever is actually missing
+    // and disappears by itself once the placeholder is replaced.
+    async function checkTeamInfo() {
+      try {
+        const res = await fetch('/api/team_info');
+        if (!res.ok) return;
+        const data = await res.json();
+        const missing = (data.students || [])
+          .filter(s => !s.email || /TODO|example\.com/i.test(s.email))
+          .map(s => s.name);
+        if (!missing.length) return;
+        const who = missing.join(' and ');
+        const el = document.getElementById('team-warning');
+        el.innerHTML = '\u26A0\uFE0F <b>Missing team email' + (missing.length > 1 ? 's' : '') +
+          ':</b> ' + escapeHtml(who) + '. Add ' + (missing.length > 1 ? 'them' : 'it') +
+          ' to <code>team_info.json</code> before submission \u2014 <code>/api/team_info</code>' +
+          ' is a graded endpoint and currently returns a placeholder.';
+        el.style.display = 'block';
+      } catch (err) {
+        /* the banner is advisory; never let it break the page */
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', checkTeamInfo);
 
     function fillExample(btn) {
       document.getElementById('prompt').value = btn.textContent.trim();
