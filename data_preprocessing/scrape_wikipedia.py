@@ -1,117 +1,117 @@
 #!/usr/bin/env python3
-"""Scrape Wikipedia content once for all 303 catalog movies.
+"""Scrape Wikipedia once for every catalog film, into an offline cache.
 
-Pre-cache Wikipedia pages offline to remove live API calls from agent runtime.
-Saves Plot text and non-Plot text (Reception, Themes, etc.) for each movie.
+The agent reads this cache and never fetches Wikipedia live -- which is why
+wikipedia_client lives here in data_preprocessing rather than under agent/.
+
+Each film is fetched exactly once and both halves are derived from that single
+article: the Plot section for scene questions, everything else (production,
+reception, themes) for tone questions. An earlier version fetched twice, the
+second time without the release year, so the two halves could come from two
+different articles.
+
+Row count follows supabase_movies.csv -- feature films only, 238 at current
+scope.
+
+    python data_preprocessing/scrape_wikipedia.py
+    python data_preprocessing/scrape_wikipedia.py --limit 10   # smoke test
 """
 
+from __future__ import annotations
+
+import argparse
 import sys
 import time
 from pathlib import Path
+
 import pandas as pd
 
-# Import the existing wikipedia_client from agent tools
-sys.path.insert(0, str(Path(__file__).parent.parent))
-from agent.tools import wikipedia_client
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-_BASE_DIR = Path(__file__).parent.parent
-_DATA_READY = _BASE_DIR / "data_preprocessing" / "data_ready"
+import wikipedia_client  # noqa: E402
+
+_DATA_READY = Path(__file__).resolve().parent / "data_ready"
 _CATALOG_CSV = _DATA_READY / "supabase_movies.csv"
 _OUTPUT_CSV = _DATA_READY / "wikipedia_cache.csv"
 
 DELAY_BETWEEN_REQUESTS = 0.5  # seconds, to be polite to Wikipedia
 
 
-def scrape_wikipedia_for_catalog() -> pd.DataFrame:
-    """Scrape Wikipedia for each catalog movie."""
+def scrape_catalog(limit: int | None = None) -> pd.DataFrame:
     catalog = pd.read_csv(_CATALOG_CSV)
+    if limit:
+        catalog = catalog.head(limit)
+
+    total = len(catalog)
+    print(f"\nScraping Wikipedia for {total} catalog films...")
+    print("-" * 68)
 
     results = []
-    total = len(catalog)
+    for position, (_, row) in enumerate(catalog.iterrows(), start=1):
+        title = row["title"]
+        year = int(row["release_year"]) if pd.notna(row["release_year"]) else None
 
-    print(f"\nScraping Wikipedia for {total} catalog movies...")
-    print("(showing progress every 50 movies)")
-    print("-" * 60)
+        found = wikipedia_client.fetch_page_extract(title, year=year)
 
-    for idx, row in catalog.iterrows():
-        title = row['title']
-        year = int(row['release_year']) if pd.notna(row['release_year']) else None
-
-        # Fetch page extract (with year for better disambiguation)
-        extract = wikipedia_client.fetch_page_extract(title, year=year)
-
-        if extract:
-            # Extract Plot section
+        if found:
+            resolved, extract = found
             sections = wikipedia_client.split_into_sections(extract)
-            plot_text = None
-            non_plot_text = None
-
-            for section_name, section_body in sections.items():
-                if "plot" in section_name.lower() or "synopsis" in section_name.lower():
-                    plot_text = section_body
-                    break
-
-            # Non-plot text
-            non_plot_text = wikipedia_client.get_non_plot_text(title)
-
-            page_found = True
+            plot_text = wikipedia_client.get_plot(sections)
+            non_plot_text = wikipedia_client.get_non_plot(sections)
         else:
-            plot_text = None
-            non_plot_text = None
-            page_found = False
+            resolved, plot_text, non_plot_text = None, None, None
 
         results.append({
-            'id': row['id'],
-            'title': title,
-            'imdb_id': row['imdb_id'],
-            'wiki_page_found': page_found,
-            'plot_text': plot_text,
-            'non_plot_text': non_plot_text
+            "id": row["id"],
+            "title": title,
+            "imdb_id": row["imdb_id"],
+            "wiki_page_found": found is not None,
+            "wiki_title": resolved,
+            "plot_text": plot_text,
+            "non_plot_text": non_plot_text,
         })
 
-        # Progress report every 50
-        if (idx + 1) % 50 == 0:
-            print(f"  [{idx + 1}/{total}] processed {title}")
+        if position % 25 == 0 or position == total:
+            print(f"  [{position}/{total}] {title}")
 
-        # Be polite to Wikipedia
         time.sleep(DELAY_BETWEEN_REQUESTS)
 
-    print(f"  [{total}/{total}] Done")
-    print("-" * 60)
-
+    print("-" * 68)
     return pd.DataFrame(results)
 
 
-def main():
-    print("=" * 60)
-    print("MoviBot: Wikipedia Cache Builder")
-    print("=" * 60)
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--limit", type=int, help="Only scrape the first N films.")
+    args = parser.parse_args()
 
-    # Scrape
-    cache_df = scrape_wikipedia_for_catalog()
+    cache = scrape_catalog(args.limit)
 
-    # Statistics
-    page_found = cache_df['wiki_page_found'].sum()
-    plot_found = cache_df['plot_text'].notna().sum()
-    non_plot_found = cache_df['non_plot_text'].notna().sum()
-    total = len(cache_df)
+    total = len(cache)
+    found = int(cache["wiki_page_found"].sum())
+    plots = int(cache["plot_text"].notna().sum())
+    non_plots = int(cache["non_plot_text"].notna().sum())
 
-    print(f"\nResults:")
-    print(f"  {page_found}/{total} pages found ({100.0 * page_found / total:.1f}%)")
-    print(f"  {plot_found}/{total} with Plot section ({100.0 * plot_found / total:.1f}%)")
-    print(f"  {non_plot_found}/{total} with non-Plot text ({100.0 * non_plot_found / total:.1f}%)")
+    print("\nResults:")
+    print(f"  {found}/{total} articles resolved ({100.0 * found / total:.1f}%)")
+    print(f"  {plots}/{total} with a Plot section ({100.0 * plots / total:.1f}%)")
+    print(f"  {non_plots}/{total} with non-Plot text ({100.0 * non_plots / total:.1f}%)")
 
-    # Write
+    missing = cache.loc[~cache["wiki_page_found"], "title"].tolist()
+    if missing:
+        print(f"\n  No article found for {len(missing)}: {', '.join(missing)}")
+
+    no_plot = cache.loc[cache["wiki_page_found"] & cache["plot_text"].isna(), "title"]
+    if len(no_plot):
+        print(f"\n  Article but no Plot section for {len(no_plot)}: {', '.join(no_plot)}")
+
+    if args.limit:
+        print("\n--limit was set; not overwriting the cache.")
+        return
+
     _DATA_READY.mkdir(parents=True, exist_ok=True)
-    cache_df.to_csv(_OUTPUT_CSV, index=False)
+    cache.to_csv(_OUTPUT_CSV, index=False)
     print(f"\nWrote {_OUTPUT_CSV}")
-
-    # Show first few
-    print("\nFirst 5 entries:")
-    for _, row in cache_df.head(5).iterrows():
-        plot_len = len(row['plot_text']) if pd.notna(row['plot_text']) else 0
-        non_plot_len = len(row['non_plot_text']) if pd.notna(row['non_plot_text']) else 0
-        print(f"  {row['title']:30s} | page:{row['wiki_page_found']!s:5s} | plot:{plot_len:4d} chars | non-plot:{non_plot_len:4d} chars")
 
 
 if __name__ == "__main__":

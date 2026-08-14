@@ -15,13 +15,31 @@ data_preprocessing/
     └── mpst_full_data.csv
 ```
 
-Sources:
+Sources, both CC0:
 
-- `movies_metadata.csv` — Kaggle *The Movies Dataset*
-- `keywords.csv` — Kaggle *The Movies Dataset*
-- `mpst_full_data.csv` — MPST movie plot synopsis dataset
+| File | Kaggle dataset |
+|---|---|
+| `movies_metadata.csv`, `keywords.csv` | `rounakbanik/the-movies-dataset` |
+| `mpst_full_data.csv` | `cryptexcode/mpst-movie-plot-synopses-with-tags` |
 
 No ratings, credits, links, or review columns are needed.
+
+### Downloading them
+
+Install and authenticate the Kaggle CLI once — create an API token at
+<https://www.kaggle.com/settings/account>, save it to `~/.kaggle/kaggle.json`,
+and `chmod 600` it. Then:
+
+```bash
+pip install kaggle
+cd data_preprocessing/data_full
+kaggle datasets download -d rounakbanik/the-movies-dataset
+kaggle datasets download -d cryptexcode/mpst-movie-plot-synopses-with-tags
+unzip -q "*.zip"
+```
+
+`data_full/` is gitignored and treated as immutable raw input; everything in
+`data_ready/` is regenerable from it.
 
 ## 2. Python environment
 
@@ -82,7 +100,7 @@ data_ready/
 ### `supabase_movies.csv`
 
 Contains **all usable Kaggle movies within the demo studio scope**
-(303 Disney + Pixar movies by default — including ones with no MPST
+(238 Disney + Pixar feature films by default — including ones with no MPST
 synopsis; pass `--all-studios` for the full 43,270-movie catalog instead).
 The studio filter runs first, straight off the raw data, before any
 cleaning — see step 1 in the script's own docstring.
@@ -108,7 +126,7 @@ and `keywords` are JSON arrays stored as CSV strings.
 ### `pinecone_candidates.csv`
 
 Contains every movie **within the demo studio scope** that also has an
-exact IMDb-ID match to MPST (170 of the 303 Disney + Pixar movies —
+exact IMDb-ID match to MPST (159 of the 238 Disney + Pixar features —
 56% coverage). At this size the whole file is meant to be embedded in
 full, so there's no ranking/cutoff column; rows are simply sorted by
 descending Kaggle popularity for readability.
@@ -139,7 +157,7 @@ Kaggle keywords
 
 ## 5. Building the Pinecone index
 
-At demo scope (170 rows), embed the whole file — no subsampling needed:
+At demo scope (159 rows), embed the whole file — no subsampling needed:
 
 ```python
 import pandas as pd
@@ -185,9 +203,9 @@ With the dataset snapshots used during development, a default (demo-scope) run p
 ```text
 Raw Kaggle movies:                       45,466
   ...after the Disney + Pixar filter:       304  (filter runs first)
-  ...after cleaning/dedup:                  303
+  ...after cleaning/dedup:                  238
 Raw MPST movies:                        14,828
-Exact matches within scope:                170  (56% coverage)
+Exact matches within scope:                159  (66.8% coverage)
 ```
 
 At this scope, cleaning/dedup only ever removes a handful of rows (1, in the

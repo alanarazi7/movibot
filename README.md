@@ -10,49 +10,47 @@ Classic RAG fails on queries like *"bring me a not-too-old Disney movie with no 
 
 ## How it works
 
-MoviBot runs a ReAct loop (`Reason -> Act -> Observe -> Stop?`) over four tools, narrowing from cheap structured filtering down to expensive per-title verification:
+MoviBot is a **tool-calling agent**: a planner model with three tools, bounded at `MAX_ROUNDS = 5` model turns per query. Each tool answers a different *kind* of question, so a query uses only the ones its constraints actually need — simple queries finish in one round, hard ones in three.
 
-| Module | Role | Current |
+| Tool | Answers from | Used for |
 |---|---|---|
-| `Reasoner` | Plans the next action each loop iteration | Mock (deterministic) |
-| `CatalogFilter` | Structured filter (year, studio, genre, runtime) | CSV-backed (commits data) |
-| `PlotSearch` | Thematic/character semantic search over plot overviews | IDF mock (CSV-backed) |
-| `SceneSearch` | Per-candidate check for risky events (deaths, scary scenes) | Mock (deterministic reasoning) |
-| `ExternalContext` | Per-candidate check for tone/subtext not in the plot | Mock (deterministic reasoning) |
-| `Synthesizer` | Composes the final, evidence-backed answer | Mock (deterministic) |
+| `filter_catalog` | columns | year, genre, language, studio, runtime |
+| `search_plots` | meaning | theme, character, premise (passage-level semantic search) |
+| `read_synopses` | full text | "does anyone die", "who betrays whom" |
 
-**Future (Chunks 2–4-real):** CatalogFilter → Supabase queries, PlotSearch → Pinecone vectors, Reasoner/SceneSearch/ExternalContext → real LLM calls via LLMod.ai.
+**Guardrails live in the data and tool code, never in the prompt** — the model cannot forget them and a bad plan cannot bypass them. Results are always ordered by `weighted_rating` rather than raw `vote_average`; `filter_catalog` returns at most 40 rows; `read_synopses` reads at most 8 films, truncated to 6,000 characters each, which is what bounds the cost of a turn.
 
-See `assets/architecture.png` (served at `GET /api/model_architecture`) — module names there match the `steps` trace exactly.
+See `assets/architecture.png`, served at `GET /api/model_architecture`.
 
-**Data**: 2 Kaggle sources — "The Movies Dataset" (2 tables: `movies_metadata.csv` + `keywords.csv`) and MPST (`mpst_full_data.csv`, richer plot synopses matched by exact IMDb ID). Narrowed to a Disney + Pixar demo scope, then cleaned (45,466 raw → 304 Disney + Pixar → 303 clean). All 303 are in `data_preprocessing/data_ready/supabase_movies.csv` (committed, 223 KB); the 170 with an MPST synopsis (56% coverage) are in `data_preprocessing/data_ready/pinecone_candidates.csv` (committed, 2.7 MB). Raw Kaggle downloads (`data_preprocessing/data_full/`) are gitignored but regenerable via `python data_preprocessing/prepare_movibot_data.py --all-studios`. When Chunks 2–4-real are live, all 303 will be in Supabase with every original column; the 170 will be vectorized and indexed in Pinecone. Wikipedia is fetched live per-candidate rather than pre-indexed. See `data_preprocessing/data cleaning rules.md` for the full design rationale.
+## Data
+
+Three sources, prepared offline into `data_preprocessing/data_ready/`:
+
+| Artifact | Contents |
+|---|---|
+| `supabase_movies.csv` | **238** Disney + Pixar feature films, 26 columns — the movie universe |
+| `pinecone_candidates.csv` | the **159** with a full MPST plot synopsis (66.8%) |
+| `plot_chunks.parquet` + `chunk_embeddings.npy` | **1,254** passages, 384-dim, for semantic search |
+| `wikipedia_cache.csv` | **237** films' Wikipedia articles, plot and non-plot text, scraped once offline |
+
+The catalog is deliberately narrowed to Disney and Pixar, which keeps it in family territory and makes the demo coherent. That's a demo constraint rather than a product decision — the assignment caps stored data at 50 MB and the full multi-studio catalog doesn't fit. `prepare_movibot_data.py --all-studios` produces all 43,270 films from the same pipeline.
+
+Raw Kaggle downloads (`data_preprocessing/data_full/`) are gitignored; everything in `data_ready/` is committed so the repo runs without a rebuild.
+
+**Full rationale — every source, filter, threshold, and a worked example traced end to end — is in [`data_preprocessing/PIPELINE_REVIEW.md`](data_preprocessing/PIPELINE_REVIEW.md).** To regenerate the data, see [`data_preprocessing/prepare_movibot_data usage.md`](data_preprocessing/prepare_movibot_data%20usage.md).
 
 ## Status
 
-**Current state: Mock agent deployed to Vercel. Live at [movibot-gamma.vercel.app](https://movibot-gamma.vercel.app).**
+Retrieval, tools, and the agent loop are complete and exercised end to end at zero cost. What remains needs credentials and a small budget.
 
-- ✅ **Chunk 1 (fetch & filter):** Done. `data_preprocessing/prepare_movibot_data.py` produces:
-  - `supabase_movies.csv` (303 Disney + Pixar movies, 25 columns) — **now committed**
-  - `pinecone_candidates.csv` (170 with MPST synopsis, 56% coverage) — **now committed**
-  - Raw Kaggle downloads (`data_preprocessing/data_full/`) remain gitignored/regenerable
+- ✅ Data pipeline, chunked passage index, Wikipedia cache
+- ✅ Three tools + bounded tool-calling loop (`agent/loop.py`)
+- ✅ Local backends for both catalog and embeddings, so the whole system runs offline and free
+- ⏳ Supabase load, Pinecone index, first real planner run — all blocked on credentials
 
-- ✅ **Chunk 4 (mock agent):** Done. Full ReAct loop implemented end-to-end:
-  - `MockLLMClient` with deterministic reasoning for validation
-  - All 4 tools (`CatalogFilter`, `PlotSearch`, `SceneSearch`, `ExternalContext`) fully functional
-  - `/api/execute` wired to working agent, returns real results + full `steps` trace
-  - Architecture diagram (`GET /api/model_architecture`) complete, module names consistent
+There is **no mock model by design**: a broken config fails loudly rather than masquerading as a working agent. `MOVIBOT_OFFLINE=1` hard-disables all spending.
 
-- ✅ **Chunk 5 (deploy & polish):** Done. Deployed to Vercel. All 4 endpoints live and verified. `agent_info.json` contains captured real mock run example.
-
-- 🔄 **Next:** Chunk 2 (Supabase load) + Chunk 3 (Pinecone embeddings) — then swap mock → real Chunk 4. Supabase project exists (credentials in `.env`, gitignored); `movies` table not yet created. LLMod.ai/Pinecone keys still needed (only for paid track).
-
-See **[`TODO.md`](TODO.md)** for the full chunk-by-chunk technical checklist.
-
-## Docs
-
-- `docs/course-assignment-instructions.pdf` — the course's official assignment spec (API contract, deployment, budget, deadline).
-- `docs/team-idea-proposal-and-data-sources.pdf` — the team's own idea writeup, including the dataset decision (Kaggle "The Movies Dataset," downsampled to ~5K movies).
-- `docs/pitch-deck.pptx` / `docs/pitch-deck.html` — the pitch deck (problem, architecture, demo).
+See **[`TODO.md`](TODO.md)** for the current checklist.
 
 ## API
 
@@ -68,11 +66,25 @@ pip install -r requirements.txt
 python app.py           # http://localhost:5000
 ```
 
-The mock agent needs no external credentials (no `.env` required to run locally). For Chunks 2–4-real, copy `.env.example` → `.env` and fill in LLMod.ai/Pinecone/Supabase keys.
+The catalog and semantic search both default to local backends and need no credentials. For real planner runs, copy `.env.example` → `.env` and fill in the LLMod.ai keys.
+
+To run the local embedding model as well, `pip install -r requirements-local.txt` — it is split out because torch (~518 MB) exceeds Vercel's 250 MB serverless limit and cannot ship to production.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `MOVIBOT_BACKEND` | `local` | `local` reads the prepared CSVs; `cloud` uses Supabase |
+| `MOVIBOT_EMBEDDINGS` | `local` | `local` runs E5-small-v2 on this machine; `cloud` uses LLMod.ai + Pinecone |
+| `MOVIBOT_OFFLINE` | unset | `1` disables every paid call |
+
+## Docs
+
+- `docs/course-assignment-instructions.pdf` — the course's official assignment spec (API contract, deployment, budget, deadline).
+- `docs/team-idea-proposal-and-data-sources.pdf` — the team's own idea writeup.
+- `docs/pitch-deck.pptx` / `docs/pitch-deck.html` — the pitch deck (problem, architecture, demo).
 
 ## Deployment
 
-Vercel, Python serverless (`vercel.json`, same pattern as the team's prior `medium-rag-hw` assignment). The mock agent currently runs with no external dependencies (no API keys needed). When Chunks 2–4-real are implemented (Supabase + Pinecone + real LLM), environment variables will be set in the Vercel dashboard (see `.env.example` for the required names).
+Vercel, Python serverless (`vercel.json`, same pattern as the team's prior `medium-rag-hw` assignment). Production must set `MOVIBOT_EMBEDDINGS=cloud`, since the local embedding backend cannot run there.
 
 - **Live URL:** https://movibot-gamma.vercel.app
 - **GitHub Repo:** https://github.com/alanarazi7/movibot

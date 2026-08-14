@@ -1,4 +1,5 @@
--- MoviBot Supabase schema for the `movies` table (CatalogFilter's data source).
+-- MoviBot Supabase schema for the `movies` table (the filter_catalog tool's
+-- data source).
 -- Run this in the Supabase SQL editor once the project exists, before running
 -- scripts/ingest.py. Columns match data_preprocessing/prepare_movibot_data.py's
 -- data_preprocessing/data_ready/supabase_movies.csv output exactly.
@@ -19,6 +20,12 @@ create table if not exists movies (
   popularity real,
   vote_average real,
   vote_count integer,
+  -- Bayesian-smoothed rating (IMDb Top-250 formula), precomputed at
+  -- preparation time. This is the default sort key for recommendations:
+  -- ordering by raw vote_average promotes thinly-voted titles. Kept as a
+  -- stored column rather than a floor on vote_count so low-vote films are
+  -- demoted on broad queries but still reachable on narrow ones.
+  weighted_rating real,
   budget bigint,
   revenue bigint,
   overview text,
@@ -27,8 +34,6 @@ create table if not exists movies (
   original_language text,
   adult boolean,
   video boolean,
-  poster_path text,
-  homepage text,
   keywords jsonb,
   has_mpst_synopsis boolean
 );
