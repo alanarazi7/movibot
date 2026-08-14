@@ -120,7 +120,8 @@ but would make the local and Pinecone indexes diverge — decide before doing it
       `MOVIBOT_BACKEND=cloud`, `MOVIBOT_EMBEDDINGS=cloud`
 - [ ] Deploy, verify all four endpoints in production
 - [ ] Confirm a real query finishes well inside Vercel's 300s limit
-- [ ] Confirm `steps` module names match `assets/architecture.png` exactly
+- [x] Confirm `steps` module names match `assets/architecture.png` exactly —
+      the diagram now reads them from `tools.TRACE_NAMES`, so they cannot drift
 - [ ] `README.md` — fill in the deployed URL
 
 ---
