@@ -471,7 +471,7 @@
           <button class="example-btn" onclick="fillExample(this)">Can you recommend me a nice comedy?</button>
         </div>
         <p style="color: #888; font-size: 0.8rem; margin-top: 0.7rem;">
-          Expected: <strong>refuse</strong> &mdash; no film under 47 minutes exists.
+          Expected: <strong>refuse</strong> &mdash; no film under 45 minutes exists.
           <strong>Refuse</strong> &mdash; the catalog stops at 2017, so it cannot know what is
           new; it should offer its own newest instead. <strong>Answer, but qualify</strong>
           &mdash; 116 comedies do exist, so the honest reply names the Disney/Pixar universe
@@ -636,20 +636,20 @@
           <p>
             Three sources go in. A Kaggle catalog supplies the structure &mdash; ids, dates,
             runtime, genres, studios, votes, keywords &mdash; and is the only one that
-            supports deterministic filtering, so it defines which films exist. Its
-            descriptions are too thin to reason about, at a median of 53 words, so MPST
-            plot synopses supply real story text at a median of 892 words, roughly 17&times;
-            longer. Wikipedia supplies independent verification text, scraped once offline:
-            the Plot section for scene questions, and everything else &mdash; cast,
-            production, reception &mdash; for tone questions the plot cannot settle.
+            supports deterministic filtering. Its descriptions are too thin to reason
+            about, so MPST plot synopses supply the real story text. Wikipedia supplies
+            independent verification text, scraped once offline: the Plot section for scene
+            questions, and everything else &mdash; cast, production, reception &mdash; for
+            tone questions the plot cannot settle.
           </p>
 
           <h4>Why only Disney and Pixar</h4>
           <p>
             It keeps the catalog in family territory and makes the demo coherent, but the
             real reason is a constraint: the assignment caps stored data at
-            <strong>50&nbsp;MB</strong> and the full multi-studio catalog does not fit. The
-            same pipeline produces all 43,270 films with the studio filter turned off.
+            <strong>50&nbsp;MB</strong> and the full catalog does not fit. For a real
+            product, scaling this to all movies would be straightforward &mdash; this is a
+            proof of concept, not a ceiling.
           </p>
 
           <h4>Why nothing after 2017</h4>
@@ -661,7 +661,9 @@
             or later. Anything since &mdash; <em>Frozen II</em>, <em>Encanto</em>,
             <em>Turning Red</em> &mdash; does not exist as far as this system is concerned.
             The agent is told this explicitly and refuses questions about recent or current
-            releases rather than answering them from a stale catalog.
+            releases rather than answering them from a stale catalog. Again, fresher data is
+            perfectly obtainable &mdash; this snapshot was simply the convenient choice for
+            a proof of concept.
           </p>
 
           <div class="data-table">
@@ -671,7 +673,7 @@
               <tbody>
                 <tr><td>Disney + Pixar only</td><td>No other studio, no general cinema</td></tr>
                 <tr><td>1940&ndash;2017</td><td>Nothing recent, current, or trending</td></tr>
-                <tr><td>47 min and up</td><td>No shorts or featurettes</td></tr>
+                <tr><td>Above 45 mins</td><td>No shorts or featurettes</td></tr>
                 <tr><td>No cast or crew columns</td><td>No &ldquo;starring X&rdquo; or &ldquo;directed by Y&rdquo;</td></tr>
                 <tr><td>159 of 238 have a synopsis</td><td>Story-level claims unverifiable for the other 79</td></tr>
               </tbody>
@@ -695,12 +697,6 @@
               <span class="n">238</span>
             </div>
           </div>
-          <p style="font-size: 0.78rem; color: #888;">
-            Square-root scale, so the small stages stay visible; the counts are exact. The
-            studio filter runs first, on the raw data, before any cleaning &mdash; which is
-            why every column can be kept.
-          </p>
-
           <h4>Duration filter</h4>
           <p>
             Disney and Pixar both release short films alongside features, and a six-minute
@@ -710,9 +706,9 @@
 
           <h4>Ranking</h4>
           <p>
-            Recommendations should surface the best and most widely-seen films, and rating
-            alone cannot do that: a film scoring 8.0 from 140 votes would outrank one
-            scoring 8.0 from 5,520. Each film therefore carries a
+            Unless the request says otherwise, the agent aims to return the best-ranked
+            films. Raw rating alone cannot express that, because a film with very few votes
+            can carry a very high score. Each film therefore carries a
             <code>weighted_rating</code> &mdash; the formula IMDb uses for its Top 250
             &mdash; which pulls thinly-voted films toward the catalog average until they
             earn enough votes to stand on their own:
@@ -726,6 +722,13 @@ C = 6.199 catalog mean    m = 300 vote prior</pre>
             unreachable &mdash; thinly-voted films are demoted on broad queries and still
             win narrow ones where they are the right answer. Sort the table by
             <em>Best rated</em> to see the result.
+          </p>
+          <p>
+            Worth being honest about: &ldquo;best&rdquo; is ill-defined here. This is an
+            adjusted average of public votes &mdash; a proxy for broad approval, not a
+            measure of quality, and it knows nothing about the person asking. It is a
+            reasonable default when the request gives no other basis to sort on, not a
+            claim about which films are actually better.
           </p>
 
         </div>

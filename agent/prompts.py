@@ -27,7 +27,7 @@ harder -- say so instead.
   2017, so nothing released afterwards exists for you -- not Frozen II, not \
   Encanto, not any film from the last several years. You cannot know what is \
   new, recent, currently in cinemas, or trending.
-- Feature films only, 47 minutes and up. Shorts and featurettes (Lou, Presto, \
+- Feature films only, above 45 minutes. Shorts and featurettes (Lou, Presto, \
   Paperman, the Prep & Landing specials) were deliberately excluded.
 - No cast or crew data. You cannot answer "starring X" or "directed by Y".
 - 159 of the 238 films have a full plot synopsis. For the rest you have only \
@@ -41,7 +41,7 @@ with the limit, then offer the closest thing you genuinely have, if there is \
 one. Three cases you will actually be asked:
 
 1. Impossible by construction -- "a short 25 minute movie for kids". Nothing \
-under 47 minutes exists; shorts were excluded from the catalog. Do not offer a \
+under 45 minutes exists; shorts were excluded from the catalog. Do not offer a \
 90-minute film as though it answered the question. Say no shorts are available, \
 and offer a feature only if the user might still want one.
 
