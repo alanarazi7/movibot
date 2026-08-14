@@ -296,6 +296,106 @@
     }
     .data-table td.v { font-family: monospace; font-size: 0.78rem; word-break: break-word; }
 
+    /* ---- Data Navigator ---- */
+    .nav-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+      gap: 0.6rem;
+    }
+    .nav-stat {
+      background: #f7f9fb;
+      border: 1px solid #eef1f4;
+      border-radius: 6px;
+      padding: 0.6rem 0.8rem;
+    }
+    .nav-stat b { display: block; font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+    .nav-stat span { font-size: 0.72rem; color: #888; }
+
+    .nav-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+    }
+    .nav-controls input[type="search"] { flex: 1 1 12rem; min-width: 9rem; }
+    .nav-controls input, .nav-controls select {
+      padding: 0.45rem 0.6rem;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-family: inherit;
+      background: #fff;
+      color: inherit;
+    }
+    .nav-controls input:focus, .nav-controls select:focus {
+      outline: none; border-color: #0070f3;
+    }
+    .nav-controls label.check {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.82rem;
+      font-weight: 500;
+      margin: 0;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .nav-count { font-size: 0.8rem; color: #777; }
+    .nav-count b { color: #1a1a1a; }
+
+    .nav-table { overflow-x: auto; border: 1px solid #eee; border-radius: 8px; }
+    .nav-table table { border-collapse: collapse; width: 100%; font-size: 0.82rem; }
+    .nav-table th {
+      position: sticky; top: 0;
+      background: #f7f7f7;
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #777;
+      text-align: left;
+      padding: 0.5rem 0.7rem;
+      white-space: nowrap;
+      border-bottom: 1px solid #e5e5e5;
+    }
+    .nav-table td {
+      padding: 0.5rem 0.7rem;
+      border-bottom: 1px solid #f2f2f2;
+      vertical-align: top;
+    }
+    .nav-table td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .nav-table tr.film { cursor: pointer; }
+    .nav-table tr.film:hover td { background: #f7fbff; }
+    .nav-table tr.film.open td { background: #f0f7ff; font-weight: 600; }
+    .nav-table .muted { color: #aaa; }
+    .nav-table .yes { color: #2e7d32; }
+    .nav-table .no { color: #ccc; }
+    .nav-empty { padding: 1.5rem; text-align: center; color: #888; font-size: 0.88rem; }
+
+    .detail-cell { background: #fbfcfd; padding: 0 !important; }
+    .detail-inner { padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: 0.8rem; }
+    .detail-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+      gap: 0.5rem 1.2rem;
+      font-size: 0.8rem;
+    }
+    .detail-grid div { min-width: 0; }
+    .detail-grid dt {
+      font-size: 0.66rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: #999;
+    }
+    .detail-grid dd { font-family: monospace; font-size: 0.78rem; word-break: break-word; }
+    .chip-row { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+    .chip-row span {
+      background: #eef2f6;
+      border-radius: 20px;
+      padding: 0.15rem 0.6rem;
+      font-size: 0.72rem;
+      color: #445;
+    }
+
     .funnel { display: flex; flex-direction: column; gap: 0.45rem; }
     .funnel-row {
       display: grid;
@@ -524,6 +624,57 @@ C = 6.199 catalog mean    m = 300 vote prior</pre>
         </div>
       </details>
 
+      <details class="panel" id="navigator-panel">
+        <summary><span class="emoji">🗃️</span> Data Navigator</summary>
+        <div class="panel-body">
+          <p>
+            Every film in the catalog, with everything the pipeline stores for it.
+            Search, filter, and sort the table, then open any row for its full record &mdash;
+            metadata, keywords, plot synopsis, the passages it was split into, and its
+            Wikipedia text.
+          </p>
+
+          <div class="nav-stats" id="nav-stats"></div>
+
+          <div class="nav-controls">
+            <input type="search" id="nav-q" placeholder="Search title, keyword, or tagline…" aria-label="Search films" />
+            <select id="nav-genre" aria-label="Filter by genre"><option value="">All genres</option></select>
+            <select id="nav-studio" aria-label="Filter by studio"><option value="">All studios</option></select>
+            <select id="nav-sort" aria-label="Sort by">
+              <option value="weighted_rating">Best rated</option>
+              <option value="popularity">Most popular</option>
+              <option value="vote_count">Most voted</option>
+              <option value="year">Newest</option>
+              <option value="year_asc">Oldest</option>
+              <option value="runtime">Longest</option>
+              <option value="title">Title A&ndash;Z</option>
+            </select>
+            <label class="check"><input type="checkbox" id="nav-syn" /> has synopsis</label>
+            <label class="check"><input type="checkbox" id="nav-wiki" /> has wiki plot</label>
+          </div>
+
+          <div class="nav-count" id="nav-count">Loading&hellip;</div>
+
+          <div class="nav-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Title</th>
+                  <th class="n">Year</th>
+                  <th class="n">Runtime</th>
+                  <th class="n">Rating</th>
+                  <th class="n">Votes</th>
+                  <th>Genres</th>
+                  <th class="n">Passages</th>
+                  <th class="n">Wiki</th>
+                </tr>
+              </thead>
+              <tbody id="nav-rows"></tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+
       <details class="panel">
         <summary><span class="emoji">❄️</span> Frozen, in full</summary>
         <div class="panel-body">
@@ -709,6 +860,233 @@ Development began in 2008, when Lasseter convinced Chris Buck (who co-directed t
     function fillExample(btn) {
       document.getElementById('prompt').value = btn.textContent.trim();
     }
+
+    // --- Data Navigator -------------------------------------------------
+    // Two tiers: catalog.json (metadata for all 238 films) loads once when the
+    // panel is first opened; a film's long text is fetched only when its row is
+    // expanded. Inlining everything would be a 4.5 MB page load to read one
+    // synopsis. Both are static files under public/data/, so this works on
+    // Vercel without touching the Python function.
+
+    const nav = { films: [], summary: null, loaded: false, openId: null, details: {} };
+
+    function navNum(n, digits) {
+      return n === null || n === undefined ? '—' : Number(n).toLocaleString(undefined, {
+        minimumFractionDigits: digits || 0, maximumFractionDigits: digits || 0
+      });
+    }
+
+    async function navLoad() {
+      if (nav.loaded) return;
+      nav.loaded = true;
+      const count = document.getElementById('nav-count');
+      try {
+        const res = await fetch('data/catalog.json');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        nav.films = data.films;
+        nav.summary = data.summary;
+
+        document.getElementById('nav-stats').innerHTML = [
+          ['films', 'films in catalog'],
+          ['with_synopsis', 'with a plot synopsis'],
+          ['passages', 'searchable passages'],
+          ['with_wiki_plot', 'with a Wikipedia plot']
+        ].map(([k, label]) =>
+          `<div class="nav-stat"><b>${navNum(nav.summary[k])}</b><span>${label}</span></div>`
+        ).join('');
+
+        const genre = document.getElementById('nav-genre');
+        nav.summary.genres.forEach(g => {
+          genre.insertAdjacentHTML('beforeend', `<option value="${escapeHtml(g)}">${escapeHtml(g)}</option>`);
+        });
+
+        // Only studios that actually carry several films; the long tail of
+        // one-off co-production credits would make the menu unusable.
+        const studioCounts = {};
+        nav.films.forEach(f => f.companies.forEach(c => { studioCounts[c] = (studioCounts[c] || 0) + 1; }));
+        const studio = document.getElementById('nav-studio');
+        Object.entries(studioCounts)
+          .filter(([, n]) => n >= 3)
+          .sort((a, b) => b[1] - a[1])
+          .forEach(([name, n]) => {
+            studio.insertAdjacentHTML('beforeend',
+              `<option value="${escapeHtml(name)}">${escapeHtml(name)} (${n})</option>`);
+          });
+
+        navRender();
+      } catch (err) {
+        count.innerHTML = `<span class="error-text">Could not load catalog: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    function navFiltered() {
+      const q = document.getElementById('nav-q').value.trim().toLowerCase();
+      const genre = document.getElementById('nav-genre').value;
+      const studio = document.getElementById('nav-studio').value;
+      const needSyn = document.getElementById('nav-syn').checked;
+      const needWiki = document.getElementById('nav-wiki').checked;
+      const sort = document.getElementById('nav-sort').value;
+
+      let out = nav.films.filter(f => {
+        if (genre && !f.genres.includes(genre)) return false;
+        if (studio && !f.companies.includes(studio)) return false;
+        if (needSyn && !f.has_synopsis) return false;
+        if (needWiki && !f.has_wiki_plot) return false;
+        if (q) {
+          const hay = (f.title + ' ' + (f.original_title || '') + ' ' +
+                       (f.tagline || '') + ' ' + f.keywords.join(' ')).toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        return true;
+      });
+
+      const by = {
+        weighted_rating: (a, b) => (b.weighted_rating || 0) - (a.weighted_rating || 0),
+        popularity: (a, b) => (b.popularity || 0) - (a.popularity || 0),
+        vote_count: (a, b) => (b.vote_count || 0) - (a.vote_count || 0),
+        year: (a, b) => b.year - a.year,
+        year_asc: (a, b) => a.year - b.year,
+        runtime: (a, b) => (b.runtime || 0) - (a.runtime || 0),
+        title: (a, b) => a.title.localeCompare(b.title)
+      };
+      return out.sort(by[sort] || by.weighted_rating);
+    }
+
+    function navRender() {
+      const films = navFiltered();
+      document.getElementById('nav-count').innerHTML =
+        `<b>${films.length}</b> of ${nav.films.length} films`;
+
+      const body = document.getElementById('nav-rows');
+      if (!films.length) {
+        body.innerHTML = '<tr><td colspan="8"><div class="nav-empty">No films match these filters.</div></td></tr>';
+        return;
+      }
+
+      body.innerHTML = films.map(f => `
+        <tr class="film${nav.openId === f.id ? ' open' : ''}" data-id="${f.id}" tabindex="0">
+          <td>${escapeHtml(f.title)}</td>
+          <td class="n">${f.year}</td>
+          <td class="n">${f.runtime ? Math.round(f.runtime) + 'm' : '—'}</td>
+          <td class="n">${f.weighted_rating ? f.weighted_rating.toFixed(2) : '—'}</td>
+          <td class="n">${navNum(f.vote_count)}</td>
+          <td>${escapeHtml(f.genres.join(', ')) || '<span class="muted">—</span>'}</td>
+          <td class="n">${f.n_chunks || '<span class="no">—</span>'}</td>
+          <td class="n">${f.has_wiki_plot ? '<span class="yes">✓</span>' : '<span class="no">✗</span>'}</td>
+        </tr>
+        ${nav.openId === f.id ? navDetailRow(f) : ''}
+      `).join('');
+    }
+
+    function navDetailRow(f) {
+      const d = nav.details[f.id];
+      const body = d === undefined
+        ? '<div class="nav-empty">Loading…</div>'
+        : (d === null ? '<div class="nav-empty">Could not load this record.</div>' : navDetail(f, d));
+      return `<tr><td class="detail-cell" colspan="8"><div class="detail-inner">${body}</div></td></tr>`;
+    }
+
+    function navDetail(f, d) {
+      const field = (label, value) =>
+        `<div><dt>${label}</dt><dd>${value === null || value === undefined || value === '' ? '—' : escapeHtml(String(value))}</dd></div>`;
+
+      let html = `<dl class="detail-grid">
+        ${field('id', f.id)}
+        ${field('imdb_id', f.imdb_id)}
+        ${field('original title', f.original_title)}
+        ${field('release date', f.release_date)}
+        ${field('runtime', f.runtime ? f.runtime + ' min' : null)}
+        ${field('collection', f.collection)}
+        ${field('vote average', f.vote_average)}
+        ${field('vote count', f.vote_count)}
+        ${field('weighted rating', f.weighted_rating)}
+        ${field('popularity', f.popularity)}
+        ${field('budget', f.budget ? '$' + navNum(f.budget) : null)}
+        ${field('revenue', f.revenue ? '$' + navNum(f.revenue) : null)}
+        ${field('language', f.original_language)}
+        ${field('countries', f.countries.join(', '))}
+        ${field('status', f.status)}
+        ${field('studios', f.companies.join(', '))}
+      </dl>`;
+
+      if (f.tagline) html += `<p><em>${escapeHtml(f.tagline)}</em></p>`;
+      if (f.overview) html += `<p>${escapeHtml(f.overview)}</p>`;
+
+      if (f.keywords.length) {
+        html += `<div><dt style="font-size:0.66rem;text-transform:uppercase;letter-spacing:0.05em;color:#999;margin-bottom:0.3rem;">Keywords</dt>
+          <div class="chip-row">${f.keywords.map(k => `<span>${escapeHtml(k)}</span>`).join('')}</div></div>`;
+      }
+      if (d.mpst_tags && d.mpst_tags.length) {
+        html += `<div><dt style="font-size:0.66rem;text-transform:uppercase;letter-spacing:0.05em;color:#999;margin-bottom:0.3rem;">MPST story tags</dt>
+          <div class="chip-row">${d.mpst_tags.map(t => `<span>${escapeHtml(t)}</span>`).join('')}</div></div>`;
+      }
+
+      if (d.plot_synopsis) {
+        const words = d.plot_synopsis.trim().split(/\s+/).length;
+        html += `<details class="subpanel"><summary>Plot synopsis (${navNum(d.plot_synopsis.length)} chars · ${navNum(words)} words${d.synopsis_source ? ' · ' + escapeHtml(d.synopsis_source) : ''})</summary><pre class="raw">${escapeHtml(d.plot_synopsis)}</pre></details>`;
+      } else {
+        html += `<p class="pending">No MPST synopsis — this film is filterable and readable, but not semantically searchable.</p>`;
+      }
+
+      if (d.chunks.length) {
+        html += `<details class="subpanel"><summary>${d.chunks.length} passages in the search index</summary><div style="padding:0.5rem 0.6rem;">`;
+        html += d.chunks.map(c =>
+          `<details class="subpanel"><summary><code>${escapeHtml(c.chunk_id)}</code> <span class="tok">${c.tokens} tokens</span></summary><pre class="raw">${escapeHtml(c.text)}</pre></details>`
+        ).join('');
+        html += `</div></details>`;
+      }
+
+      if (d.wiki_plot) {
+        html += `<details class="subpanel"><summary>Wikipedia plot — ${escapeHtml(d.wiki_title || '')} (${navNum(d.wiki_plot.length)} chars)</summary><pre class="raw">${escapeHtml(d.wiki_plot)}</pre></details>`;
+      }
+      if (d.wiki_non_plot) {
+        html += `<details class="subpanel"><summary>Wikipedia non-plot — cast, production, reception (${navNum(d.wiki_non_plot.length)} chars)</summary><pre class="raw">${escapeHtml(d.wiki_non_plot)}</pre></details>`;
+      }
+      if (!d.wiki_title) {
+        html += `<p class="pending">No Wikipedia article resolved for this film.</p>`;
+      }
+
+      return html;
+    }
+
+    async function navToggle(id) {
+      if (nav.openId === id) { nav.openId = null; navRender(); return; }
+      nav.openId = id;
+      navRender();
+      if (nav.details[id] === undefined) {
+        try {
+          const res = await fetch(`data/films/${id}.json`);
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          nav.details[id] = await res.json();
+        } catch (err) {
+          nav.details[id] = null;
+        }
+        if (nav.openId === id) navRender();
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+      const panel = document.getElementById('navigator-panel');
+      if (!panel) return;
+      panel.addEventListener('toggle', function () { if (panel.open) navLoad(); });
+
+      ['nav-q', 'nav-genre', 'nav-studio', 'nav-sort', 'nav-syn', 'nav-wiki'].forEach(id => {
+        const el = document.getElementById(id);
+        el.addEventListener(el.tagName === 'INPUT' && el.type !== 'checkbox' ? 'input' : 'change', navRender);
+      });
+
+      const rows = document.getElementById('nav-rows');
+      rows.addEventListener('click', function (e) {
+        const tr = e.target.closest('tr.film');
+        if (tr) navToggle(Number(tr.dataset.id));
+      });
+      rows.addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        const tr = e.target.closest('tr.film');
+        if (tr) { e.preventDefault(); navToggle(Number(tr.dataset.id)); }
+      });
+    });
 
 
     function renderSteps(steps) {

@@ -1,7 +1,7 @@
 import json
 import os
 
-from flask import Flask, jsonify, request, send_file
+from flask import Flask, jsonify, request, send_file, send_from_directory
 
 # Local development reads credentials from .env; on Vercel they come from the
 # project's environment variables and no .env file exists. load_dotenv() is a
@@ -39,6 +39,14 @@ def index():
     # Local dev convenience only. In production, Vercel's static routing
     # (see vercel.json) serves public/ directly and never hits app.py for "/".
     return send_file(GUI_PATH)
+
+
+@app.route("/data/<path:filename>", methods=["GET"])
+def data_files(filename):
+    # Local dev convenience only, mirroring index() above. In production
+    # Vercel's static routing serves public/ directly and never reaches app.py.
+    # send_from_directory rejects paths that escape the directory.
+    return send_from_directory(os.path.join(BASE_DIR, "public", "data"), filename)
 
 
 @app.route("/api/team_info", methods=["GET"])
