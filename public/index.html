@@ -212,9 +212,9 @@
       letter-spacing: 0.04em;
       margin-top: 1.5rem;
     }
-    .panel-body p { max-width: 68ch; }
+    .panel-body p { max-width: none; }
     .panel-body ul { margin-left: 1.1rem; }
-    .panel-body li { margin-top: 0.35rem; max-width: 66ch; }
+    .panel-body li { margin-top: 0.35rem; }
     .panel-body code {
       background: #f0f0f0;
       border-radius: 3px;
@@ -459,6 +459,27 @@
       </div>
 
       <div class="card">
+        <label>Out-of-scope requests</label>
+        <p style="color: #666; font-size: 0.85rem; margin-bottom: 0.6rem;">
+          The catalog is Disney and Pixar feature films up to 2017. These three ask for
+          things it cannot hold, and the agent is expected to say so rather than quietly
+          answer with the nearest thing it has.
+        </p>
+        <div class="examples">
+          <button class="example-btn" onclick="fillExample(this)">Recommend me a short 25 minutes movie for kids</button>
+          <button class="example-btn" onclick="fillExample(this)">Bring me the latest hit of Disney</button>
+          <button class="example-btn" onclick="fillExample(this)">Can you recommend me a nice comedy?</button>
+        </div>
+        <p style="color: #888; font-size: 0.8rem; margin-top: 0.7rem;">
+          Expected: <strong>refuse</strong> &mdash; no film under 47 minutes exists.
+          <strong>Refuse</strong> &mdash; the catalog stops at 2017, so it cannot know what is
+          new; it should offer its own newest instead. <strong>Answer, but qualify</strong>
+          &mdash; 116 comedies do exist, so the honest reply names the Disney/Pixar universe
+          it is drawing from before recommending one.
+        </p>
+      </div>
+
+      <div class="card">
         <label>Or run from terminal</label>
         <div class="curl-cmd">curl -X POST https://movibot-gamma.vercel.app/api/execute \<br>  -H "Content-Type: application/json" \<br>  -d '{"prompt": "Find me a Disney movie from the 1990s"}'</div>
         <button class="copy-btn" onclick="copyCurl('curl -X POST https://movibot-gamma.vercel.app/api/execute -H \"Content-Type: application/json\" -d \\'{\u0022prompt\u0022: \u0022Find me a Disney movie from the 1990s\u0022}\\'')">📋 Copy curl</button>
@@ -630,6 +651,32 @@
             <strong>50&nbsp;MB</strong> and the full multi-studio catalog does not fit. The
             same pipeline produces all 43,270 films with the studio filter turned off.
           </p>
+
+          <h4>Why nothing after 2017</h4>
+          <p>
+            The Kaggle dataset is a snapshot published in 2017, so its metadata simply stops
+            there. This is a property of the source, not a filter we chose: the newest films
+            in the catalog are <em>Cars 3</em>, <em>Beauty and the Beast</em>, and
+            <em>Guardians of the Galaxy Vol. 2</em>, all 2017, and 21 films date from 2015
+            or later. Anything since &mdash; <em>Frozen II</em>, <em>Encanto</em>,
+            <em>Turning Red</em> &mdash; does not exist as far as this system is concerned.
+            The agent is told this explicitly and refuses questions about recent or current
+            releases rather than answering them from a stale catalog.
+          </p>
+
+          <div class="data-table">
+            <table>
+              <caption style="caption-side:top;text-align:left;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;color:#999;padding:0 0 0.4rem;">What the catalog cannot answer</caption>
+              <thead><tr><th>Limit</th><th>Consequence</th></tr></thead>
+              <tbody>
+                <tr><td>Disney + Pixar only</td><td>No other studio, no general cinema</td></tr>
+                <tr><td>1940&ndash;2017</td><td>Nothing recent, current, or trending</td></tr>
+                <tr><td>47 min and up</td><td>No shorts or featurettes</td></tr>
+                <tr><td>No cast or crew columns</td><td>No &ldquo;starring X&rdquo; or &ldquo;directed by Y&rdquo;</td></tr>
+                <tr><td>159 of 238 have a synopsis</td><td>Story-level claims unverifiable for the other 79</td></tr>
+              </tbody>
+            </table>
+          </div>
 
           <div class="funnel">
             <div class="funnel-row">
