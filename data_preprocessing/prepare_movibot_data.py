@@ -53,6 +53,20 @@ DEMO_STUDIOS = (
     "Pixar Animation Studios",
 )
 
+# Feature-length floor. The Disney/Pixar scope pulls in a long tail of 5-7
+# minute animated shorts (Lou, Presto, Piper, Paperman...) which carry very
+# high vote_average on very few votes, so they dominate any rating-sorted
+# result and crowd out the features a recommendation query actually wants.
+# The runtime histogram has a clean gap here: the longest short is 40m
+# (Roving Mars) and the shortest feature is 47m (Aliens of the Deep).
+MIN_RUNTIME_MINUTES = 45
+
+# Prior weight, in votes, for the Bayesian `weighted_rating` column (see
+# weighted_rating() below). Set to the catalog's median vote count, so the
+# median film is pulled halfway toward the catalog mean and anything better
+# voted increasingly speaks for itself.
+VOTE_PRIOR = 300
+
 
 # ---------------------------------------------------------------------
 # CLI
@@ -191,6 +205,32 @@ def collection_name(value: Any) -> str:
     return ""
 
 
+def weighted_rating(
+    vote_average: pd.Series, vote_count: pd.Series, m: int = VOTE_PRIOR
+) -> pd.Series:
+    """Bayesian-smoothed rating, the formula IMDb uses for its Top 250.
+
+        WR = (v / (v + m)) * R  +  (m / (v + m)) * C
+
+    R is the movie's own average, v its vote count, C the catalog mean, and m
+    a prior weight in "votes". A movie is scored as if it began with m votes
+    at the catalog average, so a thinly-voted title is pulled toward C until
+    it earns enough votes to speak for itself.
+
+    This replaces a hard `vote_count >= X` floor. A floor at 500 votes would
+    drop 141 of 238 films and make a query like "a Disney movie in Hindi"
+    unanswerable, since its only correct answer (Dangal, 140 votes) would be
+    gone. Smoothing demotes such titles on broad queries while leaving them
+    reachable on narrow ones, where nothing better survives the filter.
+
+    C is computed from the movies passed in, so it always reflects the
+    current scope rather than a number hardcoded from an earlier run.
+    """
+    C = vote_average.mean()
+    v = vote_count.astype("float64")
+    return (v / (v + m)) * vote_average + (m / (v + m)) * C
+
+
 def parse_bool(series: pd.Series) -> pd.Series:
     return series.astype(str).str.strip().str.lower().eq("true")
 
@@ -264,6 +304,7 @@ def clean_movies(
     valid_date = df["release_date_parsed"].notna()
     valid_runtime_numeric = df["runtime_minutes"].notna()
     valid_runtime_positive = df["runtime_minutes"].gt(0)
+    feature_length = df["runtime_minutes"].ge(MIN_RUNTIME_MINUTES)
     valid_overview = raw_overview.ne("")
 
     usable = (
@@ -272,6 +313,7 @@ def clean_movies(
         & valid_date
         & valid_runtime_numeric
         & valid_runtime_positive
+        & feature_length
         & valid_overview
     )
 
@@ -281,6 +323,7 @@ def clean_movies(
         "invalid_release_date": int((~valid_date).sum()),
         "invalid_runtime": int((~valid_runtime_numeric).sum()),
         "runtime_nonpositive": int((valid_runtime_numeric & ~valid_runtime_positive).sum()),
+        "shorts_dropped": int((valid_runtime_positive & ~feature_length).sum()),
         "blank_overview": int((~valid_overview).sum()),
         "rows_after_usability_rules": int(usable.sum()),
     })
@@ -338,6 +381,12 @@ def clean_movies(
     stats["duplicates_removed"] = stats["rows_after_usability_rules"] - len(df)
     stats["final_movies"] = len(df)
 
+    # Computed last, on the final deduped set, so the catalog mean C reflects
+    # exactly the movies that ship rather than rows later dropped.
+    df["weighted_rating"] = weighted_rating(df["vote_average"], df["vote_count"])
+    stats["catalog_mean_rating_C"] = round(float(df["vote_average"].mean()), 3)
+    stats["vote_prior_m"] = VOTE_PRIOR
+
     out = pd.DataFrame(
         {
             "id": df["id"],
@@ -355,6 +404,7 @@ def clean_movies(
             "popularity": df["popularity"],
             "vote_average": df["vote_average"],
             "vote_count": df["vote_count"],
+            "weighted_rating": df["weighted_rating"].round(4),
             "budget": df["budget"],
             "revenue": df["revenue"],
             "overview": df["overview"],

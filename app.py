@@ -3,7 +3,17 @@ import os
 
 from flask import Flask, jsonify, request, send_file
 
-from agent import react_loop
+# Local development reads credentials from .env; on Vercel they come from the
+# project's environment variables and no .env file exists. load_dotenv() is a
+# no-op in that case, so the same entry point serves both.
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:  # pragma: no cover - dotenv is optional in production
+    pass
+
+from agent import loop
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 TEAM_INFO_PATH = os.path.join(BASE_DIR, "team_info.json")
@@ -67,9 +77,9 @@ def execute():
         ), 400
 
     try:
-        result = react_loop.execute(user_prompt)
+        result = loop.execute(user_prompt)
     except Exception as exc:
-        # Defense-in-depth: react_loop already catches internally
+        # Defense-in-depth: loop.execute already catches internally
         return _cors(
             jsonify(
                 {

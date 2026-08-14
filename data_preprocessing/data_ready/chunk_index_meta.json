@@ -1,0 +1,9 @@
+{
+  "model": "intfloat/e5-small-v2",
+  "embedding_dim": 384,
+  "num_chunks": 1254,
+  "num_movies": 159,
+  "chunk_tokens": 300,
+  "overlap_ratio": 0.2,
+  "min_chunk_tokens": 50
+}

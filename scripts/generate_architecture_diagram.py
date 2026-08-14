@@ -1,136 +1,169 @@
-"""Renders assets/architecture.png from the fixed MoviBot module list.
+"""Renders assets/architecture.png from MoviBot's actual module list.
 
-Offline only (PIL, no network/model calls). Module names here must stay in
-sync with agent/react_loop.py's logged `module` values and agent_info.json,
-since the assignment requires identical naming across the diagram, the
-/api/execute steps trace, and any descriptions.
+Offline only (PIL, no network or model calls). The labels here must stay in
+sync with the `module` values logged by agent/loop.py -- which come from
+agent.tools.TRACE_NAMES -- and with agent_info.json, since the assignment
+requires identical naming across the diagram, the /api/execute steps trace,
+and the agent description.
 
 Usage: python scripts/generate_architecture_diagram.py
 """
 
 import os
+import sys
 
 from PIL import Image, ImageDraw, ImageFont
 
-WIDTH, HEIGHT = 1200, 800
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from agent import loop, tools  # noqa: E402
+
+WIDTH, HEIGHT = 1240, 760
 BG = (255, 255, 255)
 BOX_FILL = (235, 242, 255)
 BOX_OUTLINE = (60, 90, 160)
+FREE_FILL = (232, 246, 236)
+FREE_OUTLINE = (52, 130, 82)
 TEXT_COLOR = (20, 20, 20)
+MUTED = (110, 110, 110)
 ARROW_COLOR = (90, 90, 90)
 
 OUTPUT_PATH = os.path.join(os.path.dirname(__file__), "..", "assets", "architecture.png")
 
 
-def _font(size: int) -> ImageFont.FreeTypeFont:
-    for candidate in (
-        "/System/Library/Fonts/Helvetica.ttc",
-        "/System/Library/Fonts/Supplemental/Arial.ttf",
-    ):
-        if os.path.exists(candidate):
-            return ImageFont.truetype(candidate, size)
+def _font(size: int, bold: bool = False):
+    candidates = (
+        ["/System/Library/Fonts/Supplemental/Arial Bold.ttf",
+         "/System/Library/Fonts/Helvetica.ttc"]
+        if bold else
+        ["/System/Library/Fonts/Helvetica.ttc",
+         "/System/Library/Fonts/Supplemental/Arial.ttf"]
+    )
+    for path in candidates:
+        if os.path.exists(path):
+            return ImageFont.truetype(path, size)
     return ImageFont.load_default()
 
 
-def _box(draw: ImageDraw.ImageDraw, xy, label: str, font: ImageFont.FreeTypeFont) -> None:
-    draw.rounded_rectangle(xy, radius=12, fill=BOX_FILL, outline=BOX_OUTLINE, width=2)
+def _box(draw, xy, title, subtitle=None, free=False):
+    fill = FREE_FILL if free else BOX_FILL
+    outline = FREE_OUTLINE if free else BOX_OUTLINE
+    draw.rounded_rectangle(xy, radius=12, fill=fill, outline=outline, width=2)
+
     x0, y0, x1, y1 = xy
-    bbox = draw.textbbox((0, 0), label, font=font)
-    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    draw.text(((x0 + x1) / 2 - tw / 2, (y0 + y1) / 2 - th / 2), label, fill=TEXT_COLOR, font=font)
+    cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
+    tf, sf = _font(17, bold=True), _font(13)
+
+    if subtitle:
+        b = draw.textbbox((0, 0), title, font=tf)
+        draw.text((cx - (b[2] - b[0]) / 2, cy - 18), title, fill=TEXT_COLOR, font=tf)
+        for i, line in enumerate(subtitle.split("\n")):
+            b = draw.textbbox((0, 0), line, font=sf)
+            draw.text((cx - (b[2] - b[0]) / 2, cy + 2 + i * 16), line, fill=MUTED, font=sf)
+    else:
+        b = draw.textbbox((0, 0), title, font=tf)
+        draw.text((cx - (b[2] - b[0]) / 2, cy - (b[3] - b[1]) / 2), title,
+                  fill=TEXT_COLOR, font=tf)
 
 
-def _arrow(draw: ImageDraw.ImageDraw, p0, p1) -> None:
-    draw.line([p0, p1], fill=ARROW_COLOR, width=2)
+def _arrow(draw, p0, p1, label=None, dashed=False):
+    if dashed:
+        x0, y0 = p0
+        x1, y1 = p1
+        total = max(((x1 - x0) ** 2 + (y1 - y0) ** 2) ** 0.5, 1e-6)
+        steps = int(total // 10)
+        for i in range(steps):
+            if i % 2:
+                continue
+            a = (x0 + (x1 - x0) * i / steps, y0 + (y1 - y0) * i / steps)
+            b = (x0 + (x1 - x0) * (i + 1) / steps, y0 + (y1 - y0) * (i + 1) / steps)
+            draw.line([a, b], fill=ARROW_COLOR, width=2)
+    else:
+        draw.line([p0, p1], fill=ARROW_COLOR, width=2)
+
     x1, y1 = p1
     dx, dy = x1 - p0[0], y1 - p0[1]
-    length = max((dx**2 + dy**2) ** 0.5, 1e-6)
+    length = max((dx ** 2 + dy ** 2) ** 0.5, 1e-6)
     ux, uy = dx / length, dy / length
-    size = 8
-    left = (x1 - size * ux + size * 0.5 * -uy, y1 - size * uy + size * 0.5 * ux)
-    right = (x1 - size * ux - size * 0.5 * -uy, y1 - size * uy - size * 0.5 * ux)
+    s = 8
+    left = (x1 - s * ux + s * 0.5 * -uy, y1 - s * uy + s * 0.5 * ux)
+    right = (x1 - s * ux - s * 0.5 * -uy, y1 - s * uy - s * 0.5 * ux)
     draw.polygon([p1, left, right], fill=ARROW_COLOR)
+
+    if label:
+        f = _font(13)
+        mx, my = (p0[0] + x1) / 2, (p0[1] + y1) / 2
+        b = draw.textbbox((0, 0), label, font=f)
+        draw.rectangle(
+            (mx - (b[2] - b[0]) / 2 - 4, my - 9, mx + (b[2] - b[0]) / 2 + 4, my + 9),
+            fill=BG,
+        )
+        draw.text((mx - (b[2] - b[0]) / 2, my - 8), label, fill=ARROW_COLOR, font=f)
 
 
 def main() -> None:
     img = Image.new("RGB", (WIDTH, HEIGHT), BG)
     draw = ImageDraw.Draw(img)
-    title_font = _font(28)
-    box_font = _font(18)
-    small_font = _font(14)
 
-    draw.text((40, 20), "MoviBot Architecture — ReAct Loop", fill=TEXT_COLOR, font=title_font)
+    draw.text((40, 26), "MoviBot Architecture", fill=TEXT_COLOR, font=_font(28, bold=True))
     draw.text(
-        (40, 58),
-        "(placeholder diagram — skeleton pass, to be refined)",
-        fill=(120, 120, 120),
-        font=small_font,
+        (40, 64),
+        f"Tool-calling agent over a 238-film catalog. Bounded at "
+        f"{loop.MAX_ROUNDS} model turns per request; all tools run locally at no cost.",
+        fill=MUTED, font=_font(14),
     )
 
-    # Core loop boxes
-    user_box = (40, 120, 260, 180)
-    reasoner_box = (460, 120, 700, 180)
-    stop_box = (460, 240, 700, 300)
-    synth_box = (460, 360, 700, 420)
-    answer_box = (900, 360, 1140, 420)
+    user = (40, 130, 250, 190)
+    planner = (500, 130, 740, 200)
+    answer = (990, 130, 1200, 190)
 
-    _box(draw, user_box, "User Request", box_font)
-    _box(draw, reasoner_box, "Reasoner\n(plan next action)", box_font)
-    _box(draw, stop_box, "Stop?", box_font)
-    _box(draw, synth_box, "Synthesizer", box_font)
-    _box(draw, answer_box, "Final Answer", box_font)
+    _box(draw, user, "User Request")
+    _box(draw, planner, "Planner", "LLM chooses tools\nand when to stop")
+    _box(draw, answer, "Final Answer")
 
-    _arrow(draw, (260, 150), (460, 150))
-    _arrow(draw, (580, 180), (580, 240))
-    _arrow(draw, (580, 300), (580, 360))
-    _arrow(draw, (700, 390), (900, 390))
+    _arrow(draw, (250, 160), (500, 160))
+    _arrow(draw, (740, 160), (990, 160), label="no more tools")
 
-    # Tools row
-    tools = ["CatalogFilter", "PlotSearch", "SceneSearch", "ExternalContext"]
-    tool_y0, tool_y1 = 500, 560
-    tool_w = 240
-    gap = 40
-    start_x = (WIDTH - (tool_w * len(tools) + gap * (len(tools) - 1))) / 2
-    tool_boxes = []
-    for i, name in enumerate(tools):
-        x0 = start_x + i * (tool_w + gap)
-        box = (x0, tool_y0, x0 + tool_w, tool_y1)
-        tool_boxes.append(box)
-        _box(draw, box, name, box_font)
+    # Tools row, labelled with the same names logged in the steps trace.
+    specs = [
+        (tools.TRACE_NAMES["filter_catalog"], "structured columns\nyear/genre/language"),
+        (tools.TRACE_NAMES["search_plots"], "semantic search\nlocal E5 vectors"),
+        (tools.TRACE_NAMES["read_synopses"], "full plot text\nwhat happens in it"),
+    ]
+    y0, y1 = 400, 480
+    w, gap = 300, 60
+    start = (WIDTH - (w * len(specs) + gap * (len(specs) - 1))) / 2
 
-    # Reasoner <-> tools ("Act"/"Observe")
-    for box in tool_boxes:
+    boxes = []
+    for i, (name, sub) in enumerate(specs):
+        x0 = start + i * (w + gap)
+        box = (x0, y0, x0 + w, y1)
+        boxes.append(box)
+        _box(draw, box, name, sub, free=True)
+
+    for box in boxes:
         cx = (box[0] + box[2]) / 2
-        _arrow(draw, (580, 180 + 20), (cx, tool_y0 - 40))
-    draw.text(
-        (start_x, tool_y0 - 40),
-        "Act",
-        fill=ARROW_COLOR,
-        font=small_font,
-    )
-    for box in tool_boxes:
-        cx = (box[0] + box[2]) / 2
-        _arrow(draw, (cx, tool_y0), (580, 300 - 10))
-    draw.text(
-        (start_x + tool_w * 2, tool_y0 - 40),
-        "Observe",
-        fill=ARROW_COLOR,
-        font=small_font,
-    )
+        _arrow(draw, (cx, y0 - 100), (cx, y0))
+        _arrow(draw, (cx + 14, y0), (cx + 14, y0 - 100), dashed=True)
+
+    draw.text((start - 4, y0 - 130), "call", fill=ARROW_COLOR, font=_font(13))
+    draw.text((boxes[-1][2] - 60, y0 - 130), "results", fill=ARROW_COLOR, font=_font(13))
+    draw.line([(620, 200), (620, 300)], fill=ARROW_COLOR, width=2)
+    draw.line([(240, 300), (1000, 300)], fill=ARROW_COLOR, width=2)
 
     draw.text(
-        (40, 620),
-        "Reasoner loops through Act/Observe against the four tools until Stop?\n"
-        "resolves, then Synthesizer composes the Final Answer. Every LLM call\n"
-        "along this path is logged in the /api/execute steps trace under the\n"
-        "same module name shown here.",
-        fill=(90, 90, 90),
-        font=small_font,
+        (40, 540),
+        "The Planner picks only the tools a query needs, so simple requests finish in one round\n"
+        "and hard ones in three. Two guardrails live below this diagram, in the data and the tool\n"
+        "code rather than in the prompt, so no plan can bypass them: the catalog holds feature\n"
+        "films only (shorts under 45 minutes are dropped at preparation time), and results are\n"
+        "ordered by a vote-count-weighted rating rather than the raw average.\n\n"
+        "Every box above appears by this exact name in the /api/execute steps trace.",
+        fill=(80, 80, 80), font=_font(14), spacing=5,
     )
 
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
     img.save(OUTPUT_PATH)
-    print(f"Wrote {OUTPUT_PATH}")
+    print(f"Wrote {OUTPUT_PATH}  ({', '.join(n for n, _ in specs)})")
 
 
 if __name__ == "__main__":

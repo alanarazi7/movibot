@@ -1,0 +1,15 @@
+# Local development only -- do NOT add these to requirements.txt.
+#
+# requirements.txt is what Vercel installs, and Vercel's serverless bundle is
+# capped at 250 MB unzipped. torch alone is ~518 MB, so the local embedding
+# backend cannot run in production by construction.
+#
+# Consequence: production MUST run MOVIBOT_EMBEDDINGS=cloud (Pinecone), which
+# means the Pinecone index has to be populated before the first deploy.
+# Locally, MOVIBOT_EMBEDDINGS defaults to `local` and needs what follows.
+
+-r requirements.txt
+
+# Runs intfloat/e5-small-v2 on this machine for agent/embeddings.py.
+# Pulls in torch as a transitive dependency.
+sentence-transformers>=3.0.0
