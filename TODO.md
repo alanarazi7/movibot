@@ -1,9 +1,14 @@
 # TODO
 
-Working checklist. Due **2026-08-23**. Last revised **2026-08-13**.
+Working checklist. Due **2026-08-23**. Last revised **2026-08-16**.
 
 Ordered by what unblocks what. Anything that spends budget is marked and needs
-explicit go-ahead first — nothing has been spent to date.
+explicit go-ahead first — **nothing has been spent to date**.
+
+The app is deployed and working at
+[movibot-gamma.vercel.app](https://movibot-gamma.vercel.app); everything except
+answering an actual query works there today. What remains is almost entirely
+gated on credentials.
 
 ---
 
@@ -15,8 +20,8 @@ explicit go-ahead first — nothing has been spent to date.
 
 ## Blocked on credentials
 
-`.env` still holds placeholder values (`your-llmod-api-key`, etc). Everything
-below the "free" line works without them; nothing above it can start.
+`.env` still holds placeholder values. Everything below the "free" line works
+without them; nothing on the paid track can start.
 
 - [ ] Real `OPENAI_API_KEY` + `OPENAI_BASE_URL` (LLMod.ai)
 - [ ] Real `PINECONE_API_KEY`
@@ -28,13 +33,41 @@ below the "free" line works without them; nothing above it can start.
 
 ---
 
-## Free track — can start now, costs nothing
+## Next up — free, agreed, not yet done
 
-### 1. Retrieval quality — partially solved, needs a decision
+### 1. Explain chunking where it is actually seen
 
-Chunking landed (see Done). It fixed reading completely and improved retrieval
-substantially, but exposed a second, different problem: **E5-small-v2 ranks by
-surface events, not by theme**, and its scores sit in a very narrow band.
+The Data tab shows "N passages in the search index" with no explanation, which
+is where the question gets asked. The parameters are only documented in Project
+Decisions → Retrieval and in `agent/chunking.py`.
+
+- [ ] Add a line under the passages expandable: 300 tokens, 20% overlap, and
+      why consecutive passages repeat a little
+
+### 2. Close the semantic coverage gap
+
+**234** films have readable plot text but only **159 are semantically
+searchable**, because the index was built from the MPST file before the
+Wikipedia cache existed. The other **75** can be read but never *found* — they
+surface only if a structured filter lands on them first. Their Wikipedia plots
+are not scraps: median 611 words against MPST's 892.
+
+- [ ] Point `scripts/build_chunk_index.py` at the Wikipedia plot text as well,
+      re-embed locally (free), and confirm 159 → 234 searchable
+- [ ] Regenerate `public/data/` afterwards — the Data tab's passage counts and
+      the architecture diagram both read from the index
+- [ ] Note the trade-off before doing it: the local index would then differ
+      from a Pinecone index built only from MPST, so item 6 must match
+
+---
+
+## Free track — larger, still open
+
+### 3. Retrieval quality — partially solved, needs a decision after the first run
+
+Chunking fixed reading completely and improved retrieval substantially, but
+exposed a different problem: **E5-small-v2 ranks by surface events, not by
+theme**, and its scores sit in a very narrow band.
 
 Frozen's rank for the same underlying question, by phrasing:
 
@@ -46,95 +79,114 @@ Frozen's rank for the same underlying question, by phrasing:
 | "someone you just met turns out to be the villain" | #93 |
 
 Total score spread across all 159 films is 0.076; across the top 20 it is
-0.033. Signal exists but is weak and highly phrasing-sensitive.
+0.033. Signal exists but is weak and highly phrasing-sensitive. Mitigated for
+now by instructing the planner to search for concrete events rather than themes.
 
-Mitigated for now by instructing the planner to search for concrete events
-rather than themes (`agent/prompts.py`). Options if that proves insufficient
-after the first real run:
+- [ ] Try `text-embedding-3-small` instead of E5 — 1536-dim and much stronger;
+      ~$0.01 to index all 1,254 passages
+- [ ] Or have the planner issue 2–3 differently-phrased searches and union them
+- [ ] Or accept it: the planner reads `matching_passage` as evidence, so a weak
+      ranker degrades to "reads a few more candidates", not to a wrong answer
 
-- [ ] Try `text-embedding-3-small` for retrieval instead of E5 — 1536-dim and
-      much stronger; costs ~$0.01 to index all 1,254 passages
-- [ ] Have the planner issue 2–3 differently-phrased searches and union them
-- [ ] Accept it: the planner reads `matching_passage` as evidence, so a weak
-      ranker degrades to "reads a few more candidates" rather than to a wrong
-      answer
+### 4. Decide whether to keep the local embedding backend
 
-### 2. Decide whether to keep the local embedding backend
-
-torch is 518 MB, cannot deploy to Vercel (250 MB limit), and creates a
-local/cloud divergence risk. The sibling `medium-rag-hw` project ships the same
-kind of system with a 3-line `requirements.txt` and embeds via the API.
+torch is ~518 MB against Vercel's 250 MB limit, so the local backend cannot ship
+to production — which means local and cloud already take different paths.
 
 - [ ] Decide: keep local E5 for free offline dev, or drop it and use the API in
-      both dev and prod (query embedding is ~$0.000002 per call)
+      both (query embedding is ~$0.000002 per call)
 
-### 3. Load Supabase (free, no model calls)
+### 5. Load Supabase (free, no model calls)
 
 - [ ] Run `data_preprocessing/schema.sql` in the Supabase SQL editor — must go
-      through the web UI, API keys don't grant DDL. Now includes `weighted_rating`.
-- [ ] Implement the `--supabase-only` half of `scripts/ingest.py` (still a stub)
-- [ ] Verify 238 rows, and that `genres`/`keywords` land as real `jsonb` not
-      JSON-encoded strings
+      through the web UI, API keys don't grant DDL
+- [ ] Implement the `--supabase-only` half of `scripts/ingest.py` (36 lines,
+      still a stub)
+- [ ] Verify 238 rows, and that `genres`/`keywords` land as real `jsonb` rather
+      than JSON-encoded strings
 - [ ] Sanity-check `MOVIBOT_BACKEND=cloud` returns identical results to local
-
-### 4. Close the semantic coverage gap (optional)
-
-220 films have readable plot text but only **159 are semantically searchable**,
-because vectors were built only for the MPST subset. Closing it is free locally
-but would make the local and Pinecone indexes diverge — decide before doing it.
 
 ---
 
 ## Paid track — needs explicit go-ahead
 
-### 5. First real planner run  💰 small
+### 6. First real planner run  💰 small
+
+**This is the highest-value remaining step.** Every behaviour below is
+currently a prediction; none has been observed.
 
 - [ ] Unset `MOVIBOT_OFFLINE`, put real credentials in `.env`
-- [ ] One query end to end via `agent.loop.execute(...)`
-- [ ] Confirm the planner picks sane tools, respects exclusions, and stays
-      inside `MAX_ROUNDS = 5`
-- [ ] Check the returned `budget` block for actual token usage
-- [ ] Capture the real response into `agent_info.json` `prompt_examples` —
-      both entries currently say the prose is pending this run
-- [ ] Re-test query D ("warns about trusting strangers") — it is the one that
-      exposed the truncation defect
+- [ ] Run the **11 test-bed cases** on the front page, in order. Each shows its
+      expected behaviour; compare against what actually happens
+- [ ] The three that are traps rather than exercises:
+      - "starring Tom Hanks" — must refuse for want of cast data, *not* answer
+        Toy Story from pretraining
+      - "besides Frozen and Moana" — must become an `exclude_titles` filter,
+        not merely a title it avoids naming
+      - "a Disney movie in Hindi" — Dangal has 140 votes and sits #40 of 238 on
+        broad queries; it must still win this narrow one
+- [ ] Confirm the planner stays inside `MAX_ROUNDS = 5` and check the returned
+      `budget` block for real token usage
+- [ ] Watch for over-refusal on "a nice comedy" (should qualify, not refuse) and
+      for invented post-2017 titles on "the latest Disney hit"
+- [ ] Capture a real response into `agent_info.json` `prompt_examples` — both
+      entries still say the prose is pending this run
 
-### 6. Pinecone index  💰 ~$0.01
+### 7. Pinecone index  💰 ~$0.01
 
 - [ ] Create index `movibot-plots`, cosine, dim **1536**, serverless
 - [ ] Implement the `--pinecone-only` half of `scripts/ingest.py`
-- [ ] Embed via LLMod.ai, batched (~50 per call), upsert metadata
-      `{movie_id, title, release_year}` only — never `embedding_text`
-- [ ] Test with `--limit 20` first, verify vector count, then the full run
-- [ ] Index **1,254 passages**, not 159 documents — chunking has landed, so
-      ingestion must use `agent/chunking.py` to stay identical to the local path
-- [ ] Metadata per vector: `{movie_id, title, chunk_index, text}`
+- [ ] Index **1,254 passages** (or 2,000-odd if item 2 lands first), not 159
+      documents — ingestion must use `agent/chunking.py` to stay identical to
+      the local path
+- [ ] Test with `--limit 20`, verify vector count, then the full run
+- [ ] Metadata per vector: `{movie_id, title, chunk_index, text}` — never
+      `embedding_text`
 
-### 7. Deploy  💰 inherits above
+### 8. Production with credentials  💰 inherits above
 
-- [ ] **Production must set `MOVIBOT_EMBEDDINGS=cloud`.** The local E5 backend
-      cannot run on Vercel: torch is ~518 MB against a 250 MB serverless limit.
-      This makes item 5 a hard prerequisite for deploy, not an optimisation.
 - [ ] Set Vercel env vars: `OPENAI_API_KEY`, `OPENAI_BASE_URL`,
       `PINECONE_API_KEY`, `PINECONE_INDEX_NAME`, `SUPABASE_URL`, `SUPABASE_KEY`,
-      `MOVIBOT_BACKEND=cloud`, `MOVIBOT_EMBEDDINGS=cloud`
-- [ ] Deploy, verify all four endpoints in production
+      `MOVIBOT_BACKEND=cloud`, **`MOVIBOT_EMBEDDINGS=cloud`**
+- [ ] `MOVIBOT_EMBEDDINGS=cloud` is mandatory in production — the local E5
+      backend cannot run there, so item 7 is a hard prerequisite
 - [ ] Confirm a real query finishes well inside Vercel's 300s limit
-- [x] Confirm `steps` module names match `assets/architecture.png` exactly —
-      the diagram now reads them from `tools.TRACE_NAMES`, so they cannot drift
-- [ ] `README.md` — fill in the deployed URL
+- [ ] Re-run the 11 test cases against production, not just locally
+
+---
+
+## How to deploy
+
+**Deploys do not happen on `git push`.** This project is not Git-connected on
+Vercel; a push updates GitHub only. Production changes require:
+
+```bash
+vercel --prod --yes
+```
+
+Do not trust the exit code — it returns 0 without necessarily promoting.
+Verify by comparing bytes:
+
+```bash
+wc -c < public/index.html
+vercel curl -sI https://movibot-gamma.vercel.app/ | grep -i content-length
+```
+
+`.vercelignore` keeps 113 MB of raw Kaggle input, the course PDFs, and the local
+`.env` files out of the upload. It deliberately does **not** exclude
+`data_preprocessing/data_ready/`, which the agent reads at runtime.
 
 ---
 
 ## Budget
 
-$13 cap. **Spent so far: $0.** Every tool runs locally; only planner turns and
-Pinecone embedding cost anything.
+$13 cap. **Spent so far: $0.**
 
 | Item | Estimate |
 |---|---|
 | Pinecone embeddings (1,254 passages, ~350K tokens) | ~$0.01 |
 | Planner turns | ≤5 model calls per query, hard-capped in `agent/loop.py` |
+| The 11 test cases, once | a few cents |
 
 `MOVIBOT_OFFLINE=1` blocks all spending at the client, not just in the loop.
 Placeholder credentials are detected and rejected rather than attempted.
@@ -152,90 +204,76 @@ Placeholder credentials are detected and rejected rather than attempted.
       the default sort. Chosen over a `vote_count` floor, which would have
       deleted 141 of 238 films and made narrow queries unanswerable
 - [x] Outputs: `supabase_movies.csv` (238), `pinecone_candidates.csv` (159)
-- [x] `wikipedia_cache.csv` pruned to match (238)
 - [x] Pipeline reproduces exactly from raw input
-
-### Wikipedia resolution fixed (2026-08-14)
-
-- [x] **`wikipedia_client.py` rewritten.** It tried the bare title first and
-      accepted any extract over 200 chars — a bar every *disambiguation* page
-      clears, so films like Frozen cached a list of links instead of an article
-- [x] Now tries `"{title} ({year} film)"` first and rejects bad landings:
-      disambiguation pages via `pageprops.disambiguation`, `List of …` index
-      pages, and any article whose lead sentence names the wrong year
-- [x] Caught two redirect traps: *The Prince and the Pauper* → *List of
-      adaptations of…*, and *Beverly Hills Chihuahua 3* → the 2008 first film,
-      which had been caching the **wrong plot** entirely
-- [x] Scraper fetched each page twice, the second time without the year, so the
-      two halves of a row could come from different articles. Now fetches once
-- [x] Coverage: articles 228 → **237**, Plot sections 167 → **233**,
-      non-plot 208 → **237**
-
-### Cleanup (2026-08-14)
-
-- [x] **Transcripts dropped entirely** — `find_transcripts.py` and
-      `transcript_matches.csv` deleted; 9/238 coverage was never usable
-- [x] **`data_preprocessing/PIPELINE_REVIEW.md`** is now the single rationale
-      doc for the pipeline
-- [x] Deleted as superseded: `DATA_SOURCES.md`, `data cleaning rules.md`,
-      `NEXT_STEPS.md`, `DATA_IMPROVEMENTS_SUMMARY.md`, and the empty root
-      `data_ready/`. Kaggle download steps preserved in the usage doc
-- [x] `README.md` rewritten — it still described a four-tool ReAct loop with
-      mock modules and claimed Wikipedia was fetched live
-- [x] `schema.sql` no longer declares `poster_path`/`homepage`, which the CSV
-      never produced
-- [x] Project Decisions tab added to the GUI, with the full Frozen record
 
 ### Agent
 
 - [x] Rebuilt as a **tool-calling agent**, replacing the six-module ReAct loop
 - [x] Three tools: `filter_catalog`, `search_plots`, `read_synopses`
 - [x] `agent/loop.py` — native tool calling, bounded at 5 model turns
-- [x] `agent/catalog.py`, `agent/embeddings.py` — local/cloud backends, local default
 - [x] Guardrails enforced in data and tool code, never the prompt
-- [x] Deleted `react_loop.py` and all four mock tool modules; no mock model by
-      design, so a broken config cannot masquerade as a working agent
+- [x] No mock model by design, so a broken config cannot masquerade as working
 - [x] `MOVIBOT_OFFLINE` kill switch + placeholder-credential detection
-- [x] `wikipedia_client.py` moved to `data_preprocessing/` — the agent reads the
-      offline cache and never fetches Wikipedia live
-- [x] Verified end to end at zero cost: all endpoints, both guard paths, and
-      semantic retrieval (*Ratatouille*, *Mulan* both #1 from paraphrase)
 
 ### Chunked retrieval
 
 - [x] `agent/chunking.py` — **sentence**-boundary chunking at 300 tokens / 20%
-      overlap. Paragraph chunking (the `medium-rag-hw` approach) was measured
-      and rejected: **zero** synopses contain blank-line paragraphs and 66 of
-      159 have no newline at all, so it would emit one chunk per document
-- [x] Parameters chosen from measurement, not inherited: sentences are median
-      23 tokens, so 300 holds ~13 — about one scene, tight enough that a story
-      beat dominates its passage
-- [x] Handles this corpus's scrape defect (`...bot-fights.His older brother`)
-      where the space after a full stop was lost
-- [x] `scripts/build_chunk_index.py` — **1,254 passages from 159 films**
-      (7.9 per film), embedded locally with E5. Free, offline
-- [x] `search_plots` over-fetches passages, scores each film by its **best**
-      passage, and returns that passage as quotable evidence
-- [x] `read_synopses` takes `about` and returns relevant passages in story
-      order instead of the opening N characters
-- [x] Frozen's betrayal beat is now retrievable and readable — chunk 21 carries
-      "if only there was someone here who loved you". Previously invisible at
-      both stages
-- [x] Superseded document-level index (`plot_embeddings.*`) deleted
+      overlap. Paragraph chunking was measured and rejected: **zero** synopses
+      contain blank-line paragraphs and 66 of 159 have no newline at all
+- [x] **1,254 passages from 159 films**, embedded locally with E5, free
+- [x] `search_plots` scores each film by its **best** passage and returns that
+      passage as quotable evidence; `read_synopses` returns relevant passages in
+      story order rather than the opening N characters
+- [x] Frozen's betrayal beat (chunk 21) is now retrievable — at 81% through the
+      synopsis, it was invisible to the old document-level index
 
-### Docs
+### Wikipedia resolution fixed (2026-08-14)
 
-- [x] `assets/architecture.png` regenerated for the new module names
-- [x] `agent_info.json` rewritten; `data_preprocessing/PIPELINE_REVIEW.md` documents
-      the pipeline, its guardrails, and the open findings
-- [x] Row counts corrected across all six docs (37 substitutions, recomputed not scaled)
-- [x] `requirements-local.txt` split out, since torch cannot ship to Vercel
-- [x] Architecture page published:
-      https://claude.ai/code/artifact/1119c2df-5651-4fbf-903b-ba170a49ff5a
+- [x] `wikipedia_client.py` rewritten. It tried the bare title first and took
+      any extract over 200 chars — a bar every *disambiguation* page clears, so
+      Frozen cached a list of links instead of an article
+- [x] Now tries `"{title} ({year} film)"` first and rejects bad landings:
+      disambiguation pages via `pageprops.disambiguation`, `List of …` pages,
+      and any article whose lead sentence names the wrong year
+- [x] Caught two redirect traps: *The Prince and the Pauper* → *List of
+      adaptations of…*, and *Beverly Hills Chihuahua 3* → the 2008 first film,
+      which had been caching the **wrong plot** entirely
+- [x] Coverage: articles 228 → **237**, Plot sections 167 → **233**
 
----
+### Scope and honesty (2026-08-15)
 
-## Notes
+- [x] The prompt now states the catalog's bounds as data properties — Disney and
+      Pixar only, 1940–2017, above 45 minutes, no cast or crew — and separates
+      refusing a premise from qualifying an answer
+- [x] `MAX_RECOMMENDATIONS = 3`; exhaustive requests are an explicit exception
+- [x] **ON BEING EXHAUSTIVE** — completeness over 238 films is possible but
+      prohibitively expensive, so the tools filter, rank, then read at most
+      `MAX_SYNOPSES`. The prompt names that a heuristic and forbids presenting a
+      shortlist as "the best in the catalog"
+- [x] 2017 boundary documented as a property of the Kaggle snapshot
 
-- Transcripts: investigated and dropped — only 9 of 238 films matched the
-  HuggingFace corpus (3.8%). Script and coverage report deleted 2026-08-14.
+### GUI
+
+- [x] **🗃️ Data tab** — all 238 films, searchable and filterable, with each
+      film's complete stored record (metadata, synopsis, passages, Wikipedia)
+      lazy-loaded from static JSON so the page stays small
+- [x] **📋 Project Decisions** — Retrieval written; Agent and Deployment pending
+- [x] **Test bed** — 11 hardcoded cases with expected behaviour, covering each
+      tool, both scope limits, and the plausible failure modes
+- [x] Team-email warning banner, derived from `/api/team_info` so it clears
+      itself
+
+### Docs and deployment
+
+- [x] `data_preprocessing/PIPELINE_REVIEW.md` is the single pipeline rationale;
+      `DATA_SOURCES.md`, `data cleaning rules.md`, `NEXT_STEPS.md` and
+      `DATA_IMPROVEMENTS_SUMMARY.md` deleted as superseded
+- [x] `README.md` rewritten — it had described a four-tool ReAct loop with mock
+      modules and claimed Wikipedia was fetched live
+- [x] Transcripts dropped entirely (9 of 238 matched; too sparse to use)
+- [x] `assets/architecture.png` redrawn with the data layer, the metered/free
+      split, and every figure read at render time so it cannot drift
+- [x] `.vercelignore` added — a deploy would otherwise have uploaded 113 MB of
+      raw Kaggle input and the local `.env` files
+- [x] Deployed to production and verified: all four endpoints, the static
+      `/data/` routes, and graceful failure on `/api/execute` without credentials
