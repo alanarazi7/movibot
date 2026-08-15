@@ -521,7 +521,9 @@
         <p style="color:#666;font-size:0.85rem;margin-bottom:0.8rem;">
           Eleven cases covering each tool, each scope limit, and the ways the agent can
           plausibly go wrong. Click one to load it, then <b>Run Agent</b> and compare the
-          answer against what it should have done.
+          answer against what it should have done. A normal answer names at most three
+          films (<code>MAX_RECOMMENDATIONS</code>); only an explicit request for everything
+          should produce a full list.
         </p>
         <div id="test-cases"></div>
       </div>
@@ -912,7 +914,7 @@ C = 6.199 catalog mean    m = 300 vote prior</pre>
       {
         kind: 'list',
         q: 'All Disney movies from 1990 onwards with no deaths that involve animals, for a 3-year-old. Be exhaustive, don’t miss any.',
-        expect: 'The one case where a single pick is wrong. Expect a full list, plus a statement of what it is complete with respect to — it can only claim completeness over the films it actually read (at most 8).'
+        expect: 'The one case where a shortlist is wrong. Expect every film that survived the filters, plus a statement of what the list is complete with respect to. Exhaustiveness over all 238 is possible but prohibitively expensive, so it filters first and reads at most 8 plots — it must not present that heuristic as a proof.'
       },
       {
         kind: 'answer',
