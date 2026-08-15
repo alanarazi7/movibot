@@ -161,6 +161,55 @@
       margin-top: 0.5rem;
     }
 
+    .test-case {
+      display: block;
+      width: 100%;
+      text-align: left;
+      background: #fff;
+      border: 1px solid #e4e4e4;
+      border-radius: 8px;
+      padding: 0.7rem 0.85rem;
+      margin: 0 0 0.5rem;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.85rem;
+      color: #222;
+      font-weight: 400;
+    }
+    .test-case:hover { border-color: #0070f3; background: #f7fbff; }
+    .test-case:focus-visible { outline: 2px solid #0070f3; outline-offset: 1px; }
+    .test-case.loaded { border-color: #0070f3; background: #f0f7ff; }
+    .test-q { font-weight: 600; display: block; margin-bottom: 0.25rem; }
+    .test-expect { color: #666; font-size: 0.8rem; display: block; }
+    .kind {
+      display: inline-block;
+      font-size: 0.63rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      padding: 0.12rem 0.45rem;
+      border-radius: 3px;
+      margin-right: 0.45rem;
+      vertical-align: 1px;
+    }
+    .kind-answer  { background: #e8f4ec; color: #2e7d32; }
+    .kind-refuse  { background: #fdecec; color: #c62828; }
+    .kind-qualify { background: #fdf3e2; color: #a5680b; }
+    .kind-list    { background: #eceaf8; color: #5b46b5; }
+
+    #expected-box {
+      display: none;
+      background: #f7f9fb;
+      border: 1px solid #e4e9ee;
+      border-left: 3px solid #0070f3;
+      border-radius: 6px;
+      padding: 0.75rem 0.9rem;
+      margin-bottom: 1.2rem;
+      font-size: 0.85rem;
+      color: #444;
+    }
+    #expected-box b { color: #0070f3; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 0.25rem; }
+
     .warning-banner {
       display: none;
       background: #fff8e6;
@@ -455,6 +504,8 @@
         <div id="status"></div>
       </div>
 
+      <div id="expected-box"></div>
+
       <div class="card" id="response-card">
         <label>Response</label>
         <div class="response-text" id="response-text"></div>
@@ -466,32 +517,13 @@
       </div>
 
       <div class="card">
-        <label>Example requests</label>
-        <div class="examples">
-          <button class="example-btn" onclick="fillExample(this)">Bring me all not-too-old (1990+) Disney movies with no deaths, that involve animals, for my 3 year old kid. Please be exhaustive - don't miss a single movie.</button>
-          <button class="example-btn" onclick="fillExample(this)">Find Pixar movies from the last 10 years that are lighthearted and don't have any major character deaths.</button>
-        </div>
-      </div>
-
-      <div class="card">
-        <label>Out-of-scope requests</label>
-        <p style="color: #666; font-size: 0.85rem; margin-bottom: 0.6rem;">
-          The catalog is Disney and Pixar feature films up to 2017. These three ask for
-          things it cannot hold, and the agent is expected to say so rather than quietly
-          answer with the nearest thing it has.
+        <label>Test bed</label>
+        <p style="color:#666;font-size:0.85rem;margin-bottom:0.8rem;">
+          Eleven cases covering each tool, each scope limit, and the ways the agent can
+          plausibly go wrong. Click one to load it, then <b>Run Agent</b> and compare the
+          answer against what it should have done.
         </p>
-        <div class="examples">
-          <button class="example-btn" onclick="fillExample(this)">Recommend me a short 25 minutes movie for kids</button>
-          <button class="example-btn" onclick="fillExample(this)">Bring me the latest hit of Disney</button>
-          <button class="example-btn" onclick="fillExample(this)">Can you recommend me a nice comedy?</button>
-        </div>
-        <p style="color: #888; font-size: 0.8rem; margin-top: 0.7rem;">
-          Expected: <strong>refuse</strong> &mdash; no film under 45 minutes exists.
-          <strong>Refuse</strong> &mdash; the catalog stops at 2017, so it cannot know what is
-          new; it should offer its own newest instead. <strong>Answer, but qualify</strong>
-          &mdash; 116 comedies do exist, so the honest reply names the Disney/Pixar universe
-          it is drawing from before recommending one.
-        </p>
+        <div id="test-cases"></div>
       </div>
 
       <div class="card">
@@ -844,9 +876,99 @@ C = 6.199 catalog mean    m = 300 vote prior</pre>
 
     document.addEventListener('DOMContentLoaded', checkTeamInfo);
 
-    function fillExample(btn) {
-      document.getElementById('prompt').value = btn.textContent.trim();
+    // --- Test bed -------------------------------------------------------
+    // Each case pairs a query with what the agent should do. Chosen to cover
+    // one tool each, both scope limits, and the specific ways this agent can
+    // plausibly go wrong: answering from pretraining instead of the catalog,
+    // treating an exclusion as "don't mention it", and collapsing an
+    // exhaustive request into a single pick.
+
+    const TEST_CASES = [
+      {
+        kind: 'answer',
+        q: 'A Disney movie from the 1990s for a family evening',
+        expect: 'One CatalogFilter call, no search. A 1990–1999 film, best-rated first — The Lion King (1994) is top by weighted rating. Should not need to read any plot.'
+      },
+      {
+        kind: 'answer',
+        q: 'Best empowering princess movie besides Frozen and Moana',
+        expect: 'Both titles passed to exclude_titles as a real filter, not merely left unmentioned. Expect Mulan (1998) or Beauty and the Beast (1991).'
+      },
+      {
+        kind: 'answer',
+        q: 'A Disney movie in Hindi',
+        expect: 'Dangal (2016). The narrow-query case: only 2 Hindi films exist, and Dangal has just 140 votes — it should still win here, though it sits at #40 of 238 on broad queries.'
+      },
+      {
+        kind: 'answer',
+        q: 'A film where someone pretends to love another to seize power',
+        expect: 'PlotSearch should surface Frozen (2013) via Hans’s betrayal, quoting passage 109445_21 as evidence. Retrieval here is phrasing-sensitive — concrete events rank far better than abstract themes.'
+      },
+      {
+        kind: 'answer',
+        q: 'Something safe for a toddler where nobody dies',
+        expect: 'Must call SynopsisReader and cite what it read. Genre and keywords cannot establish that nobody dies; if it did not read a plot, it must say the check was not performed.'
+      },
+      {
+        kind: 'list',
+        q: 'All Disney movies from 1990 onwards with no deaths that involve animals, for a 3-year-old. Be exhaustive, don’t miss any.',
+        expect: 'The one case where a single pick is wrong. Expect a full list, plus a statement of what it is complete with respect to — it can only claim completeness over the films it actually read (at most 8).'
+      },
+      {
+        kind: 'answer',
+        q: 'Pixar movies from the last 10 years that are lighthearted, with no major character deaths',
+        expect: 'Ambiguity test: "last 10 years" is relative to a catalog ending in 2017. Expect Inside Out (2015) or Up (2009) territory, and ideally a note that recency is measured against 2017.'
+      },
+      {
+        kind: 'refuse',
+        q: 'Recommend me a short 25 minutes movie for kids',
+        expect: 'Refuse. Nothing under 45 minutes exists — shorts were dropped at preparation time. Offering a 90-minute feature as though it answered the question is the failure to watch for.'
+      },
+      {
+        kind: 'refuse',
+        q: 'Bring me the latest hit of Disney',
+        expect: 'Refuse, then offer its own newest: Cars 3, Beauty and the Beast, or Guardians of the Galaxy Vol. 2 (all 2017), stated as newest in catalog rather than newest in reality. Inventing a post-2017 title is the failure to watch for.'
+      },
+      {
+        kind: 'refuse',
+        q: 'Find me a movie starring Tom Hanks',
+        expect: 'Refuse — the catalog holds no cast or crew columns. The trap: Toy Story is in the catalog and the model knows from pretraining that Hanks voices Woody, so it may answer from memory rather than from a tool.'
+      },
+      {
+        kind: 'qualify',
+        q: 'Can you recommend me a nice comedy?',
+        expect: 'Answerable — 116 comedies exist — but narrower than the user assumes. Should name the Disney/Pixar, pre-2018 universe before recommending, so the pick is not mistaken for a survey of all comedies.'
+      }
+    ];
+
+    const KIND_LABEL = { answer: 'answers', list: 'lists all', refuse: 'refuses', qualify: 'qualifies' };
+
+    function renderTestCases() {
+      const host = document.getElementById('test-cases');
+      if (!host) return;
+      host.innerHTML = TEST_CASES.map((c, i) => `
+        <button class="test-case" data-i="${i}">
+          <span class="test-q"><span class="kind kind-${c.kind}">${KIND_LABEL[c.kind]}</span>${escapeHtml(c.q)}</span>
+          <span class="test-expect">${escapeHtml(c.expect)}</span>
+        </button>
+      `).join('');
+
+      host.addEventListener('click', function (e) {
+        const btn = e.target.closest('.test-case');
+        if (!btn) return;
+        const c = TEST_CASES[Number(btn.dataset.i)];
+        document.getElementById('prompt').value = c.q;
+        host.querySelectorAll('.test-case').forEach(b => b.classList.remove('loaded'));
+        btn.classList.add('loaded');
+
+        const box = document.getElementById('expected-box');
+        box.innerHTML = '<b>Expected — ' + KIND_LABEL[c.kind] + '</b>' + escapeHtml(c.expect);
+        box.style.display = 'block';
+        document.getElementById('prompt').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
     }
+
+    document.addEventListener('DOMContentLoaded', renderTestCases);
 
     // --- Data Navigator -------------------------------------------------
     // Two tiers: catalog.json (metadata for all 238 films) loads once when the
