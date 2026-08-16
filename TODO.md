@@ -137,7 +137,14 @@ to production — which means local and cloud already take different paths.
 **This is the highest-value remaining step.** Every behaviour below is
 currently a prediction; none has been observed.
 
-- [ ] Unset `MOVIBOT_OFFLINE`, put real credentials in `.env`
+- [x] Credentials in `.env`; **first real call succeeded 2026-08-16**
+      ("what is your name and purpose" → 1 model call, 0 tool calls, 2,613 +
+      73 tokens, ~$0.0008). Two fixes it exposed: gpt-5 models reject
+      `temperature != 1`, and token counts were structurally always zero
+      because `complete()` discarded the response carrying `.usage`
+- [ ] **Trim the system prompt.** It is 8,373 chars / ~2,600 tokens on every
+      turn, and the brief asks to "minimize prompt/context size (only what's
+      needed)". At 5 turns that is ~13K tokens of instructions per query
 - [ ] Run the **11 test-bed cases** on the front page, in order. Each shows its
       expected behaviour; compare against what actually happens
 - [ ] The three that are traps rather than exercises:

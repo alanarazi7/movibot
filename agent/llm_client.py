@@ -22,8 +22,18 @@ from typing import Any
 DEFAULT_MODEL = "MB5R2CF-azure/gpt-5.4-mini"
 
 # Low but not zero: the loop should make the same tool choices run to run,
-# while the final prose stays readable.
+# while the final prose stays readable. Not sent to gpt-5 models, which reject
+# any temperature other than 1 -- see supports_temperature().
 TEMPERATURE = 0.2
+
+
+def supports_temperature(model: str) -> bool:
+    """gpt-5 models accept only temperature=1, and 400 on anything else.
+
+    Sending the default and letting the provider ignore it is not an option:
+    LiteLLM raises UnsupportedParamsError rather than dropping the parameter.
+    """
+    return "gpt-5" not in model.lower()
 
 # One turn's reply is either a few tool calls or a short recommendation.
 MAX_TOKENS = 1200
@@ -90,22 +100,27 @@ def complete(
 ) -> Any:
     """One chat completion, optionally offering tools.
 
-    Returns the raw `message` object so the caller can inspect `.tool_calls`
-    and `.content` and append it verbatim to the conversation, which the
-    tool-calling protocol requires.
+    Returns `(message, usage)`. The message is the raw object, so the caller
+    can inspect `.tool_calls` and `.content` and append it verbatim to the
+    conversation, which the tool-calling protocol requires. The usage counts
+    ride alongside because they live on the response, not the message -- an
+    earlier version returned the message alone, so every token count in the
+    budget block was silently zero.
     """
+    model = model_name()
     kwargs: dict[str, Any] = {
-        "model": model_name(),
+        "model": model,
         "messages": messages,
-        "temperature": TEMPERATURE,
         "max_tokens": MAX_TOKENS,
     }
+    if supports_temperature(model):
+        kwargs["temperature"] = TEMPERATURE
     if tools:
         kwargs["tools"] = tools
         kwargs["tool_choice"] = "auto"
 
     response = _client().chat.completions.create(**kwargs)
-    return response.choices[0].message
+    return response.choices[0].message, usage_of(response)
 
 
 def usage_of(response: Any) -> dict[str, int]:

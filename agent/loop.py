@@ -72,10 +72,12 @@ def execute(prompt: str) -> dict[str, Any]:
             # On the last round, withhold the tools so the model has to answer
             # with what it already has instead of requesting a call we would
             # have to discard.
-            message = llm_client.complete(
+            message, usage = llm_client.complete(
                 messages, tools=None if final_round else tools.TOOL_SCHEMAS
             )
             budget["model_calls"] += 1
+            budget["prompt_tokens"] += usage["prompt_tokens"]
+            budget["completion_tokens"] += usage["completion_tokens"]
 
             tool_calls = getattr(message, "tool_calls", None) or []
 

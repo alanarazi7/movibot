@@ -94,10 +94,11 @@ def ping() -> None:
     model = llm_client.model_name()
     print(f"\n💰 Pinging {model} ...")
     try:
-        message = llm_client.complete(
+        message, usage = llm_client.complete(
             [{"role": "user", "content": "Reply with the single word: ok"}]
         )
         print(f"  {OK} model responded: {(message.content or '').strip()!r}")
+        print(f"    tokens: {usage['prompt_tokens']} in, {usage['completion_tokens']} out")
         print("\n  The model id is correct. The paid track is unblocked.")
     except Exception as exc:
         print(f"  {BAD} {type(exc).__name__}: {exc}")
