@@ -16,15 +16,24 @@ gated on credentials.
 
 - [ ] Yair Zack's email → `team_info.json` — the GUI shows a warning banner
       until this lands; it is driven from `/api/team_info`, so it clears itself
-- [x] Andrei Nekliudov's email → `team_info.json`
 
 ## Blocked on credentials
 
 `.env` still holds placeholder values. Everything below the "free" line works
 without them; nothing on the paid track can start.
 
-- [ ] Real `OPENAI_API_KEY` + `OPENAI_BASE_URL` (LLMod.ai)
-- [ ] Real `PINECONE_API_KEY`
+- [ ] Real `OPENAI_API_KEY` + `OPENAI_BASE_URL` (LLMod.ai) — **these two alone
+      unlock the 11 test cases locally**; Pinecone and Supabase are not involved
+- [ ] Real `PINECONE_API_KEY` — only for `MOVIBOT_EMBEDDINGS=cloud`, i.e. production
+- [ ] `SUPABASE_KEY` looks wrong: 41 chars, but the anon/service key is a JWT
+      starting `eyJ` and usually 200+ chars. `SUPABASE_URL` looks fine
+
+Check what is usable at any point, without spending anything:
+
+```bash
+python scripts/check_credentials.py          # free, no network
+python scripts/check_credentials.py --ping   # 💰 one tiny call, settles the model id
+```
 - [ ] **Confirm the LLMod.ai chat model id.** The sibling `medium-rag-hw`
       project uses `4UHRUIN-text-embedding-3-small` and `4UHRUIN-gpt-5-mini` —
       `<TENANT>-<model>`, no `azure/` segment, and gpt-5-**mini**. So the
