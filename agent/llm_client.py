@@ -15,10 +15,11 @@ import os
 from functools import lru_cache
 from typing import Any
 
-# Chat model id on LLMod.ai. Their ids are namespaced (the embedding model is
-# "MB5R2CF-azure/text-embedding-3-small"), so the chat id follows the same
-# shape. Override with MOVIBOT_MODEL if the deployment differs.
-DEFAULT_MODEL = "MB5R2CF-azure/gpt-4o-mini"
+# Chat model id on LLMod.ai. Confirmed against GET /v1/models, which returns
+# exactly two ids for this tenant -- this one and the embedding model. It is
+# gpt-5.4-mini, not the gpt-4o-mini previously guessed here, and the "azure/"
+# segment is real rather than a mistake. Override with MOVIBOT_MODEL.
+DEFAULT_MODEL = "MB5R2CF-azure/gpt-5.4-mini"
 
 # Low but not zero: the loop should make the same tool choices run to run,
 # while the final prose stays readable.

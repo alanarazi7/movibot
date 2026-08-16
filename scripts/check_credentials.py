@@ -8,10 +8,10 @@ reported by length and shape only.
     python scripts/check_credentials.py
     python scripts/check_credentials.py --ping    # 💰 one tiny model call
 
---ping is the only way to settle the open question of whether the model id is
-right, since a wrong id fails at request time rather than at configuration
-time. It sends a handful of tokens and costs a fraction of a cent, but it does
-spend, so it is opt-in.
+The configured model id is checked against GET /v1/models, which lists what the
+key may actually call and consumes no tokens. --ping goes further and sends a
+few tokens through the real completion path, for end-to-end proof; it spends, so
+it is opt-in.
 """
 
 from __future__ import annotations
@@ -58,6 +58,30 @@ def check(name: str, pattern: str, why: str) -> bool:
     return True
 
 
+def list_models() -> list[str] | None:
+    """Model ids this key can actually use, or None if the call failed.
+
+    Free -- listing models consumes no tokens -- and strictly better than
+    guessing an id's shape: it proves the key authenticates *and* enumerates
+    what it may call. This is how the gpt-4o-mini/gpt-5.4-mini question was
+    settled, after inspection alone had guessed wrong twice.
+    """
+    import requests
+
+    base = os.environ.get("OPENAI_BASE_URL", "").rstrip("/")
+    key = os.environ.get("OPENAI_API_KEY", "")
+    if not base or not key:
+        return None
+    url = base + ("/models" if base.endswith("/v1") else "/v1/models")
+    try:
+        resp = requests.get(url, headers={"Authorization": f"Bearer {key}"}, timeout=30)
+        if not resp.ok:
+            return None
+        return sorted(m.get("id", "") for m in resp.json().get("data", []))
+    except Exception:
+        return None
+
+
 def ping() -> None:
     """One minimal completion, to prove key + base URL + model id agree.
 
@@ -77,9 +101,9 @@ def ping() -> None:
         print("\n  The model id is correct. The paid track is unblocked.")
     except Exception as exc:
         print(f"  {BAD} {type(exc).__name__}: {exc}")
-        print("\n  If this is a 404 or 'model not found', the id is wrong rather than the key.")
-        print("  The sibling medium-rag-hw project uses <TENANT>-<model> with no azure/")
-        print("  segment, e.g. MB5R2CF-gpt-5-mini. Override with MOVIBOT_MODEL.")
+        print("\n  A 404 here means the id is wrong rather than the key -- but the id was")
+        print("  already checked against the tenant's model list above, so this more likely")
+        print("  indicates a quota, permission, or network problem.")
 
 
 def main() -> None:
@@ -96,11 +120,18 @@ def main() -> None:
 
     from agent import llm_client
     model = llm_client.model_name()
-    unusual = "azure/" in model or not re.match(r"^[A-Z0-9]+-", model)
-    print(f"  {WARN if unusual else OK} {'MOVIBOT_MODEL':22} {model}")
-    if unusual:
-        print(f"    {'':22} expected <TENANT>-<model> with no azure/ segment;")
-        print(f"    {'':22} verify with --ping before assuming this works")
+    available = list_models() if llm_ok else None
+
+    if available is None:
+        print(f"  {WARN} {'MOVIBOT_MODEL':22} {model}  (could not list models to check)")
+    elif model in available:
+        print(f"  {OK} {'MOVIBOT_MODEL':22} {model}")
+    else:
+        llm_ok = False
+        print(f"  {BAD} {'MOVIBOT_MODEL':22} {model}")
+        print(f"    {'':22} not offered by this tenant. Available:")
+        for m in available:
+            print(f"    {'':22}   {m}")
 
     print("\nOptional -- only for the cloud backends")
     pine = all([
@@ -142,7 +173,9 @@ def main() -> None:
     print(f"  {OK if supa else BAD} Supabase path (MOVIBOT_BACKEND=cloud)")
 
     if not args.ping:
-        print("\nA valid-looking key is not a working one. Confirm the model id with:")
+        print("\nThe model id above was checked against the tenant's live model list,")
+        print("which costs nothing. --ping additionally sends a few tokens through the")
+        print("real completion path, if you want end-to-end proof:")
         print("    python scripts/check_credentials.py --ping     # 💰 a fraction of a cent")
     else:
         ping()

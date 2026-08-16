@@ -37,7 +37,8 @@ CHUNK_VECTORS = os.path.join(_DATA_READY, "chunk_embeddings.npy")
 CHUNK_META = os.path.join(_DATA_READY, "chunk_index_meta.json")
 
 LOCAL_MODEL = "intfloat/e5-small-v2"
-CLOUD_MODEL = "MB5R2CF-text-embedding-3-small"
+# Confirmed against GET /v1/models; the "azure/" segment was missing here.
+CLOUD_MODEL = "MB5R2CF-azure/text-embedding-3-small"
 
 # One film can legitimately own several of the strongest passages, so fetching
 # exactly top_k passages could yield far fewer than top_k films. Over-fetch,

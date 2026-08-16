@@ -34,6 +34,19 @@ Check what is usable at any point, without spending anything:
 python scripts/check_credentials.py          # free, no network
 python scripts/check_credentials.py --ping   # 💰 one tiny call, settles the model id
 ```
+- [x] **LLMod.ai model ids confirmed** against `GET /v1/models`, which lists
+      exactly two for this tenant: `MB5R2CF-azure/gpt-5.4-mini` and
+      `MB5R2CF-azure/text-embedding-3-small`. Both hardcoded defaults were
+      wrong — the chat id said `gpt-4o-mini`, and the embedding id was missing
+      the `azure/` segment — but the `MB5R2CF` prefix and the `azure/` segment
+      themselves were right, contrary to what this file previously guessed
+
+Check what is usable at any point, without spending anything:
+
+```bash
+python scripts/check_credentials.py          # free, no network
+python scripts/check_credentials.py --ping   # 💰 one tiny call, settles the model id
+```
 - [ ] **Confirm the LLMod.ai chat model id.** The sibling `medium-rag-hw`
       project uses `4UHRUIN-text-embedding-3-small` and `4UHRUIN-gpt-5-mini` —
       `<TENANT>-<model>`, no `azure/` segment, and gpt-5-**mini**. So the
