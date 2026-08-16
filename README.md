@@ -30,7 +30,7 @@ Three sources, prepared offline into `data_preprocessing/data_ready/`:
 |---|---|
 | `supabase_movies.csv` | **238** Disney + Pixar feature films, 26 columns — the movie universe |
 | `pinecone_candidates.csv` | the **159** with a full MPST plot synopsis (66.8%) — the name is a leftover; no vector database is used |
-| `plot_chunks.parquet` + `chunk_embeddings.npy` | **3,159** passages, 1536-dim, scored in memory |
+| `chunk_index.npz` | **3,159** passages and their 1536-dim vectors, scored in memory |
 | `wikipedia_cache.csv` | **237** films' Wikipedia articles, plot and non-plot text, scraped once offline |
 
 The catalog is deliberately narrowed to Disney and Pixar, which keeps it in family territory and makes the demo coherent. That's a demo constraint rather than a product decision — the assignment caps stored data at 50 MB and the full multi-studio catalog doesn't fit. `prepare_movibot_data.py --all-studios` produces all 43,270 films from the same pipeline.

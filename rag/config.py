@@ -79,8 +79,11 @@ DATA_READY = os.path.join(_ROOT, "data_preprocessing", "data_ready")
 # the filename to avoid churning the prepared data; it is just the films
 # that matched an MPST synopsis.
 SOURCE_CSV = os.path.join(DATA_READY, "pinecone_candidates.csv")
-CHUNKS_PARQUET = os.path.join(DATA_READY, "plot_chunks.parquet")
-VECTORS_NPY = os.path.join(DATA_READY, "chunk_embeddings.npy")
+# Vectors and passage table in one compressed .npz. Previously a .npy plus a
+# parquet, which pulled in pyarrow -- 124 MB, half of Vercel's serverless
+# limit, to read a 3,159-row table. The table travels as JSON inside the
+# archive, so nothing needs a columnar engine and nothing needs pickle.
+INDEX_NPZ = os.path.join(DATA_READY, "chunk_index.npz")
 INDEX_META = os.path.join(DATA_READY, "chunk_index_meta.json")
 
 # Local accelerator, gitignored: text -> vector, so re-running ingest never

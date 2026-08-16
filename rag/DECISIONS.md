@@ -204,6 +204,20 @@ matched an MPST synopsis.
 
 ---
 
+### One archive, not two
+
+The vectors and the passage table live in a single compressed `.npz`. They were
+a `.npy` plus a parquet, which meant `pyarrow` in the dependency list -- **124
+MB, half of Vercel's 250 MB serverless limit, to read a 3,159-row table**. The
+table now travels as JSON inside the archive: no columnar engine, no pickle
+(`allow_pickle=False` still holds), and 18.0 MB instead of 23.2.
+
+Dropping it also took pandas out of the request path. Search needs a membership
+test and an index lookup, which a list of dicts and a numpy mask do without
+constructing a DataFrame per cold start.
+
+---
+
 ## 6. Re-running ingest
 
 Embedding is content-addressed. Each passage is keyed by a hash of the model id

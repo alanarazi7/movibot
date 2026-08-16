@@ -18,33 +18,36 @@ import numpy as np
 
 from rag import embed
 from rag.config import (
-    CHUNKS_PARQUET,
     EMBED_MODEL,
     FETCH_MULTIPLIER,
     INDEX_META,
+    INDEX_NPZ,
     TOP_K,
-    VECTORS_NPY,
 )
 
 
 @lru_cache(maxsize=1)
 def _matrix():
-    """(vectors, chunks dataframe), built by `python -m rag.ingest`."""
-    import pandas as pd
+    """(vectors, passages) from the committed archive.
 
-    if not os.path.exists(VECTORS_NPY):
+    `passages` is a plain list of dicts. There is no DataFrame here: the only
+    operations are a membership test and an index lookup, both of which numpy
+    and a list do without pulling pandas into the request path.
+    """
+    if not os.path.exists(INDEX_NPZ):
         raise RuntimeError(
             "No passage index found. Build it with:\n"
             "    python -m rag.ingest"
         )
 
-    vectors = np.load(VECTORS_NPY).astype("float32")
-    chunks = pd.read_parquet(CHUNKS_PARQUET)
+    blob = np.load(INDEX_NPZ, allow_pickle=False)
+    vectors = blob["vectors"].astype("float32")
+    passages = json.loads(str(blob["table"].item()))
 
-    if vectors.shape[0] != len(chunks):
+    if vectors.shape[0] != len(passages):
         raise RuntimeError(
             f"Passage index is inconsistent: {vectors.shape[0]} vectors but "
-            f"{len(chunks)} chunk rows. Rebuild both with `python -m rag.ingest`."
+            f"{len(passages)} passages. Rebuild with `python -m rag.ingest`."
         )
 
     # A stale index is the dangerous failure: vectors from a different model
@@ -57,7 +60,7 @@ def _matrix():
             "    Rebuild with: python -m rag.ingest"
         )
 
-    return vectors, chunks
+    return vectors, passages
 
 
 def _meta() -> dict[str, Any]:
@@ -69,16 +72,17 @@ def _meta() -> dict[str, Any]:
 
 def _passages_matrix(query: str, fetch: int, allowed: set[int] | None,
                      sources: list[str] | None = None) -> list[dict]:
-    vectors, chunks = _matrix()
+    vectors, passages = _matrix()
     scores = vectors @ embed.embed_query(query)
 
     # Mask ineligible passages before ranking, so a restricted search still
     # returns `fetch` usable passages rather than whatever survives filtering.
-    eligible = np.ones(len(chunks), dtype=bool)
+    eligible = np.ones(len(passages), dtype=bool)
     if allowed is not None:
-        eligible &= chunks.movie_id.isin(allowed).to_numpy()
-    if sources is not None and "source" in chunks.columns:
-        eligible &= chunks.source.isin(sources).to_numpy()
+        eligible &= np.array([p["movie_id"] in allowed for p in passages])
+    if sources is not None:
+        wanted = set(sources)
+        eligible &= np.array([p.get("source", "mpst") in wanted for p in passages])
     if not eligible.all():
         if not eligible.any():
             return []
@@ -93,13 +97,13 @@ def _passages_matrix(query: str, fetch: int, allowed: set[int] | None,
 
     out = []
     for i in top:
-        row = chunks.iloc[int(i)]
+        row = passages[int(i)]
         out.append({
-            "movie_id": int(row.movie_id),
-            "chunk_index": int(row.chunk_index),
-            "text": str(row.text),
-            "source": str(getattr(row, "source", "mpst")),
-            "title": str(getattr(row, "title", "")),
+            "movie_id": int(row["movie_id"]),
+            "chunk_index": int(row["chunk_index"]),
+            "text": str(row["text"]),
+            "source": str(row.get("source", "mpst")),
+            "title": str(row.get("title", "")),
             "score": float(scores[int(i)]),
         })
     return out
@@ -171,13 +175,13 @@ def search(
 
 def coverage() -> dict[str, Any]:
     """Index size and parameters, for diagnostics and /api/agent_info."""
-    vectors, chunks = _matrix()
+    vectors, passages = _matrix()
     meta = _meta()
     return {
         "store": "in-memory matrix",
         "model": meta.get("model", EMBED_MODEL),
         "chunks": int(vectors.shape[0]),
-        "movies": int(chunks.movie_id.nunique()),
+        "movies": len({p["movie_id"] for p in passages}),
         "dim": int(vectors.shape[1]),
         "chunk_tokens": meta.get("chunk_tokens"),
         "overlap_ratio": meta.get("overlap_ratio"),

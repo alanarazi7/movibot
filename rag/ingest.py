@@ -13,8 +13,7 @@ thousand tokens at text-embedding-3-small rates. --dry-run is free and answers
 "how many passages would this produce" without spending anything.
 
 Outputs (committed, so the repo runs without a rebuild):
-    plot_chunks.parquet     one row per passage, with its text
-    chunk_embeddings.npy    float32 matrix, one normalised row per passage
+    chunk_index.npz         the vectors and the passage table, in one archive
     chunk_index_meta.json   model, dims, chunk parameters, counts
 """
 
@@ -22,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -34,12 +34,11 @@ from rag import chunking, corpora, embed  # noqa: E402
 from rag.config import (  # noqa: E402
     CHUNK_TOKENS,
     DEBUG_CHUNKS_PER_CORPUS,
-    CHUNKS_PARQUET,
     EMBED_MODEL,
     INDEX_META,
+    INDEX_NPZ,
     MIN_CHUNK_TOKENS,
     OVERLAP_RATIO,
-    VECTORS_NPY,
 )
 
 
@@ -120,8 +119,8 @@ def main() -> None:
 
     write_index(chunks, vectors, sources, debug=args.debug)
 
-    print(f"\nWrote {Path(CHUNKS_PARQUET).name}, "
-          f"{Path(VECTORS_NPY).name} {vectors.shape}, {Path(INDEX_META).name}")
+    print(f"\nWrote {Path(INDEX_NPZ).name} {vectors.shape} "
+          f"({os.path.getsize(INDEX_NPZ)/1e6:.1f} MB), {Path(INDEX_META).name}")
 
     # Only the freshly-embedded passages cost anything; the rest came from the
     # cache, which is the whole point of re-running this safely.
@@ -136,8 +135,16 @@ def write_index(chunks: pd.DataFrame, vectors: np.ndarray, sources: list[str],
     """Persist the passages, their vectors, and the metadata that lets a stale
     index be detected later."""
     tokens = int(chunks.tokens.sum())
-    chunks.to_parquet(CHUNKS_PARQUET, index=False)
-    np.save(VECTORS_NPY, vectors)
+    # One archive: vectors as an array, the passage table as JSON beside them.
+    # JSON rather than numpy string columns because fixed-width unicode pads
+    # every row to the longest, and rather than pickle because loading with
+    # allow_pickle=False should stay safe.
+    keep = ["chunk_id", "source", "movie_id", "title", "chunk_index", "text", "tokens"]
+    np.savez_compressed(
+        INDEX_NPZ,
+        vectors=vectors,
+        table=np.array(chunks[keep].to_json(orient="records")),
+    )
     Path(INDEX_META).write_text(json.dumps({
         "model": EMBED_MODEL,
         "embedding_dim": int(vectors.shape[1]),

@@ -117,7 +117,10 @@ def counts() -> dict:
     catalog = pd.read_csv(os.path.join(_DATA, "supabase_movies.csv"))
     synopses = pd.read_csv(os.path.join(_DATA, "pinecone_candidates.csv"))
     wiki = pd.read_csv(os.path.join(_DATA, "wikipedia_cache.csv"))
-    chunks = pd.read_parquet(os.path.join(_DATA, "plot_chunks.parquet"))
+    import json
+    import numpy as np
+    blob = np.load(os.path.join(_DATA, "chunk_index.npz"), allow_pickle=False)
+    chunks = pd.DataFrame(json.loads(str(blob["table"].item())))
 
     mpst = set(synopses["movie_id"])
     wiki_plot = set(wiki.loc[wiki["plot_text"].notna(), "id"])

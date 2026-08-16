@@ -68,14 +68,6 @@ run. Every other expected behaviour is still a prediction.
 - [ ] Capture a real response into `agent_info.json` `prompt_examples`, which
       still says the prose is pending
 
-### 5. Drop parquet, and pyarrow with it
-
-`pyarrow` is **124 MB** — half of Vercel's 250 MB limit for one dependency, and
-it exists only to read `plot_chunks.parquet`, a 3,159-row table. Storing those
-texts as CSV or inside the vectors' `.npz` removes it outright.
-
-- [ ] Switch the chunk store off parquet and drop `pyarrow`
-
 ### 5. Trim the system prompt
 
 2,613 tokens on every turn, and the brief asks to minimise prompt size. At five

@@ -10,10 +10,5 @@ pandas>=2.2,<3
 # tokeniser. Previously present only as a transitive dependency of
 # sentence-transformers, so removing that broke a clean install.
 tiktoken>=0.7
-
-# The passage index is parquet; pandas needs an engine to read it. Another that
-# was only ever present transitively, so a clean install could not load the
-# index at all.
-pyarrow>=15
 numpy>=1.26,<3
 python-dotenv>=1.0.0

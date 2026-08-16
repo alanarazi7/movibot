@@ -41,6 +41,15 @@ LIST_COLUMNS = [
 ]
 
 
+def _load_chunks() -> pd.DataFrame:
+    """Passage table from the committed archive (see rag/config.py)."""
+    import json
+    import numpy as np
+
+    blob = np.load(_DATA_READY / "chunk_index.npz", allow_pickle=False)
+    return pd.DataFrame(json.loads(str(blob["table"].item())))
+
+
 def parse_list(value) -> list[str]:
     if pd.isna(value):
         return []
@@ -64,7 +73,7 @@ def main() -> None:
     catalog = pd.read_csv(_DATA_READY / "supabase_movies.csv")
     synopses = pd.read_csv(_DATA_READY / "pinecone_candidates.csv")
     wiki = pd.read_csv(_DATA_READY / "wikipedia_cache.csv")
-    chunks = pd.read_parquet(_DATA_READY / "plot_chunks.parquet")
+    chunks = _load_chunks()
 
     syn_by_id = {int(r.movie_id): r for r in synopses.itertuples()}
     wiki_by_id = {int(r.id): r for r in wiki.itertuples()}
