@@ -113,14 +113,23 @@ def _load_cache() -> dict[str, np.ndarray]:
 
 
 def _save_cache(cache: dict[str, np.ndarray]) -> None:
+    """Persist the cache, tolerating a filesystem that will not take it.
+
+    On a read-only filesystem such as Vercel's this simply cannot succeed, and
+    failing here would turn a completed, already-paid-for embedding into an
+    error -- the caller would have spent the money and received nothing.
+    """
     if not cache:
         return
-    os.makedirs(os.path.dirname(EMBED_CACHE), exist_ok=True)
-    np.savez(
-        EMBED_CACHE,
-        keys=np.array(list(cache.keys())),
-        vectors=np.asarray(list(cache.values()), dtype="float32"),
-    )
+    try:
+        os.makedirs(os.path.dirname(EMBED_CACHE), exist_ok=True)
+        np.savez(
+            EMBED_CACHE,
+            keys=np.array(list(cache.keys())),
+            vectors=np.asarray(list(cache.values()), dtype="float32"),
+        )
+    except OSError:
+        pass
 
 
 def embed_texts_cached(texts: list[str], progress: bool = False) -> tuple[np.ndarray, dict]:

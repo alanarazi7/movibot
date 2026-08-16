@@ -80,7 +80,6 @@ def rag_info():
         "index": index,
         "index_error": error,
         "ingest_enabled": _ingest_enabled(),
-        "admin_token_required": _admin_token_required(),
         "index_writable": _index_writable(),
     }))
 
@@ -124,30 +123,6 @@ def _ingest_enabled() -> bool:
     return os.environ.get("MOVIBOT_ALLOW_INGEST", "").strip().lower() in ("1", "true", "yes")
 
 
-def _admin_token_required() -> bool:
-    return bool(os.environ.get("MOVIBOT_ADMIN_TOKEN", "").strip())
-
-
-def _admin_ok(req) -> bool:
-    """Second lock, for when ingest is enabled on a public deployment.
-
-    MOVIBOT_ALLOW_INGEST alone is a switch, not a guard: flipping it on in
-    production would let anyone who finds the URL press the button and spend
-    the budget. With MOVIBOT_ADMIN_TOKEN set, the switch says *whether* ingest
-    is possible and the token says *who* may trigger it. Constant-time compare
-    so the token cannot be recovered a character at a time.
-    """
-    expected = os.environ.get("MOVIBOT_ADMIN_TOKEN", "").strip()
-    if not expected:
-        return True
-    supplied = (
-        req.headers.get("X-Admin-Token")
-        or (req.get_json(silent=True) or {}).get("token")
-        or ""
-    ).strip()
-    return bool(supplied) and hmac.compare_digest(supplied, expected)
-
-
 def _index_writable() -> bool:
     """Can the passage index actually be written here?
 
@@ -189,23 +164,26 @@ def rag_ingest():
                 "started": False,
             })), 403
 
-        if not _admin_ok(request):
-            return _cors(jsonify({
-                "error": "Wrong or missing admin token. Ingest spends money, so "
-                         "on a public deployment it needs the token as well as "
-                         "the switch.",
-                "started": False,
-            })), 401
+        # Anyone may trigger this, so it must be impossible to spend money on a
+        # run that cannot succeed. Every destination is checked BEFORE
+        # embedding: failing afterwards would mean paying for vectors that are
+        # then thrown away, which is exactly how the budget got charged once
+        # already.
+        pinecone_key = os.environ.get("PINECONE_API_KEY", "")
+        pinecone_ready = bool(pinecone_key) and "your-" not in pinecone_key
+        destinations = []
+        if _index_writable():
+            destinations.append("matrix")
+        if to_pinecone and pinecone_ready:
+            destinations.append("pinecone")
 
-        # Refuse *before* embedding: failing after would mean paying for
-        # vectors that were then thrown away.
-        if not to_pinecone and not _index_writable():
+        if not destinations:
             return _cors(jsonify({
-                "error": "The passage index cannot be written here -- this "
-                         "filesystem is read-only, as it is on Vercel. Embedding "
-                         "first and failing afterwards would spend the budget for "
-                         "nothing. Either tick Pinecone, which writes over the "
-                         "network, or run ingest locally and commit the index.",
+                "error": "Nowhere to put the vectors, so nothing was embedded and "
+                         "nothing was spent. This filesystem is read-only (as on "
+                         "Vercel) so the committed matrix cannot be rebuilt here"
+                         + ("" if pinecone_ready else ", and PINECONE_API_KEY is not set")
+                         + ". Run ingest locally and commit the index instead.",
                 "started": False,
             })), 409
 
@@ -225,13 +203,13 @@ def rag_ingest():
 
         from rag import embed as rag_embed
         vectors, stats = rag_embed.embed_texts_cached(chunks.embedding_text.tolist())
-        if _index_writable():
+        if "matrix" in destinations:
             rag_ingest_mod.write_index(chunks, vectors, sources, debug=debug)
-        if to_pinecone:
+        if "pinecone" in destinations:
             rag_ingest_mod.upsert_pinecone(chunks, vectors)
         return _cors(jsonify({
             "started": True, "dry_run": False, "error": None, "debug": debug,
-            "passages": int(len(chunks)), "pinecone": to_pinecone,
+            "passages": int(len(chunks)), "destinations": destinations,
             "reused": stats["reused"], "embedded": stats["embedded"],
         }))
     except Exception as exc:
