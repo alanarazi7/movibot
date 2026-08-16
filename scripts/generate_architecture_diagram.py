@@ -204,7 +204,7 @@ def main() -> None:
         ("Catalog", (f"{n['films']} films × {n['columns']} columns",
                      "CSV locally · Supabase in cloud mode")),
         ("Passage index", (f"{n['passages']:,} passages from {n['indexed_films']} films",
-                           "E5 384-d locally · Pinecone in cloud mode")),
+                           "1536-d, committed matrix or Pinecone")),
         ("Plot texts", (f"{n['readable']} films readable in full",
                         "MPST synopsis, else Wikipedia plot")),
     ]

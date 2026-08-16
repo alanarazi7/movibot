@@ -144,33 +144,44 @@ def main() -> None:
         check("SUPABASE_KEY", r"^eyJ[\w-]{20,}", "a JWT starting eyJ, usually 200+ chars"),
     ])
 
-    print("\nLocal backends")
+    print("\nRetrieval")
+    from rag import config as ragcfg
+    store = ragcfg.vector_store()
+    print(f"  {OK} {'vector store':22} {store}"
+          + ("  (committed matrix, no credentials needed)" if store == "matrix" else ""))
+    print(f"  {OK} {'embedding model':22} {ragcfg.EMBED_MODEL}")
+
+    # A passage index built by a different model still scores -- meaninglessly.
+    # store.coverage() refuses in that case, which is what we want to surface.
     try:
-        import sentence_transformers  # noqa: F401
-        import torch  # noqa: F401
-        local_embed = True
-        print(f"  {OK} {'sentence-transformers':22} installed -- local semantic search works")
-    except ImportError:
-        local_embed = False
-        print(f"  {BAD} {'sentence-transformers':22} missing -- pip install -r requirements-local.txt")
+        from rag import store as ragstore
+        cov = ragstore.coverage()
+        index_ok = True
+        print(f"  {OK} {'passage index':22} "
+              f"{cov.get('chunks', '?')} passages, {cov.get('dim', '?')}-dim")
+    except Exception as exc:
+        index_ok = False
+        print(f"  {BAD} {'passage index':22} {exc}".replace("\n", " "))
 
     offline = os.environ.get("MOVIBOT_OFFLINE", "").strip().lower() in ("1", "true", "yes")
     if offline:
         print(f"  {WARN} {'MOVIBOT_OFFLINE':22} set -- all spending is blocked at the client")
 
     print("\nWhat this configuration can do")
-    if llm_ok and local_embed and not offline:
-        print(f"  {OK} run the 11 test cases locally, using local catalog and local embeddings")
-        print("    nothing else is needed for that -- Pinecone and Supabase are not involved")
+    if llm_ok and index_ok and not offline:
+        print(f"  {OK} run the 11 test cases locally")
+        print("    catalog from committed CSVs, passages from the committed matrix;")
+        print("    Pinecone and Supabase are not involved")
     elif llm_ok and offline:
         print(f"  {WARN} credentials look usable, but MOVIBOT_OFFLINE blocks every model call")
-    elif llm_ok:
-        print(f"  {WARN} the planner can run, but semantic search needs either")
-        print("    requirements-local.txt (free) or Pinecone (paid)")
+    elif llm_ok and not index_ok:
+        print(f"  {WARN} the planner can run, but semantic search cannot until the")
+        print("    passage index is rebuilt:  python -m rag.ingest   # ~$0.007")
     else:
         print(f"  {BAD} cannot answer a query yet -- the two required values above are missing")
 
-    print(f"  {OK if pine else BAD} Pinecone path (MOVIBOT_EMBEDDINGS=cloud), required for production")
+    print(f"  {OK if pine else BAD} Pinecone path (MOVIBOT_VECTOR_STORE=pinecone) -- optional; the"
+          " committed matrix works in production too")
     print(f"  {OK if supa else BAD} Supabase path (MOVIBOT_BACKEND=cloud)")
 
     if not args.ping:

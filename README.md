@@ -30,7 +30,7 @@ Three sources, prepared offline into `data_preprocessing/data_ready/`:
 |---|---|
 | `supabase_movies.csv` | **238** Disney + Pixar feature films, 26 columns — the movie universe |
 | `pinecone_candidates.csv` | the **159** with a full MPST plot synopsis (66.8%) |
-| `plot_chunks.parquet` + `chunk_embeddings.npy` | **1,254** passages, 384-dim, for semantic search |
+| `plot_chunks.parquet` + `chunk_embeddings.npy` | **1,254** passages, 1536-dim, for semantic search |
 | `wikipedia_cache.csv` | **237** films' Wikipedia articles, plot and non-plot text, scraped once offline |
 
 The catalog is deliberately narrowed to Disney and Pixar, which keeps it in family territory and makes the demo coherent. That's a demo constraint rather than a product decision — the assignment caps stored data at 50 MB and the full multi-studio catalog doesn't fit. `prepare_movibot_data.py --all-studios` produces all 43,270 films from the same pipeline.
@@ -45,8 +45,8 @@ Retrieval, tools, and the agent loop are complete and exercised end to end at ze
 
 - ✅ Data pipeline, chunked passage index, Wikipedia cache
 - ✅ Three tools + bounded tool-calling loop (`agent/loop.py`)
-- ✅ Local backends for both catalog and embeddings, so the whole system runs offline and free
-- ⏳ Supabase load, Pinecone index, first real planner run — all blocked on credentials
+- ✅ Catalog reads from committed CSVs; the passage index is a committed matrix, so retrieval needs no vector database
+- ⏳ Running the 11 test cases; optional Supabase and Pinecone paths
 
 There is **no mock model by design**: a broken config fails loudly rather than masquerading as a working agent. `MOVIBOT_OFFLINE=1` hard-disables all spending.
 
@@ -66,15 +66,22 @@ pip install -r requirements.txt
 python app.py           # http://localhost:5000
 ```
 
-The catalog and semantic search both default to local backends and need no credentials. For real planner runs, copy `.env.example` → `.env` and fill in the LLMod.ai keys.
-
-To run the local embedding model as well, `pip install -r requirements-local.txt` — it is split out because torch (~518 MB) exceeds Vercel's 250 MB serverless limit and cannot ship to production.
+The catalog reads from committed CSVs and needs no credentials. Planner turns and query embedding both call LLMod.ai, so copy `.env.example` → `.env` and fill in the key; `python scripts/check_credentials.py` reports what is missing without spending anything.
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `MOVIBOT_BACKEND` | `local` | `local` reads the prepared CSVs; `cloud` uses Supabase |
-| `MOVIBOT_EMBEDDINGS` | `local` | `local` runs E5-small-v2 on this machine; `cloud` uses LLMod.ai + Pinecone |
+| `MOVIBOT_VECTOR_STORE` | `matrix` | `matrix` scores a committed `.npy` with numpy; `pinecone` uses Pinecone. Both embed with the same model |
 | `MOVIBOT_OFFLINE` | unset | `1` disables every paid call |
+
+## Retrieval
+
+Chunking, embedding, storage, search and the ingest command all live in `rag/`. Parameters are in `rag/config.py`; the reasoning, including where we deviate from the course defaults and why, is in [`rag/DECISIONS.md`](rag/DECISIONS.md).
+
+```bash
+python -m rag.ingest --dry-run   # free: how many passages, what it would cost
+python -m rag.ingest             # 💰 ~$0.007 to embed the whole corpus
+```
 
 ## Docs
 
@@ -84,7 +91,7 @@ To run the local embedding model as well, `pip install -r requirements-local.txt
 
 ## Deployment
 
-Vercel, Python serverless (`vercel.json`, same pattern as the team's prior `medium-rag-hw` assignment). Production must set `MOVIBOT_EMBEDDINGS=cloud`, since the local embedding backend cannot run there.
+Vercel, Python serverless (`vercel.json`, same pattern as the team's prior `medium-rag-hw` assignment).
 
 - **Live URL:** https://movibot-gamma.vercel.app
 - **GitHub Repo:** https://github.com/alanarazi7/movibot

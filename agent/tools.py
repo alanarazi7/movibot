@@ -27,7 +27,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from agent import catalog, embeddings
+from agent import catalog
+from rag import store as retrieval
 
 # A structured filter is for narrowing, not for dumping the catalog into the
 # context window. 40 rows is enough for the model to choose from, and roughly
@@ -178,7 +179,7 @@ def search_plots(
     evidence the planner can quote instead of inferring.
     """
     top_k = max(1, min(int(top_k), MAX_SEARCH_RESULTS))
-    hits = embeddings.search(query, top_k=top_k, candidate_ids=candidate_ids)
+    hits = retrieval.search(query, top_k=top_k, candidate_ids=candidate_ids)
 
     df = catalog.movies().set_index("id")
     results = []
@@ -245,7 +246,7 @@ def read_synopses(
     # Rank passages once across all requested films, then group.
     relevant: dict[int, list[dict[str, Any]]] = {}
     if about and about.strip() and ids:
-        for p in embeddings.search_passages(about, top_k=len(ids) * 6, candidate_ids=ids):
+        for p in retrieval.search_passages(about, top_k=len(ids) * 6, candidate_ids=ids):
             relevant.setdefault(p["movie_id"], []).append(p)
 
     out = []

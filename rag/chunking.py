@@ -1,13 +1,20 @@
 """Splits plot synopses into passages for retrieval.
 
-Why this exists
----------------
-Embedding a whole synopsis loses most of it. E5-small-v2 accepts 512 tokens;
-the median synopsis is 1,143 and the longest is 9,049. Frozen's vector covered
-roughly the first 7% of its story, so Hans's betrayal -- which begins at
-character 5,353 of 27,969 -- was never embedded, and no phrasing of "a film
-about trusting the wrong person" could retrieve it. Chunking makes each story
-beat independently retrievable.
+Why chunk at all
+----------------
+Not because the model cannot read a whole synopsis -- text-embedding-3-small
+accepts 8,191 tokens, and the median synopsis is 1,143, so whole-document
+embedding is now possible. It is still wrong here, for two reasons:
+
+  * Retrieval precision. One vector for a 28,000-character story averages
+    thirty unrelated beats together. Frozen's betrayal, at 81% through the
+    text, cannot outrank the film's own opening under that averaging.
+  * Evidence. search_plots returns the matching passage to the planner as a
+    quotable line of proof, and read_synopses returns relevant passages in
+    story order. A document-level vector has no passage to return.
+
+This used to be forced: E5-small-v2 accepted 512 tokens and covered roughly
+the first 7% of a long synopsis. That constraint is gone. The choice remains.
 
 Why sentences, not paragraphs
 -----------------------------
@@ -18,23 +25,7 @@ paragraphs** and 66 are single unbroken blobs with no newline at all. A
 paragraph splitter would emit one chunk per document and change nothing. So
 passages are assembled from sentences instead.
 
-Parameters, and why these values
---------------------------------
-Measured on the corpus rather than inherited:
-
-    sentence length   median 23 tokens, p90 40, p99 64
-    document length   median 1,143 tokens, p90 4,020, max 9,049
-
-CHUNK_TOKENS = 300 holds roughly 13 sentences, which is about one scene. That
-matters for the failure being fixed: the target beat should dominate its
-passage rather than be averaged into a dozen unrelated ones. Larger windows
-blur several beats together, which is what broke document-level embedding in
-the first place.
-
-OVERLAP_RATIO = 0.2 carries trailing sentences into the next passage so a beat
-split across a boundary still appears whole somewhere.
-
-MIN_CHUNK_TOKENS = 50 discards a stub tail that would otherwise embed noise.
+Parameters live in rag/config.py; the rationale is in rag/DECISIONS.md.
 """
 
 from __future__ import annotations
@@ -42,9 +33,12 @@ from __future__ import annotations
 import re
 from functools import lru_cache
 
-CHUNK_TOKENS = 300
-OVERLAP_RATIO = 0.2
-MIN_CHUNK_TOKENS = 50
+from rag.config import (  # noqa: E402
+    CHUNK_TOKENS,
+    MIN_CHUNK_TOKENS,
+    OVERLAP_RATIO,
+    TOKENIZER,
+)
 
 # Sentence boundary. The second alternative catches this corpus's most common
 # defect: scraped text where the space after a full stop was lost, giving
@@ -57,7 +51,7 @@ _SENTENCE_SPLIT = re.compile(r'(?<=[.!?])\s+|(?<=[.!?])(?=[A-Z])')
 def _encoder():
     import tiktoken
 
-    return tiktoken.get_encoding("cl100k_base")
+    return tiktoken.get_encoding(TOKENIZER)
 
 
 def count_tokens(text: str) -> int:
