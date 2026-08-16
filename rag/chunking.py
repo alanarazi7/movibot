@@ -117,8 +117,14 @@ def chunk_text(text: str) -> list[str]:
 
     if current:
         tail = " ".join(current)
-        # Keep a short tail only if it is the entire document; otherwise its
-        # content already survives in the previous chunk's overlap.
+        # A sub-threshold tail is dropped: too little content to embed well,
+        # and short fragments score spuriously high on short queries. Some of
+        # it is already duplicated by the previous chunk's overlap, but not
+        # all -- the tail is carried overlap plus new sentences, so this can
+        # lose text. Measured on this corpus it costs 1 sentence across all
+        # 159 synopses, and that sentence is the scrape artifact
+        # "[D-Man2010]". Kept when it is the whole document, so that a very
+        # short synopsis still yields one searchable passage.
         if current_tokens >= MIN_CHUNK_TOKENS or not chunks:
             chunks.append(tail)
 

@@ -98,7 +98,7 @@ This used to be *forced*: E5 accepted 512 tokens and covered roughly the first
 |---|---:|---|---|
 | `CHUNK_TOKENS` | 300 | 512–1024 for long-form prose | See below |
 | `OVERLAP_RATIO` | 0.20 | 5–15% for long-form | See below |
-| `MIN_CHUNK_TOKENS` | 50 | — | Discards a stub tail that would embed noise, unless it is the whole document |
+| `MIN_CHUNK_TOKENS` | 50 | — | Floor on the final leftover passage. Below it the tail is dropped rather than embedded, unless it is the whole document. Measured cost across the corpus: **1 sentence**, and it is the scrape artifact `[D-Man2010]` |
 
 **Chunk size.** The course recommends 512–1024 tokens for general long-form
 text, and plot synopses are long-form narrative prose, so that row is the one
