@@ -19,6 +19,7 @@
 
     .tabs {
       display: flex;
+      row-gap: 0.2rem;
       gap: 0.5rem;
       margin-bottom: 1.5rem;
       border-bottom: 2px solid #ddd;
@@ -50,13 +51,7 @@
       padding: 0 0.15rem 0 0.2rem;
       cursor: default;
     }
-    .tab-divider {
-      align-self: center;
-      width: 1px;
-      height: 1.4rem;
-      background: #ddd;
-      margin: 0 0.3rem;
-    }
+    .tab-break { flex-basis: 100%; height: 0; }
     .tab-content { display: none; }
     .tab-content.active { display: block; }
 
@@ -588,8 +583,7 @@
   <div class="container">
     <h1>MoviBot API</h1>
     <p class="subtitle">
-      The four required endpoints are grouped first below. Everything after the divider is
-      extra &mdash; tools we built to inspect the data and the retrieval behind it.
+      Required tabs on the first row, extras on the second.
     </p>
 
     <div class="warning-banner" id="team-warning"></div>
@@ -601,7 +595,7 @@
       <button class="tab-button" onclick="switchTab('agentinfo')">🤖 Agent Info</button>
       <button class="tab-button" onclick="switchTab('arch')">🏗️ Architecture</button>
 
-      <span class="tab-divider" aria-hidden="true"></span>
+      <span class="tab-break" aria-hidden="true"></span>
 
       <span class="tab-group-label" title="Everything beyond the assignment's requirements">Extras</span>
       <button class="tab-button" onclick="switchTab('datanav')">🗃️ Data</button>
@@ -634,40 +628,41 @@
         <div id="steps-list"></div>
       </div>
 
-      <div class="card">
-        <label>The four required endpoints</label>
-        <p style="color:#666;font-size:0.85rem;margin-bottom:0.7rem;">
-          These are what the assignment specifies. Each has its own tab above.
-        </p>
-        <div class="data-table">
-          <table>
-            <thead><tr><th>Endpoint</th><th>Returns</th><th>Tab</th></tr></thead>
-            <tbody>
-              <tr><td><code>POST /api/execute</code></td><td>The agent's answer plus the full traced steps</td><td>🎬 Agent Query</td></tr>
-              <tr><td><code>GET /api/team_info</code></td><td>Student names and emails</td><td>👥 Team Info</td></tr>
-              <tr><td><code>GET /api/agent_info</code></td><td>Description, purpose, prompt template, examples</td><td>🤖 Agent Info</td></tr>
-              <tr><td><code>GET /api/model_architecture</code></td><td>The architecture diagram, as PNG</td><td>🏗️ Architecture</td></tr>
-            </tbody>
-          </table>
-        </div>
+      <details class="panel">
+        <summary><span class="emoji">🧭</span> What is required, and what is extra</summary>
+        <div class="panel-body">
+          <p>
+            The assignment specifies four things. Everything else here we added to make the
+            system inspectable.
+          </p>
 
-        <label style="margin-top:1.2rem;">Everything else we added</label>
-        <p style="color:#666;font-size:0.85rem;margin-bottom:0.7rem;">
-          Not required. Built to make the system inspectable rather than to be graded.
-        </p>
-        <div class="data-table">
-          <table>
-            <thead><tr><th>Endpoint</th><th>Returns</th><th>Tab</th></tr></thead>
-            <tbody>
-              <tr><td><code>POST /api/rag/search</code></td><td>Semantic search over any corpus</td><td>🔎 Retrieval</td></tr>
-              <tr><td><code>GET /api/rag/info</code></td><td>Corpora, parameters, index state</td><td>🔎 Retrieval</td></tr>
-              <tr><td><code>GET /api/rag/decisions</code></td><td>The retrieval design decisions</td><td>🔎 Retrieval</td></tr>
-              <tr><td><code>GET /api/status</code></td><td>The team's live checklist</td><td>🗒️ Status</td></tr>
-              <tr><td><code>GET /data/&hellip;</code></td><td>The prepared catalog, film by film</td><td>🗃️ Data</td></tr>
-            </tbody>
-          </table>
+          <h4>Required</h4>
+          <div class="data-table">
+            <table>
+              <thead><tr><th>Tab</th><th>What it shows</th></tr></thead>
+              <tbody>
+                <tr><td>🎬 Agent Query</td><td>Ask MoviBot anything; returns the answer and the full traced steps</td></tr>
+                <tr><td>👥 Team Info</td><td>Who built it</td></tr>
+                <tr><td>🤖 Agent Info</td><td>What the agent is, what it can and cannot do, worked examples</td></tr>
+                <tr><td>🏗️ Architecture</td><td>The diagram: planner, three tools, and the data under them</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h4>Extra</h4>
+          <div class="data-table">
+            <table>
+              <thead><tr><th>Tab</th><th>What it shows</th></tr></thead>
+              <tbody>
+                <tr><td>🗃️ Data</td><td>All 238 films, searchable, with every record the pipeline stores</td></tr>
+                <tr><td>🔎 Retrieval</td><td>Semantic search over the corpora, and how retrieval was built</td></tr>
+                <tr><td>📋 Decisions</td><td>Design decisions for the agent itself</td></tr>
+                <tr><td>🗒️ Status</td><td>The team's live checklist, served from the file we edit</td></tr>
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      </details>
 
       <div class="card">
         <label>Test bed</label>
@@ -937,10 +932,8 @@ C = 6.199 catalog mean    m = 300 vote prior</pre>
       <div class="card">
         <h2>Retrieval</h2>
         <p style="color:#666;font-size:0.9rem;margin-top:0.4rem;">
-          Semantic search over the passage index, one corpus at a time or all together.
-          How it was built, and where it departs from the course defaults, is below.
+          Semantic search over the passage index &mdash; one corpus at a time, or all together.
         </p>
-        <div id="rag-index"></div>
       </div>
 
       <div class="card">
@@ -965,32 +958,10 @@ C = 6.199 catalog mean    m = 300 vote prior</pre>
       </div>
 
       <details class="panel">
-        <summary><span class="emoji">📦</span> Building the index</summary>
-        <div class="panel-body">
-          <p>
-            Ingest is a local job, not a button. It writes the passage index into the repo,
-            and a serverless filesystem is read-only &mdash; so triggering it from here could
-            only ever spend money and then fail. It is also not something a visitor should be
-            able to start.
-          </p>
-          <div id="rag-build-state"></div>
-          <p style="margin-top:0.9rem;">Run it locally, then commit the index:</p>
-          <pre class="formula">python -m rag.ingest --dry-run --sources all   # free: passages and cost
-python -m rag.ingest --debug --sources all     # 40 passages,  ~$0.0002
-python -m rag.ingest --sources all             # 3,159 passages, ~$0.0156
-python -m rag.ingest --sources all --pinecone  # and upsert to Pinecone</pre>
-          <p style="font-size:0.85rem;color:#666;">
-            Passages are embedded once and cached by content, so re-running only pays for
-            what actually changed. The deployed app reads whichever store
-            <code>MOVIBOT_VECTOR_STORE</code> selects &mdash; the committed matrix by
-            default, Pinecone if configured.
-          </p>
-        </div>
-      </details>
-
-      <details class="panel">
         <summary><span class="emoji">📐</span> How retrieval was built</summary>
         <div class="panel-body">
+
+          <div id="rag-index"></div>
 
           <p>
             Four corpora, chunked into passages, embedded by one model, scored with a dot
@@ -1068,10 +1039,19 @@ python -m rag.ingest --sources all --pinecone  # and upsert to Pinecone</pre>
             events rather than themes, which is a workaround, not a solution.
           </p>
 
+          <h4>Rebuilding it</h4>
+          <p>
+            Ingest is a local job: it writes the index into the repo, and a serverless
+            filesystem is read-only. Passages are cached by content, so re-running only pays
+            for what changed.
+          </p>
+          <pre class="formula">python -m rag.ingest --dry-run --sources all   # free
+python -m rag.ingest --debug   --sources all   # ~$0.0002
+python -m rag.ingest --sources all             # ~$0.0156</pre>
+
           <p style="font-size:0.85rem;color:#888;">
             Full write-up, with the measurements behind each number, in
-            <code>rag/DECISIONS.md</code> &mdash; also served raw at
-            <code>GET /api/rag/decisions</code>.
+            <code>rag/DECISIONS.md</code>, served raw at <code>GET /api/rag/decisions</code>.
           </p>
 
         </div>
@@ -1171,7 +1151,6 @@ python -m rag.ingest --sources all --pinecone  # and upsert to Pinecone</pre>
         return;
       }
 
-      const p = ragInfo.parameters || {};
       const idx = ragInfo.index;
       document.getElementById('rag-index').innerHTML = idx
         ? '<div class="index-state index-ok"><b>Index ready</b> &mdash; ' +
@@ -1188,13 +1167,6 @@ python -m rag.ingest --sources all --pinecone  # and upsert to Pinecone</pre>
                  ${(ragInfo.default_sources || []).includes(c.key) ? 'checked' : ''} />
           ${escapeHtml(c.label)}
         </label>`).join('');
-
-      const idx2 = ragInfo.index;
-      document.getElementById('rag-build-state').innerHTML = idx2
-        ? '<div class="index-state index-ok">Serving <b>' + escapeHtml(String(idx2.chunks)) +
-          '</b> passages from the <code>' + escapeHtml(String(idx2.store)) + '</code> store.</div>'
-        : '<div class="index-state index-bad">No usable index here. ' +
-          escapeHtml(ragInfo.index_error || '') + '</div>';
 
     }
 
