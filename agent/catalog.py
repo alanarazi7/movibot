@@ -1,17 +1,16 @@
 """Catalog access: the structured movie table and the long plot texts.
 
-Two backends, chosen by the MOVIBOT_BACKEND env var:
+Read from the prepared CSVs in data_preprocessing/data_ready/, loaded once and
+cached in-process. There is no database, for the same reason there is no vector
+database: the catalog is 238 rows and 181 KB, and it loads in about 2 ms. A
+bulk read plus Python-side filtering is simpler and faster than round-tripping
+a query per request, and it needs no credentials -- so the whole agent is
+runnable from a fresh clone.
 
-    local  (default)  read the prepared CSVs in data_preprocessing/data_ready/
-    cloud             read the `movies` table from Supabase
-
-Both return the same shape, so nothing above this module knows which is in
-use. `local` costs nothing and needs no credentials, which is why it is the
-default: the whole agent is runnable and testable before any account exists.
-
-Everything is loaded once and cached in-process. The catalog is 238 rows, so
-a single bulk read plus Python-side filtering is simpler and faster than
-round-tripping a query per request.
+A Supabase backend existed here behind MOVIBOT_BACKEND=cloud. It was removed
+rather than finished: it never ran, it duplicated a table small enough to hold
+in memory, and keeping an unexercised second path is how the two quietly stop
+agreeing. rag/store.py records the same argument for vectors.
 """
 
 from __future__ import annotations
@@ -40,11 +39,6 @@ _LIST_COLUMNS = (
 )
 
 
-def backend() -> str:
-    """Which catalog backend is active: 'local' or 'cloud'."""
-    return os.environ.get("MOVIBOT_BACKEND", "local").strip().lower()
-
-
 def _parse_list_columns(df: pd.DataFrame) -> pd.DataFrame:
     for col in _LIST_COLUMNS:
         if col in df.columns:
@@ -52,41 +46,6 @@ def _parse_list_columns(df: pd.DataFrame) -> pd.DataFrame:
                 lambda v: json.loads(v) if isinstance(v, str) and v.strip() else []
             )
     return df
-
-
-def _load_from_supabase() -> pd.DataFrame:
-    """Fetch the whole `movies` table. Requires SUPABASE_URL / SUPABASE_KEY."""
-    from supabase import create_client
-
-    url = os.environ.get("SUPABASE_URL")
-    key = os.environ.get("SUPABASE_KEY")
-    if not url or not key:
-        raise RuntimeError(
-            "MOVIBOT_BACKEND=cloud requires SUPABASE_URL and SUPABASE_KEY. "
-            "Unset MOVIBOT_BACKEND to use the local CSV backend instead."
-        )
-
-    client = create_client(url, key)
-    # 238 rows fits comfortably in one page, but paginate anyway so this does
-    # not silently truncate if the catalog is ever widened past the default
-    # PostgREST limit.
-    rows: list[dict[str, Any]] = []
-    page_size = 1000
-    start = 0
-    while True:
-        chunk = (
-            client.from_("movies")
-            .select("*")
-            .range(start, start + page_size - 1)
-            .execute()
-            .data
-        )
-        rows.extend(chunk)
-        if len(chunk) < page_size:
-            break
-        start += page_size
-
-    return pd.DataFrame(rows)
 
 
 @lru_cache(maxsize=1)
@@ -97,16 +56,7 @@ def movies() -> pd.DataFrame:
     `weighted_rating` was precomputed there, so both ranking guardrails hold
     here without this module re-deriving them.
     """
-    if backend() == "cloud":
-        df = _load_from_supabase()
-        # Supabase returns jsonb as real lists already; only parse if the
-        # driver handed back strings.
-        for col in _LIST_COLUMNS:
-            if col in df.columns and df[col].apply(lambda v: isinstance(v, str)).any():
-                df = _parse_list_columns(df)
-                break
-    else:
-        df = _parse_list_columns(pd.read_csv(CATALOG_CSV))
+    df = _parse_list_columns(pd.read_csv(CATALOG_CSV))
 
     if "weighted_rating" not in df.columns:
         raise RuntimeError(
@@ -163,7 +113,7 @@ def stats() -> dict[str, Any]:
     """Small summary used by tests and the /api/agent_info payload."""
     df = movies()
     return {
-        "backend": backend(),
+        "source": "committed CSVs",
         "movies": len(df),
         "with_synopsis": len(_synopsis_index()),
         "year_range": [int(df["release_year"].min()), int(df["release_year"].max())],

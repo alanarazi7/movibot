@@ -28,7 +28,7 @@ Three sources, prepared offline into `data_preprocessing/data_ready/`:
 
 | Artifact | Contents |
 |---|---|
-| `supabase_movies.csv` | **238** Disney + Pixar feature films, 26 columns — the movie universe |
+| `supabase_movies.csv` | **238** Disney + Pixar feature films, 26 columns — the movie universe (the name is a leftover; there is no database) |
 | `pinecone_candidates.csv` | the **159** with a full MPST plot synopsis (66.8%) — the name is a leftover; no vector database is used |
 | `chunk_index.npz` | **3,159** passages and their 1536-dim vectors, scored in memory |
 | `wikipedia_cache.csv` | **237** films' Wikipedia articles, plot and non-plot text, scraped once offline |
@@ -70,7 +70,6 @@ The catalog reads from committed CSVs and needs no credentials. Planner turns an
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `MOVIBOT_BACKEND` | `local` | `local` reads the prepared CSVs; `cloud` uses Supabase |
 
 | `MOVIBOT_OFFLINE` | unset | `1` disables every paid call |
 

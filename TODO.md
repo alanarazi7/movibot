@@ -13,8 +13,6 @@ semantic search works, and the passage index covers every film in the catalog.
 
 ## Credentials
 
-- [ ] `SUPABASE_KEY` — unusable at 41 chars; the anon key is a JWT of 200+.
-      Also optional: the CSV backend works
 
 ```bash
 python scripts/check_credentials.py     # free, no network
@@ -74,50 +72,3 @@ run. Every other expected behaviour is still a prediction.
 turns that is ~13K tokens of instructions per query.
 
 - [ ] Cut it, measuring that behaviour on the 11 cases does not regress
-
-### 6. Optional: Supabase
-
-Not needed; the CSV backend works. Would only demonstrate the cloud path.
-
-- [ ] Supabase: run `schema.sql`, implement the loader, verify 238 rows
-
----
-
-## How to deploy
-
-**Deploys do not happen on `git push`.** This project is not Git-connected on
-Vercel; a push updates GitHub only. Production changes require:
-
-```bash
-vercel --prod --yes
-```
-
-Do not trust the exit code — it returns 0 without necessarily promoting.
-Verify by comparing bytes:
-
-```bash
-wc -c < public/index.html
-vercel curl -sI https://movibot-gamma.vercel.app/ | grep -i content-length
-```
-
-`.vercelignore` keeps 113 MB of raw Kaggle input, the course PDFs, and the local
-`.env` files out of the upload. It deliberately does **not** exclude
-`data_preprocessing/data_ready/`, which the agent reads at runtime.
-
----
-
-## Budget
-
-$13 cap. **Spent so far: ~$0.018** — one full corpus embedding
-(~$0.0156) plus a handful of planner calls.
-
-| Item | Estimate |
-|---|---|
-| Pinecone embeddings (1,254 passages, ~350K tokens) | ~$0.01 |
-| Planner turns | ≤5 model calls per query, hard-capped in `agent/loop.py` |
-| The 11 test cases, once | a few cents |
-
-`MOVIBOT_OFFLINE=1` blocks all spending at the client, not just in the loop.
-Placeholder credentials are detected and rejected rather than attempted.
-
----

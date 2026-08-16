@@ -134,12 +134,6 @@ def main() -> None:
         for m in available:
             print(f"    {'':22}   {m}")
 
-    print("\nOptional -- only for the Supabase catalog backend")
-    supa = all([
-        check("SUPABASE_URL", r"^https://[a-z0-9]+\.supabase\.co/?$", "https://<ref>.supabase.co"),
-        check("SUPABASE_KEY", r"^eyJ[\w-]{20,}", "a JWT starting eyJ, usually 200+ chars"),
-    ])
-
     print("\nRetrieval")
     from rag import config as ragcfg
     print(f"  {OK} {'vector store':22} in-memory matrix  (no credentials needed)")
@@ -174,7 +168,6 @@ def main() -> None:
     else:
         print(f"  {BAD} cannot answer a query yet -- the two required values above are missing")
 
-    print(f"  {OK if supa else BAD} Supabase path (MOVIBOT_BACKEND=cloud)")
 
     if not args.ping:
         print("\nThe model id above was checked against the tenant's live model list,")
