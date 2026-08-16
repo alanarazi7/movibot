@@ -600,8 +600,7 @@
       <span class="tab-group-label" title="Everything beyond the assignment's requirements">Extras</span>
       <button class="tab-button" onclick="switchTab('datanav')">🗃️ Data</button>
       <button class="tab-button" onclick="switchTab('retrieval')">🔎 Retrieval</button>
-      <button class="tab-button" onclick="switchTab('decisions')">📋 Decisions</button>
-      <button class="tab-button" onclick="switchTab('status-tab')">🗒️ Status</button>
+      <button class="tab-button" onclick="switchTab('status-tab')">🗒️ TODO</button>
     </div>
 
     <!-- TAB 1: Agent Query -->
@@ -656,8 +655,7 @@
               <tbody>
                 <tr><td>🗃️ Data</td><td>All 238 films, searchable, with every record the pipeline stores</td></tr>
                 <tr><td>🔎 Retrieval</td><td>Semantic search over the corpora, and how retrieval was built</td></tr>
-                <tr><td>📋 Decisions</td><td>Design decisions for the agent itself</td></tr>
-                <tr><td>🗒️ Status</td><td>The team's live checklist, served from the file we edit</td></tr>
+                <tr><td>🗒️ TODO</td><td>The team's live checklist, served from the file we edit</td></tr>
               </tbody>
             </table>
           </div>
@@ -741,35 +739,6 @@
     </div>
 
     <!-- TAB 5: Project Decisions -->
-    <div id="decisions" class="tab-content">
-
-      <details class="panel">
-        <summary>
-          <span class="emoji">🤖</span> Agent
-          <span class="panel-note">next</span>
-        </summary>
-        <div class="panel-body">
-          <p class="pending">
-            The three tools, why guardrails live in data and tool code rather than in the
-            prompt, and how the loop is bounded. Not written yet.
-          </p>
-        </div>
-      </details>
-
-      <details class="panel">
-        <summary>
-          <span class="emoji">🚀</span> Deployment
-          <span class="panel-note">next</span>
-        </summary>
-        <div class="panel-body">
-          <p class="pending">
-            Local versus cloud backends, why the local embedding model cannot ship to Vercel,
-            and how spending is capped. Not written yet.
-          </p>
-        </div>
-      </details>
-    </div>
-
     <!-- TAB 6: Data -->
     <div id="datanav" class="tab-content">
       <div class="card">
@@ -1061,10 +1030,10 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
     <!-- TAB 7: Status -->
     <div id="status-tab" class="tab-content">
       <div class="card">
-        <h2>Status</h2>
+        <h2>TODO</h2>
         <p style="color:#666;font-size:0.9rem;margin-top:0.4rem;">
-          The team's working checklist, served live from <code>TODO.md</code> — the same
-          file we edit, so this page cannot fall behind the plan.
+          What is still open, served live from <code>TODO.md</code> — the same file we
+          edit, so this page cannot fall behind the plan. Completed work is not listed.
         </p>
         <div id="status-progress"></div>
       </div>
@@ -1312,36 +1281,24 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
       return out.join('\n');
     }
 
-    // Progress is computed from the checkboxes rather than written down, so it
-    // is always the file's real state. Every checkbox counts, including the
-    // Done changelog: excluding it reported 3% for a project that is mostly
-    // built, because all the finished work lived there. The per-section chips
-    // carry the useful signal -- where the remaining work actually is.
+    // Counts open items per section. There is no progress bar: the file lists
+    // only what is left, so a "percent done" would be measuring nothing.
     function statusProgress(md) {
       const sections = [];
       let current = null;
-
       md.split('\n').forEach(raw => {
         const h = raw.match(/^##\s+(.*)$/);
-        if (h) { current = { name: h[1].trim(), done: 0, open: 0 }; sections.push(current); return; }
-        if (!current) return;
-        const t = raw.match(/^\s*-\s+\[([ xX])\]/);
-        if (t) current[t[1].toLowerCase() === 'x' ? 'done' : 'open']++;
+        if (h) { current = { name: h[1].trim(), open: 0 }; sections.push(current); return; }
+        if (current && /^\s*-\s+\[ \]/.test(raw)) current.open++;
       });
-
-      const done = sections.reduce((a, s) => a + s.done, 0);
       const open = sections.reduce((a, s) => a + s.open, 0);
-      const total = done + open;
-      const pct = total ? Math.round((done / total) * 100) : 0;
-      const remaining = sections.filter(s => s.open > 0);
-
+      const live = sections.filter(s => s.open > 0);
       return `
         <div class="progress-row">
-          <span class="progress-bar"><span style="width:${pct}%"></span></span>
-          <span class="progress-num"><b>${done}</b> done &middot; <b>${open}</b> open &middot; ${pct}%</span>
+          <span class="progress-num"><b>${open}</b> open item${open === 1 ? '' : 's'}</span>
         </div>
         <div class="open-chips">${
-          remaining.map(s => `<span>${escapeHtml(s.name)} <b>${s.open}</b></span>`).join('')
+          live.map(s => `<span>${escapeHtml(s.name)} <b>${s.open}</b></span>`).join('')
         }</div>`;
     }
 
