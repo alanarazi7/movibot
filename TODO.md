@@ -1,46 +1,39 @@
 # TODO
 
-Working checklist. Due **2026-08-23**. Last revised **2026-08-16**.
+Working checklist. Due **2026-08-23**.
 
-Ordered by what unblocks what. Anything that spends budget is marked and needs
-explicit go-ahead first — **nothing has been spent to date**.
-
-The app is deployed and working at
-[movibot-gamma.vercel.app](https://movibot-gamma.vercel.app); everything except
-answering an actual query works there today. What remains is almost entirely
-gated on credentials.
+Spending needs explicit go-ahead. **Spent so far: 2 model calls, ~5,200 prompt
+and ~150 completion tokens — well under a cent of the $13 cap.**
 
 ---
 
-## Blocked on credentials
+## Credentials — what is still missing
 
-`.env` still holds placeholder values. Everything below the "free" line works
-without them; nothing on the paid track can start.
+LLMod is done and verified: the key authenticates, `MB5R2CF-azure/gpt-5.4-mini`
+is confirmed against the tenant's model list, and a real query has run. **That
+is everything the 11 test cases need locally.** Two gaps remain, both only for
+the cloud backends:
 
-- [ ] Real `OPENAI_API_KEY` + `OPENAI_BASE_URL` (LLMod.ai) — **these two alone
-      unlock the 11 test cases locally**; Pinecone and Supabase are not involved
-- [ ] Real `PINECONE_API_KEY` — only for `MOVIBOT_EMBEDDINGS=cloud`, i.e. production
-- [ ] `SUPABASE_KEY` looks wrong: 41 chars, but the anon/service key is a JWT
-      starting `eyJ` and usually 200+ chars. `SUPABASE_URL` looks fine
+- [ ] **`PINECONE_API_KEY`** — still a placeholder here. A real 75-char key
+      exists in the sibling `medium-rag-hw/.env`; reuse it or issue a new one.
+      Needed only for `MOVIBOT_EMBEDDINGS=cloud`, which production requires
+      because torch cannot ship to Vercel
+- [ ] **`SUPABASE_KEY`** — present but unusable: 41 chars, where an anon or
+      service key is a JWT starting `eyJ`, usually 200+ chars. Looks truncated
+      or the wrong field was copied. Re-copy from Supabase → Settings → API
+- [ ] **Vercel has no environment variables at all** (`vercel env ls` is
+      empty), so production still cannot answer any query. Needs at minimum
+      `OPENAI_API_KEY` and `OPENAI_BASE_URL`, then a redeploy — env changes do
+      not affect the running deployment
 
-Check what is usable at any point, without spending anything:
-
-```bash
-python scripts/check_credentials.py          # free, no network
-python scripts/check_credentials.py --ping   # 💰 one tiny call, settles the model id
-```
-- [x] **LLMod.ai model ids confirmed** against `GET /v1/models`, which lists
-      exactly two for this tenant: `MB5R2CF-azure/gpt-5.4-mini` and
-      `MB5R2CF-azure/text-embedding-3-small`. Both hardcoded defaults were
-      wrong — the chat id said `gpt-4o-mini`, and the embedding id was missing
-      the `azure/` segment — but the `MB5R2CF` prefix and the `azure/` segment
-      themselves were right, contrary to what this file previously guessed
+Already set and correct: `OPENAI_API_KEY`, `OPENAI_BASE_URL`,
+`PINECONE_INDEX_NAME`, `SUPABASE_URL`.
 
 Check what is usable at any point, without spending anything:
 
 ```bash
 python scripts/check_credentials.py          # free, no network
-python scripts/check_credentials.py --ping   # 💰 one tiny call, settles the model id
+python scripts/check_credentials.py --ping   # 💰 end-to-end proof, a few tokens
 ```
 - [ ] **Confirm the LLMod.ai chat model id.** The sibling `medium-rag-hw`
       project uses `4UHRUIN-text-embedding-3-small` and `4UHRUIN-gpt-5-mini` —
@@ -204,7 +197,8 @@ vercel curl -sI https://movibot-gamma.vercel.app/ | grep -i content-length
 
 ## Budget
 
-$13 cap. **Spent so far: $0.**
+$13 cap. **Spent so far: 2 model calls, ~5,200 prompt + ~150 completion
+tokens — well under a cent.**
 
 | Item | Estimate |
 |---|---|
@@ -286,6 +280,12 @@ Placeholder credentials are detected and rejected rather than attempted.
       tool, both scope limits, and the plausible failure modes
 - [x] Team-email warning banner, derived from `/api/team_info` so it clears
       itself
+- [x] **LLMod.ai model ids confirmed** against `GET /v1/models`, which lists
+      exactly two for this tenant: `MB5R2CF-azure/gpt-5.4-mini` and
+      `MB5R2CF-azure/text-embedding-3-small`. Both hardcoded defaults were
+      wrong — the chat id said `gpt-4o-mini`, and the embedding id was missing
+      the `azure/` segment — but the `MB5R2CF` prefix and the `azure/` segment
+      themselves were right, contrary to what this file previously guessed
 - [x] All three team emails in `team_info.json`; the warning banner that
       tracked them clears itself, so it is now gone from the page
 - [x] **🗒️ Status tab** — this checklist, served live from `TODO.md` via
