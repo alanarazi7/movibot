@@ -6,44 +6,68 @@ Spending needs explicit go-ahead. **Spent so far: ~$0.018 of $13** — the corpu
 embedded once (~$0.0156), plus a handful of planner calls.
 
 The app is live at [movibot-gamma.vercel.app](https://movibot-gamma.vercel.app)
-and **answers real queries in production**. All four required endpoints work,
-semantic search works, and the passage index covers every film in the catalog.
+and answers real queries in production. Nothing is blocked on a credential:
+the Pinecone and Supabase backends were removed, and the two that remain
+(`OPENAI_API_KEY`, `OPENAI_BASE_URL`) are set locally and in production.
 
 ---
 
-## Credentials
+## Architecture
 
+The shape we agreed: decompose a request into conditions, exhaust the
+structured ones, then spend money only on what is left. The candidate set now
+lives in Python and films are addressed by name, so what remains is making the
+decomposition explicit and describing the whole thing honestly.
 
-```bash
-python scripts/check_credentials.py     # free, no network
-```
+### A1. Condition plan — the remaining piece
+
+`filter_catalog` establishes the working set, but *which* conditions are
+structured is still free-form model judgement rather than a visible step.
+
+- [ ] A `plan` tool the planner calls first, classifying each condition as
+      structured / semantic / subjective, so the split is traced and a
+      mis-classification is diagnosable rather than mysterious
+
+### A2. Architecture tab
+
+- [ ] Show the diagram immediately instead of behind a button
+- [ ] "How a request flows", using the narrowing trace as the worked example
+- [ ] A section per component — Planner, each tool, each store — with its
+      guardrail constants live, and the Planner's prompt served from
+      `prompts.py` so it cannot drift
+- [ ] Redraw the diagram: it mentions neither the working set nor the four
+      corpora, which are now the two most interesting things about the flow
+
+### A3. Prompt review
+
+Never reviewed whole; it grew one section per problem we hit. ~2,100 tokens on
+every turn, against a brief that asks to minimise context.
+
+- [ ] Read it end to end against each component, once the tab puts them side
+      by side
+- [ ] Trim, then confirm the 11 cases do not regress
 
 ---
 
-## Next up
+## Correctness and cost
 
-### 1. Guard the public endpoint  ⚠️ the one real exposure
+### C1. Guard the public endpoint  ⚠️ the one real exposure
 
 `/api/execute` is public and ungated at up to ~$0.0143 per request, so roughly
 **900 requests would exhaust the $13**. `MAX_ROUNDS` caps cost per request but
 nothing caps requests.
 
 - [ ] Accumulate real token usage against a `MOVIBOT_BUDGET_USD` cap and refuse
-      once hit — the same shape as `MOVIBOT_OFFLINE`, but automatic. The budget
-      block now reports true token counts, so the numbers exist
+      once hit — the budget block now reports true counts, so the numbers exist
 
-### 2. Retrieval quality — the open question
+### C2. Retrieval quality
 
-Moving from E5 to `text-embedding-3-small` did **not** fix phrasing
-sensitivity, which was the hoped-for outcome. Measured on the same probe:
+The stronger embedding model did **not** fix phrasing sensitivity:
 
 | Query | Rank |
 |---|---|
 | "a prince reveals he never loved her and leaves her to die" | **#2** |
 | "someone you just met turns out to be the villain" | outside top 25 |
-
-Mitigated by instructing the planner to search for concrete events, which is a
-workaround rather than a fix.
 
 - [ ] Try 200 / 300 / 450 token chunks — ~$0.007 each, and the content cache
       means only changed passages are re-embedded
@@ -51,24 +75,59 @@ workaround rather than a fix.
 
 ---
 
-## Remaining, in rough order
+## Validation
 
-### 4. Run the 11 test cases  💰 ~$0.09
+### V1. Revise the 11 cases, then run them  💰 ~$0.09
 
-The agent answers in production, but only the identity prompt has actually been
-run. Every other expected behaviour is still a prediction.
+Written before the corpora, the model change, `MAX_RECOMMENDATIONS`, and the
+working set. Stale in several ways, and none has ever been run.
 
-- [ ] Run all 11 from the front page and compare against the stated expectation
-- [ ] The three that are traps: "starring Tom Hanks" must refuse rather than
-      answer Toy Story from pretraining; "besides Frozen and Moana" must become
-      a filter; "a Disney movie in Hindi" must still surface Dangal at 140 votes
+- [ ] Update the expectations: films are named not numbered, chunk ids are now
+      `mpst_<id>_<n>`, answers may name up to 3 films, results carry a corpus
+- [ ] Add a case for the corpus defect — a story question where a cast list
+      could plausibly win — so it cannot silently return
+- [ ] Run all 11 and compare against what each says should happen
+- [ ] The three traps: "starring Tom Hanks" must refuse rather than answer Toy
+      Story from pretraining; "besides Frozen and Moana" must become a filter;
+      "a Disney movie in Hindi" must still surface Dangal at 140 votes
 - [ ] Watch for over-refusal on "a nice comedy" and invented post-2017 titles
-- [ ] Capture a real response into `agent_info.json` `prompt_examples`, which
-      still says the prose is pending
+- [ ] Capture a real response into `agent_info.json` `prompt_examples`
 
-### 5. Trim the system prompt
+---
 
-2,613 tokens on every turn, and the brief asks to minimise prompt size. At five
-turns that is ~13K tokens of instructions per query.
+## How to deploy
 
-- [ ] Cut it, measuring that behaviour on the 11 cases does not regress
+**Deploys do not happen on `git push`.** This project is not Git-connected on
+Vercel; a push updates GitHub only. Production changes require:
+
+```bash
+vercel --prod --yes
+```
+
+Do not trust the exit code — it returns 0 without necessarily promoting.
+Verify by comparing bytes:
+
+```bash
+wc -c < public/index.html
+vercel curl -sI https://movibot-gamma.vercel.app/ | grep -i content-length
+```
+
+`.vercelignore` keeps 113 MB of raw Kaggle input, the course PDFs, and the
+local `.env` files out of the upload. It deliberately does **not** exclude
+`data_preprocessing/data_ready/`, which the agent reads at runtime.
+
+---
+
+## Budget
+
+$13 cap. **Spent so far: ~$0.018.**
+
+| Item | Cost |
+|---|---|
+| Full corpus embedding (3,159 passages), already done | $0.0156 |
+| One query embedding | ~$0.0000002 |
+| One planner turn | $0.0011 cheap, $0.0041 after reading synopses |
+| Worst-case request (5 turns) | $0.0143 |
+| The 11 test cases, once | ~$0.09 |
+
+`MOVIBOT_OFFLINE=1` blocks all spending — both planner calls and embedding.

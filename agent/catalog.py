@@ -109,6 +109,51 @@ def title_of(movie_id: int) -> str | None:
     return None if row.empty else str(row.iloc[0]["title"])
 
 
+def label_of(movie_id: int) -> str | None:
+    """A film's public name: "Title (Year)".
+
+    This is how films are addressed everywhere the model can see. Titles alone
+    are not unique -- the catalog holds four remake pairs, including two
+    Beauty and the Beasts -- but title with year is unique across all 238, so
+    it can replace the numeric id in every tool signature. Ids are plumbing;
+    nothing is served by spending prompt tokens on them.
+    """
+    df = movies()
+    row = df[df["id"] == int(movie_id)]
+    if row.empty:
+        return None
+    r = row.iloc[0]
+    return f"{r['title']} ({int(r['release_year'])})"
+
+
+@lru_cache(maxsize=1)
+def _labels() -> tuple[dict[str, int], dict[str, list[int]]]:
+    """(exact "Title (Year)" -> id, lowercase bare title -> [ids])."""
+    df = movies()
+    exact, bare = {}, {}
+    for r in df.itertuples():
+        exact[f"{r.title} ({int(r.release_year)})".lower()] = int(r.id)
+        bare.setdefault(str(r.title).lower(), []).append(int(r.id))
+    return exact, bare
+
+
+def resolve(label: str) -> int | None:
+    """Turn a label back into an id, or None if it names nothing.
+
+    Accepts a bare title too, but only when it is unambiguous -- "Frozen"
+    resolves, "The Jungle Book" does not, because the catalog holds both the
+    1967 and 2016 films and guessing between them would be worse than failing.
+    """
+    if not label:
+        return None
+    key = str(label).strip().lower()
+    exact, bare = _labels()
+    if key in exact:
+        return exact[key]
+    ids = bare.get(key)
+    return ids[0] if ids and len(ids) == 1 else None
+
+
 def stats() -> dict[str, Any]:
     """Small summary used by tests and the /api/agent_info payload."""
     df = movies()

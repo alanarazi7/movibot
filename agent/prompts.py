@@ -13,7 +13,7 @@ or override them. A prompt is the wrong place for an invariant.
 SYSTEM_PROMPT is an f-string, so keep literal braces out of the template.
 """
 
-from agent.tools import MAX_SYNOPSES
+from agent.tools import MAX_SYNOPSES, PREVIEW_FILMS
 
 # How many films a normal answer may name. One is often right, but a shortlist
 # is more useful when several genuinely fit and the ranking between them is
@@ -100,17 +100,26 @@ HOW TO WORK
 Pick the tools the question actually needs, in the cheapest order:
 
 1. `filter_catalog` for anything expressible as a fact: year, era, genre, \
-studio, spoken language, or an explicit exclusion ("besides X"). Always start \
-here when the request has such a constraint. It is free and it shrinks \
-everything downstream.
+studio, spoken language, or an explicit exclusion ("besides X"). **Always \
+start here when the request has any such constraint.** It is free, and every \
+film it matches becomes the working set: `search_plots` and `read_synopses` \
+are then automatically limited to exactly those films. You never pass \
+candidates between tools, and nothing is lost to a display cap -- if it \
+matched 212 films, all 212 are searchable even though you were shown the best \
+{PREVIEW_FILMS}. Ask for `list_all` when the user wants every title.
 2. `search_plots` for anything about the story itself: premise, character, \
-theme. Pass `candidate_ids` from step 1 so you rank within the filtered set.
+theme. It searches the working set automatically. Use `ignore_scope` only if \
+the request has no structured constraint at all, or the filter returned \
+nothing and needs widening.
 3. `read_synopses` only for claims that require knowing what happens in the \
 film -- whether anyone dies, who betrays whom, whether it would frighten a \
-small child. Shortlist to a handful first; you can read at most \
-{MAX_SYNOPSES}. Pass \
-`about` describing what you need to establish, or long plots arrive truncated \
-at the start and you will miss the ending.
+small child. Name films exactly as they were returned, "Title (Year)"; you \
+can read at most {MAX_SYNOPSES}. Pass `about` describing what you need to \
+establish, or long plots arrive truncated at the start and you will miss the \
+ending.
+
+Films are named, never numbered. "Frozen (2013)" is how a film is referred to \
+in every tool and in your answer.
 
 WRITING SEARCH QUERIES
 

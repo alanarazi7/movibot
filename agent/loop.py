@@ -43,6 +43,10 @@ def execute(prompt: str) -> dict[str, Any]:
     """
     started = time.time()
     steps: list[dict[str, Any]] = []
+    # The candidate set for this request. filter_catalog fills it; search and
+    # read scope themselves to it. It never enters the prompt, and it dies with
+    # the request, so there is no cross-request state to reason about.
+    ctx = tools.ToolContext()
     budget = {"model_calls": 0, "tool_calls": 0, "prompt_tokens": 0, "completion_tokens": 0}
 
     if not prompt or not prompt.strip():
@@ -108,6 +112,7 @@ def execute(prompt: str) -> dict[str, Any]:
                     "error": None,
                     "response": answer,
                     "steps": steps,
+                    "narrowing": ["238 (whole catalog)"] + ctx.trace,
                     "budget": _finalise(budget, started),
                 }
 
@@ -125,7 +130,7 @@ def execute(prompt: str) -> dict[str, Any]:
                         "error": f"Arguments were not valid JSON: {exc}"
                     }
                 else:
-                    result = tools.dispatch(name, arguments)
+                    result = tools.dispatch(name, arguments, ctx)
 
                 budget["tool_calls"] += 1
 
@@ -133,6 +138,7 @@ def execute(prompt: str) -> dict[str, Any]:
                     "module": tools.TRACE_NAMES.get(name, name),
                     "round": round_index + 1,
                     "prompt": {"tool": name, "arguments": arguments},
+                    "scope": ctx.scope_note,
                     "response": result,
                 })
 

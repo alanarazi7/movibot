@@ -27,13 +27,44 @@ from __future__ import annotations
 
 from typing import Any
 
+from dataclasses import dataclass, field
+
 from agent import catalog
 from rag import store as retrieval
+from rag.corpora import DEFAULT_SOURCES
+
+
+@dataclass
+class ToolContext:
+    """State that lives for one request, and never enters the prompt.
+
+    The candidate set is the whole point. filter_catalog narrows the catalog
+    and records every matching id here; search and read then scope themselves
+    to it automatically. Previously the model had to carry ids forward itself,
+    which cost tokens, invited transcription errors, and -- because the result
+    was capped at 40 -- silently lost every match beyond the cap. A filter
+    matching 212 films left 172 of them unreachable.
+    """
+
+    working_set: set[int] | None = None      # None = whole catalog
+    scope_note: str = "whole catalog"
+    trace: list[str] = field(default_factory=list)
+
+    def narrow(self, ids: set[int], why: str) -> None:
+        self.working_set = ids
+        self.scope_note = f"{len(ids)} films ({why})"
+        self.trace.append(self.scope_note)
+
+    def candidates(self) -> list[int] | None:
+        return sorted(self.working_set) if self.working_set is not None else None
 
 # A structured filter is for narrowing, not for dumping the catalog into the
 # context window. 40 rows is enough for the model to choose from, and roughly
 # 1.5 KB of JSON.
-MAX_FILTER_RESULTS = 40
+# How many labels come back when a filter matches more than this. The full set
+# is always in scope regardless; this only bounds what is *shown*, and
+# list_all=true lifts it. Not a cost guard -- all 238 labels are ~2,300 tokens.
+PREVIEW_FILMS = 15
 
 # Full plot texts are large (median ~5 KB). These two caps together bound the
 # worst-case tool payload at ~48 KB, which is what keeps a turn affordable.
@@ -62,9 +93,16 @@ def filter_catalog(
     exclude_english_only: bool = False,
     exclude_titles: list[str] | None = None,
     require_synopsis: bool = False,
-    limit: int = MAX_FILTER_RESULTS,
+    list_all: bool = False,
+    ctx: "ToolContext | None" = None,
 ) -> dict[str, Any]:
-    """Filter the catalog on structured columns. Free, no model call."""
+    """Filter the catalog on structured columns. Free, no model call.
+
+    Every match becomes the request's candidate set, so search_plots and
+    read_synopses are automatically limited to it -- nothing has to be carried
+    forward. What comes back is a count and a handful of labels, not rows: the
+    ids stay in Python, where they cost nothing.
+    """
     df = catalog.movies()
     applied: dict[str, Any] = {}
 
@@ -134,32 +172,39 @@ def filter_catalog(
         df = df[df["id"].apply(catalog.has_synopsis)]
         applied["require_synopsis"] = True
 
-    matched = len(df)
     df = df.sort_values("weighted_rating", ascending=False)
-    capped = min(int(limit), MAX_FILTER_RESULTS)
+    matched = len(df)
 
-    return {
+    if ctx is not None:
+        ctx.narrow(set(int(i) for i in df["id"]), _describe(applied))
+
+    labelled = [
+        {"film": f"{r.title} ({int(r.release_year)})",
+         "rating": round(float(r.weighted_rating), 2)}
+        for r in df.itertuples()
+    ]
+
+    out: dict[str, Any] = {
         "matched": matched,
-        "returned": min(matched, capped),
-        "truncated": matched > capped,
-        "filters_applied": applied,
-        "movies": [_brief(row) for _, row in df.head(capped).iterrows()],
+        "filters_applied": applied or "none",
+        "scope": "search_plots and read_synopses now cover exactly these films",
     }
+    if list_all or matched <= PREVIEW_FILMS:
+        # Labels are ~10 tokens each, so even all 238 costs less than a fifth
+        # of one read_synopses call. Completeness is affordable; hiding matches
+        # behind a cap was not a saving worth making.
+        out["films"] = labelled
+    else:
+        out["best_rated"] = labelled[:PREVIEW_FILMS]
+        out["note"] = (
+            f"Showing the {PREVIEW_FILMS} best rated of {matched}. All {matched} "
+            "are in scope for search and reading; pass list_all=true to see every title."
+        )
+    return out
 
 
-def _brief(row) -> dict[str, Any]:
-    """Compact row for the model: enough to choose, small enough to be cheap."""
-    return {
-        "movie_id": int(row["id"]),
-        "title": str(row["title"]),
-        "year": int(row["release_year"]),
-        "runtime": int(row["runtime_minutes"]),
-        "genres": list(row["genres"]),
-        "rating": round(float(row["weighted_rating"]), 2),
-        "raw_rating": round(float(row["vote_average"]), 1),
-        "votes": int(row["vote_count"]),
-        "has_synopsis": catalog.has_synopsis(int(row["id"])),
-    }
+def _describe(applied: dict[str, Any]) -> str:
+    return ", ".join(f"{k}={v}" for k, v in applied.items()) if applied else "no filter"
 
 
 # ---------------------------------------------------------------------
@@ -168,8 +213,9 @@ def _brief(row) -> dict[str, Any]:
 
 def search_plots(
     query: str,
-    candidate_ids: list[int] | None = None,
     top_k: int = 10,
+    ignore_scope: bool = False,
+    ctx: "ToolContext | None" = None,
 ) -> dict[str, Any]:
     """Rank movies by how well their plot matches a described story.
 
@@ -179,7 +225,14 @@ def search_plots(
     evidence the planner can quote instead of inferring.
     """
     top_k = max(1, min(int(top_k), MAX_SEARCH_RESULTS))
-    hits = retrieval.search(query, top_k=top_k, candidate_ids=candidate_ids)
+    scoped = None if (ignore_scope or ctx is None) else ctx.candidates()
+
+    # Plot-bearing corpora only. The index also holds cast lists and one-line
+    # blurbs, which score plausibly on story questions without answering them:
+    # asked "does anyone die", a cast list came second. They stay searchable
+    # deliberately, but not when the question is about what happens.
+    hits = retrieval.search(query, top_k=top_k, candidate_ids=scoped,
+                            sources=DEFAULT_SOURCES)
 
     df = catalog.movies().set_index("id")
     results = []
@@ -189,9 +242,7 @@ def search_plots(
             continue
         row = df.loc[movie_id]
         results.append({
-            "movie_id": int(movie_id),
-            "title": str(row["title"]),
-            "year": int(row["release_year"]),
+            "film": f"{row['title']} ({int(row['release_year'])})",
             "similarity": round(float(hit["score"]), 4),
             "rating": round(float(row["weighted_rating"]), 2),
             "matching_passage": _trim(hit["passage"], MAX_PASSAGE_CHARS),
@@ -200,7 +251,7 @@ def search_plots(
 
     return {
         "query": query,
-        "searched_within": len(candidate_ids) if candidate_ids else "whole catalog",
+        "searched_within": "whole catalog" if scoped is None else f"{len(scoped)} films in scope",
         "returned": len(results),
         "results": results,
         # Only films with plot text are indexed, so a query restricted to
@@ -224,9 +275,10 @@ def _trim(text: str, limit: int) -> str:
 # ---------------------------------------------------------------------
 
 def read_synopses(
-    movie_ids: list[int],
+    films: list[str],
     about: str | None = None,
     max_chars: int = MAX_SYNOPSIS_CHARS,
+    ctx: "ToolContext | None" = None,
 ) -> dict[str, Any]:
     """Return plot text so constraints no column encodes can be judged.
 
@@ -240,8 +292,13 @@ def read_synopses(
     Frozen meets Hans as a charming prince and never reaches his betrayal.
     With it, the most relevant passages are returned instead, in story order.
     """
-    ids = [int(m) for m in (movie_ids or [])][:MAX_SYNOPSES]
+    requested = list(films or [])[:MAX_SYNOPSES]
     max_chars = max(500, min(int(max_chars), MAX_SYNOPSIS_CHARS))
+
+    ids, unknown = [], []
+    for label in requested:
+        movie_id = catalog.resolve(label)
+        (ids.append(movie_id) if movie_id is not None else unknown.append(label))
 
     # Rank passages once across all requested films, then group.
     relevant: dict[int, list[dict[str, Any]]] = {}
@@ -251,7 +308,7 @@ def read_synopses(
 
     out = []
     for movie_id in ids:
-        title = catalog.title_of(movie_id)
+        title = catalog.label_of(movie_id)
         hits = relevant.get(movie_id)
 
         if hits:
@@ -265,8 +322,7 @@ def read_synopses(
                 used += len(p["text"])
             chosen.sort(key=lambda h: h["chunk_index"])
             out.append({
-                "movie_id": movie_id,
-                "title": title,
+                "film": title,
                 "mode": "relevant_passages",
                 "about": about,
                 "passages": [
@@ -282,15 +338,14 @@ def read_synopses(
         text = catalog.synopsis(movie_id)
         if text is None:
             out.append({
-                "movie_id": movie_id, "title": title, "synopsis": None,
+                "film": title, "synopsis": None,
                 "note": "No plot text available for this title.",
             })
             continue
 
         truncated = len(text) > max_chars
         out.append({
-            "movie_id": movie_id,
-            "title": title,
+            "film": title,
             "mode": "full_text",
             "synopsis": text[:max_chars],
             "truncated": truncated,
@@ -303,7 +358,8 @@ def read_synopses(
         })
 
     return {
-        "requested": len(movie_ids or []),
+        "requested": len(requested),
+        "unresolved": unknown or None,
         "returned": len(out),
         "capped_at": MAX_SYNOPSES,
         "synopses": out,
@@ -366,9 +422,13 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                         "type": "boolean",
                         "description": "Keep only movies whose full plot text is available for later reading.",
                     },
-                    "limit": {
-                        "type": "integer",
-                        "description": f"Max rows to return (hard cap {MAX_FILTER_RESULTS}).",
+                    "list_all": {
+                        "type": "boolean",
+                        "description": (
+                            "Return every matching title instead of the best-rated "
+                            f"{PREVIEW_FILMS}. Use when the user asks for all of them. "
+                            "Every match is in scope for later tools either way."
+                        ),
                     },
                 },
                 "required": [],
@@ -383,9 +443,9 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                 "Rank movies by how closely their plot matches a described "
                 "story, premise, character, or theme. Use for anything not "
                 "expressible as a column: 'a rat who wants to cook', 'a father "
-                "learning to let go'. Pass candidate_ids from a prior "
-                "filter_catalog call to rank within that set instead of the "
-                "whole catalog. Only films with full plot text are searchable."
+                "learning to let go'. Automatically limited to whatever "
+                "filter_catalog last selected -- you do not pass candidates. "
+                "Only films with plot text are searchable."
             ),
             "parameters": {
                 "type": "object",
@@ -394,9 +454,13 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                         "type": "string",
                         "description": "The story in plain language. Describe the plot, not the metadata.",
                     },
-                    "candidate_ids": {
-                        "type": "array", "items": {"type": "integer"},
-                        "description": "Restrict ranking to these movie_ids, typically from filter_catalog.",
+                    "ignore_scope": {
+                        "type": "boolean",
+                        "description": (
+                            "Search the whole catalog rather than the filtered set. "
+                            "Only when the request has no structured constraint, or "
+                            "the filter returned nothing and needs widening."
+                        ),
                     },
                     "top_k": {
                         "type": "integer",
@@ -425,9 +489,14 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "movie_ids": {
-                        "type": "array", "items": {"type": "integer"},
-                        "description": f"Movie ids to read, at most {MAX_SYNOPSES}.",
+                    "films": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": (
+                            "Films to read, named exactly as returned: "
+                            "\"Title (Year)\", e.g. \"Frozen (2013)\". At most "
+                            f"{MAX_SYNOPSES}."
+                        ),
                     },
                     "about": {
                         "type": "string",
@@ -443,7 +512,7 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                         "description": f"Budget per movie (hard cap {MAX_SYNOPSIS_CHARS}).",
                     },
                 },
-                "required": ["movie_ids"],
+                "required": ["films"],
             },
         },
     },
@@ -463,19 +532,22 @@ TRACE_NAMES = {
 }
 
 
-def dispatch(name: str, arguments: dict[str, Any]) -> dict[str, Any]:
-    """Run a tool by name. Bad names/arguments become results, not exceptions.
-
-    A malformed tool call is something the model can recover from on the next
-    turn if we hand the error back, but a raised exception would abort the
-    whole request.
-    """
-    fn = TOOLS.get(name)
+def dispatch(name: str, arguments: dict[str, Any],
+             ctx: "ToolContext | None" = None) -> dict[str, Any]:
+    """Run one tool call, threading the request's candidate set through it."""
+    fn = _DISPATCH.get(name)
     if fn is None:
-        return {"error": f"Unknown tool '{name}'. Available: {sorted(TOOLS)}."}
+        return {"error": f"Unknown tool: {name}"}
     try:
-        return fn(**(arguments or {}))
+        return fn(**{**arguments, "ctx": ctx})
     except TypeError as exc:
         return {"error": f"Bad arguments for {name}: {exc}"}
-    except Exception as exc:  # noqa: BLE001 - surfaced to the model deliberately
-        return {"error": f"{name} failed: {type(exc).__name__}: {exc}"}
+    except Exception as exc:  # noqa: BLE001 - returned to the model as an observation
+        return {"error": f"{type(exc).__name__}: {exc}"}
+
+
+_DISPATCH = {
+    "filter_catalog": filter_catalog,
+    "search_plots": search_plots,
+    "read_synopses": read_synopses,
+}
