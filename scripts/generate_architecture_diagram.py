@@ -202,9 +202,9 @@ def main() -> None:
 
     data = [
         ("Catalog", (f"{n['films']} films × {n['columns']} columns",
-                     "CSV locally · Supabase in cloud mode")),
+                     "CSV, committed with the repo")),
         ("Passage index", (f"{n['passages']:,} passages from {n['indexed_films']} films",
-                           "1536-d, committed matrix or Pinecone")),
+                           "1536-d, scored in memory")),
         ("Plot texts", (f"{n['readable']} films readable in full",
                         "MPST synopsis, else Wikipedia plot")),
     ]

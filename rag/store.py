@@ -1,17 +1,10 @@
 """Where the passage vectors live, and how they are searched.
 
-Two stores, selected by MOVIBOT_VECTOR_STORE:
-
-    matrix     (default) a committed .npy scored with numpy. 1,254 vectors
-               score in ~0.5 ms, so this is not a compromise at this scale --
-               it is faster than a network round trip to a vector database.
-    pinecone   the same vectors, served by Pinecone.
-
-The distinction is only *where the vectors are kept*. Both embed the query with
-the same model, so the two stores return the same ranking. That was not true of
-the previous local/cloud split, where the two paths used different models and
-therefore different vectors, and local testing never exercised what production
-would do.
+In memory: a committed .npy, loaded once and scored with a numpy dot product.
+No vector database, deliberately -- see rag/config.py for the arithmetic. The
+short version is that 3,159 vectors score in about 0.5 ms, faster than the
+network hop a hosted index would add, and the query has to be embedded either
+way. A database would buy nothing here and cost a credential.
 """
 
 from __future__ import annotations
@@ -29,10 +22,8 @@ from rag.config import (
     EMBED_MODEL,
     FETCH_MULTIPLIER,
     INDEX_META,
-    PINECONE_INDEX,
     TOP_K,
     VECTORS_NPY,
-    vector_store,
 )
 
 
@@ -114,44 +105,6 @@ def _passages_matrix(query: str, fetch: int, allowed: set[int] | None,
     return out
 
 
-def _passages_pinecone(query: str, fetch: int, allowed: set[int] | None,
-                       sources: list[str] | None = None) -> list[dict]:
-    from pinecone import Pinecone
-
-    api_key = os.environ.get("PINECONE_API_KEY")
-    if not api_key or "your-" in api_key:
-        raise RuntimeError(
-            "MOVIBOT_VECTOR_STORE=pinecone requires PINECONE_API_KEY. Unset it "
-            "to use the committed matrix instead, which needs no credentials."
-        )
-
-    index = Pinecone(api_key=api_key).Index(PINECONE_INDEX)
-    kwargs: dict[str, Any] = {
-        "vector": embed.embed_query(query).tolist(),
-        "top_k": fetch,
-        "include_metadata": True,
-    }
-    where: dict[str, Any] = {}
-    if allowed:
-        where["movie_id"] = {"$in": sorted(allowed)}
-    if sources is not None:
-        where["source"] = {"$in": sorted(sources)}
-    if where:
-        kwargs["filter"] = where
-
-    return [
-        {
-            "movie_id": int(m["metadata"]["movie_id"]),
-            "chunk_index": int(m["metadata"].get("chunk_index", 0)),
-            "text": str(m["metadata"].get("text", "")),
-            "source": str(m["metadata"].get("source", "mpst")),
-            "title": str(m["metadata"].get("title", "")),
-            "score": float(m["score"]),
-        }
-        for m in index.query(**kwargs).get("matches", [])
-    ]
-
-
 def search_passages(
     query: str,
     top_k: int = 20,
@@ -172,8 +125,7 @@ def search_passages(
     if allowed is not None and not allowed:
         return []
 
-    fn = _passages_pinecone if vector_store() == "pinecone" else _passages_matrix
-    return fn(query.strip(), top_k, allowed, sources)
+    return _passages_matrix(query.strip(), top_k, allowed, sources)
 
 
 def search(
@@ -219,13 +171,10 @@ def search(
 
 def coverage() -> dict[str, Any]:
     """Index size and parameters, for diagnostics and /api/agent_info."""
-    if vector_store() == "pinecone":
-        return {"store": "pinecone", "index": PINECONE_INDEX, "model": EMBED_MODEL}
-
     vectors, chunks = _matrix()
     meta = _meta()
     return {
-        "store": "matrix",
+        "store": "in-memory matrix",
         "model": meta.get("model", EMBED_MODEL),
         "chunks": int(vectors.shape[0]),
         "movies": int(chunks.movie_id.nunique()),

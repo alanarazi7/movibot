@@ -991,11 +991,21 @@ C = 6.199 catalog mean    m = 300 vote prior</pre>
             are embedded once and cached by content, so re-running only pays for what changed.
           </p>
 
-          <h4>No vector database required</h4>
+          <h4>No vector database</h4>
           <p>
-            3,159 vectors score in about half a millisecond with numpy, faster than a network
-            round trip. The matrix ships with the repo, so search works from a fresh clone with
-            no credentials. Pinecone is supported for the cloud path but is not needed.
+            The vectors live in memory, in a committed file scored with numpy. There is no
+            Pinecone and no switch to enable one, which is a decision rather than a shortcut:
+            <strong>3,159 vectors is not a search problem</strong>. Scanning all of them takes
+            about <strong>0.5 ms</strong>, against 50&ndash;200 ms for a round trip to a
+            hosted index &mdash; and the query has to be embedded through the API either way,
+            so a database saves nothing there.
+          </p>
+          <p>
+            What it would add is a credential, an account, a quota, another failure mode, and
+            a fresh clone that cannot retrieve until someone provisions an index. Shipping the
+            matrix with the code also means a given commit retrieves identically forever.
+            A vector database earns its place when the index stops fitting in memory or brute
+            force stops being instant; at 19 MB, neither is close.
           </p>
 
           <h4>What still doesn't work</h4>
@@ -1101,10 +1111,8 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
     document.addEventListener('DOMContentLoaded', checkTeamInfo);
 
     // --- Retrieval tab ---------------------------------------------------
-    // Search, corpus selection, and the Pinecone build. The ingest call is
-    // server-gated: it embeds the whole corpus and costs money, so the button
-    // only works where MOVIBOT_ALLOW_INGEST is set. Otherwise a stranger on
-    // the public URL could spend the project's budget.
+    // Search and corpus selection. Building the index is a local job, not
+    // something this page can trigger -- see the Retrieval panel.
 
     let ragInfo = null;
 

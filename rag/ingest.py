@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 """Builds the passage index: chunk, embed, store.
 
-This is the whole ingest path in one place. It replaces
-scripts/build_chunk_index.py (which embedded locally with E5) and the unwritten
-Pinecone half of scripts/ingest.py.
+This is the whole ingest path in one place: chunk every selected corpus, embed
+what is not already cached, and write the index that rag/store.py reads.
 
     python -m rag.ingest                    # chunk, embed, write the matrix
     python -m rag.ingest --limit 20         # same, first 20 films only
-    python -m rag.ingest --pinecone         # also upsert to Pinecone
     python -m rag.ingest --dry-run          # chunk and report, embed nothing
 
 Embedding costs money -- roughly $0.0075 for the full corpus, a few hundred
@@ -41,7 +39,6 @@ from rag.config import (  # noqa: E402
     INDEX_META,
     MIN_CHUNK_TOKENS,
     OVERLAP_RATIO,
-    PINECONE_INDEX,
     VECTORS_NPY,
 )
 
@@ -83,48 +80,12 @@ def build_chunks(sources: list[str], limit: int | None = None,
     return pd.DataFrame(records)
 
 
-def upsert_pinecone(chunks: pd.DataFrame, vectors: np.ndarray) -> None:
-    """Push the same vectors to Pinecone, so both stores agree.
-
-    Metadata carries the passage text because search returns it as evidence;
-    without it the planner would have a film id and no quotable line.
-    """
-    from pinecone import Pinecone
-    import os
-
-    key = os.environ.get("PINECONE_API_KEY", "")
-    if not key or "your-" in key:
-        raise SystemExit("--pinecone needs a real PINECONE_API_KEY.")
-
-    index = Pinecone(api_key=key).Index(PINECONE_INDEX)
-    batch = 100
-    for start in range(0, len(chunks), batch):
-        rows = chunks.iloc[start:start + batch]
-        index.upsert([
-            {
-                "id": r.chunk_id,
-                "values": vectors[start + i].tolist(),
-                "metadata": {
-                    "movie_id": int(r.movie_id),
-                    "title": str(r.title),
-                    "chunk_index": int(r.chunk_index),
-                    "source": str(r.source),
-                    "text": str(r.text),
-                },
-            }
-            for i, r in enumerate(rows.itertuples())
-        ])
-        print(f"  upserted {min(start + batch, len(chunks))}/{len(chunks)}")
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--limit", type=int, help="only process the first N films")
     parser.add_argument("--sources", nargs="*", default=None,
                         help=f"corpora to index: {' '.join(corpora.CORPORA)} or all "
                              f"(default: {' '.join(corpora.DEFAULT_SOURCES)})")
-    parser.add_argument("--pinecone", action="store_true",
-                        help="also upsert the vectors to Pinecone")
     parser.add_argument("--dry-run", action="store_true",
                         help="chunk and report only; embeds nothing, costs nothing")
     parser.add_argument("--debug", action="store_true",
@@ -161,10 +122,6 @@ def main() -> None:
 
     print(f"\nWrote {Path(CHUNKS_PARQUET).name}, "
           f"{Path(VECTORS_NPY).name} {vectors.shape}, {Path(INDEX_META).name}")
-
-    if args.pinecone:
-        print(f"\nUpserting to Pinecone index {PINECONE_INDEX} ...")
-        upsert_pinecone(chunks, vectors)
 
     # Only the freshly-embedded passages cost anything; the rest came from the
     # cache, which is the whole point of re-running this safely.

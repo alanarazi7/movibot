@@ -134,11 +134,7 @@ def main() -> None:
         for m in available:
             print(f"    {'':22}   {m}")
 
-    print("\nOptional -- only for the cloud backends")
-    pine = all([
-        check("PINECONE_API_KEY", r"^\S{20,}$", "only needed for MOVIBOT_EMBEDDINGS=cloud"),
-        check("PINECONE_INDEX_NAME", r"^\S+$", "index name, e.g. movibot-plots"),
-    ])
+    print("\nOptional -- only for the Supabase catalog backend")
     supa = all([
         check("SUPABASE_URL", r"^https://[a-z0-9]+\.supabase\.co/?$", "https://<ref>.supabase.co"),
         check("SUPABASE_KEY", r"^eyJ[\w-]{20,}", "a JWT starting eyJ, usually 200+ chars"),
@@ -146,9 +142,7 @@ def main() -> None:
 
     print("\nRetrieval")
     from rag import config as ragcfg
-    store = ragcfg.vector_store()
-    print(f"  {OK} {'vector store':22} {store}"
-          + ("  (committed matrix, no credentials needed)" if store == "matrix" else ""))
+    print(f"  {OK} {'vector store':22} in-memory matrix  (no credentials needed)")
     print(f"  {OK} {'embedding model':22} {ragcfg.EMBED_MODEL}")
 
     # A passage index built by a different model still scores -- meaninglessly.
@@ -171,7 +165,7 @@ def main() -> None:
     if llm_ok and index_ok and not offline:
         print(f"  {OK} run the 11 test cases locally")
         print("    catalog from committed CSVs, passages from the committed matrix;")
-        print("    Pinecone and Supabase are not involved")
+        print("    no vector database and no Supabase involved")
     elif llm_ok and offline:
         print(f"  {WARN} credentials look usable, but MOVIBOT_OFFLINE blocks every model call")
     elif llm_ok and not index_ok:
@@ -180,8 +174,6 @@ def main() -> None:
     else:
         print(f"  {BAD} cannot answer a query yet -- the two required values above are missing")
 
-    print(f"  {OK if pine else BAD} Pinecone path (MOVIBOT_VECTOR_STORE=pinecone) -- optional; the"
-          " committed matrix works in production too")
     print(f"  {OK if supa else BAD} Supabase path (MOVIBOT_BACKEND=cloud)")
 
     if not args.ping:

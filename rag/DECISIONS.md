@@ -167,26 +167,40 @@ candidate pool without materially widening the context.
 
 ---
 
-## 5. Storage
+## 5. Storage — no vector database
 
-Two stores, selected by `MOVIBOT_VECTOR_STORE`, both embedding with the same
-model so both return the same ranking:
+The vectors live in memory: a committed `.npy`, loaded once and scored with a
+numpy dot product. There is no Pinecone, and no switch to enable one.
 
-- **`matrix`** (default) — a committed `.npy`, scored with numpy. 1,254 vectors
-  score in about **0.5 ms**, faster than a network round trip. Needs no
-  credentials, so retrieval works from a fresh clone.
-- **`pinecone`** — the same vectors in Pinecone, with `{movie_id, title,
-  chunk_index, text}` as metadata. The text is carried because search returns it
-  as evidence.
+This is a deliberate decision, not a shortcut. The arithmetic:
 
-At this scale a vector database is not required. It is supported for the cloud
-deployment path and because the course covers it.
+| | |
+|---|---|
+| Vectors | 3,159 |
+| Matrix size | 19 MB |
+| Brute-force scan of all of them | **~0.5 ms** |
+| Network round trip to a hosted index | 50–200 ms |
 
-**Guard:** `chunk_index_meta.json` records the model that built the index, and
-loading refuses if it no longer matches `EMBED_MODEL`. Vectors from a different
-model still *score* — they just score meaninglessly — so the failure is silent
-unless something checks. This is not hypothetical: the E5 index was live when
-the model changed.
+A vector database is an index structure that avoids scanning everything. At
+3,159 vectors, scanning everything *is* the fast path — approximate nearest
+neighbour would be solving a problem we do not have, and solving it more slowly,
+because the network hop costs more than the scan it replaces. The query has to
+be embedded through the API either way, so a database saves nothing there.
+
+What it would cost is concrete: a credential, an account, a quota, another
+failure mode, and a fresh clone that cannot retrieve until someone provisions an
+index. It would also break reproducibility — right now a given commit contains
+its own vectors, so it retrieves identically forever.
+
+**When this stops being right:** when the matrix no longer fits comfortably in
+memory, or when a brute-force scan stops being instant. Neither is close. If the
+catalog grew past a demo — the full Kaggle set is 43,270 films — `rag/store.py`
+is the only file that would change.
+
+One honest note on the filenames: `pinecone_candidates.csv` is named from an
+early assumption that a vector database would ingest it. The name survives
+because renaming prepared data is churn; the file is simply the films that
+matched an MPST synopsis.
 
 ---
 

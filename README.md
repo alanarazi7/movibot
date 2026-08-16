@@ -29,8 +29,8 @@ Three sources, prepared offline into `data_preprocessing/data_ready/`:
 | Artifact | Contents |
 |---|---|
 | `supabase_movies.csv` | **238** Disney + Pixar feature films, 26 columns — the movie universe |
-| `pinecone_candidates.csv` | the **159** with a full MPST plot synopsis (66.8%) |
-| `plot_chunks.parquet` + `chunk_embeddings.npy` | **1,254** passages, 1536-dim, for semantic search |
+| `pinecone_candidates.csv` | the **159** with a full MPST plot synopsis (66.8%) — the name is a leftover; no vector database is used |
+| `plot_chunks.parquet` + `chunk_embeddings.npy` | **3,159** passages, 1536-dim, scored in memory |
 | `wikipedia_cache.csv` | **237** films' Wikipedia articles, plot and non-plot text, scraped once offline |
 
 The catalog is deliberately narrowed to Disney and Pixar, which keeps it in family territory and makes the demo coherent. That's a demo constraint rather than a product decision — the assignment caps stored data at 50 MB and the full multi-studio catalog doesn't fit. `prepare_movibot_data.py --all-studios` produces all 43,270 films from the same pipeline.
@@ -46,7 +46,7 @@ Retrieval, tools, and the agent loop are complete and exercised end to end at ze
 - ✅ Data pipeline, chunked passage index, Wikipedia cache
 - ✅ Three tools + bounded tool-calling loop (`agent/loop.py`)
 - ✅ Catalog reads from committed CSVs; the passage index is a committed matrix, so retrieval needs no vector database
-- ⏳ Running the 11 test cases; optional Supabase and Pinecone paths
+- ⏳ Running the 11 test cases
 
 There is **no mock model by design**: a broken config fails loudly rather than masquerading as a working agent. `MOVIBOT_OFFLINE=1` hard-disables all spending.
 
@@ -71,7 +71,7 @@ The catalog reads from committed CSVs and needs no credentials. Planner turns an
 | Variable | Default | Purpose |
 |---|---|---|
 | `MOVIBOT_BACKEND` | `local` | `local` reads the prepared CSVs; `cloud` uses Supabase |
-| `MOVIBOT_VECTOR_STORE` | `matrix` | `matrix` scores a committed `.npy` with numpy; `pinecone` uses Pinecone. Both embed with the same model |
+
 | `MOVIBOT_OFFLINE` | unset | `1` disables every paid call |
 
 ## Retrieval

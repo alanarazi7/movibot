@@ -56,32 +56,28 @@ TOP_K = 10
 FETCH_MULTIPLIER = 5
 
 # --- Where the vectors live ------------------------------------------------
-# "matrix"   a committed .npy read from disk and scored with numpy. 1,254
-#            vectors score in well under a millisecond, so this is not a
-#            compromise at this scale.
-# "pinecone" the same vectors, served by Pinecone.
+# In memory, in a committed .npy scored with numpy. There is no vector database
+# and no switch to enable one.
 #
-# Note this selects the *store*, not the model: both paths embed with
-# EMBED_MODEL. MOVIBOT_EMBEDDINGS is still read for compatibility, where its
-# old values map local -> matrix and cloud -> pinecone.
-_STORE_ALIASES = {"local": "matrix", "cloud": "pinecone"}
-
-
-def vector_store() -> str:
-    raw = (
-        os.environ.get("MOVIBOT_VECTOR_STORE")
-        or os.environ.get("MOVIBOT_EMBEDDINGS")
-        or "matrix"
-    ).strip().lower()
-    return _STORE_ALIASES.get(raw, raw)
-
-
-PINECONE_INDEX = os.environ.get("PINECONE_INDEX_NAME", "movibot-plots")
+# The reasoning is just arithmetic: 3,159 vectors is not a search problem. A
+# brute-force dot product over all of them takes about 0.5 ms, which is faster
+# than the network round trip a hosted index would add -- and the query still
+# has to be embedded either way, so a database saves nothing there. What it
+# would add is a credential, an account, a quota, and a failure mode, in
+# exchange for making retrieval slower and stopping a fresh clone from working.
+#
+# A vector database earns its place when the index no longer fits in memory or
+# when brute force stops being instant. Neither is remotely true here: the
+# matrix is 19 MB. If this ever grew past a demo catalog, rag/store.py is the
+# only file that would need to change.
 
 # --- Artifacts -------------------------------------------------------------
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_READY = os.path.join(_ROOT, "data_preprocessing", "data_ready")
 
+# Named from an early assumption that a vector DB would ingest it. Kept as
+# the filename to avoid churning the prepared data; it is just the films
+# that matched an MPST synopsis.
 SOURCE_CSV = os.path.join(DATA_READY, "pinecone_candidates.csv")
 CHUNKS_PARQUET = os.path.join(DATA_READY, "plot_chunks.parquet")
 VECTORS_NPY = os.path.join(DATA_READY, "chunk_embeddings.npy")
@@ -110,5 +106,5 @@ def as_dict() -> dict:
         "min_chunk_tokens": MIN_CHUNK_TOKENS,
         "top_k": TOP_K,
         "fetch_multiplier": FETCH_MULTIPLIER,
-        "vector_store": vector_store(),
+        "vector_store": "in-memory matrix",
     }

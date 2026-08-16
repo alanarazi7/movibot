@@ -13,9 +13,6 @@ semantic search works, and the passage index covers every film in the catalog.
 
 ## Credentials
 
-- [ ] `PINECONE_API_KEY` — **optional now.** The committed matrix serves search
-      in production, so Pinecone is only for demonstrating the vector-DB path. A
-      real key exists in the sibling `medium-rag-hw/.env` if we want it
 - [ ] `SUPABASE_KEY` — unusable at 41 chars; the anon key is a JWT of 200+.
       Also optional: the CSV backend works
 
@@ -71,6 +68,14 @@ run. Every other expected behaviour is still a prediction.
 - [ ] Capture a real response into `agent_info.json` `prompt_examples`, which
       still says the prose is pending
 
+### 5. Drop parquet, and pyarrow with it
+
+`pyarrow` is **124 MB** — half of Vercel's 250 MB limit for one dependency, and
+it exists only to read `plot_chunks.parquet`, a 3,159-row table. Storing those
+texts as CSV or inside the vectors' `.npz` removes it outright.
+
+- [ ] Switch the chunk store off parquet and drop `pyarrow`
+
 ### 5. Trim the system prompt
 
 2,613 tokens on every turn, and the brief asks to minimise prompt size. At five
@@ -78,13 +83,11 @@ turns that is ~13K tokens of instructions per query.
 
 - [ ] Cut it, measuring that behaviour on the 11 cases does not regress
 
-### 6. Optional: Supabase and Pinecone
+### 6. Optional: Supabase
 
-Neither is needed. Both are supported and would only demonstrate the cloud path.
+Not needed; the CSV backend works. Would only demonstrate the cloud path.
 
 - [ ] Supabase: run `schema.sql`, implement the loader, verify 238 rows
-- [ ] Pinecone: `python -m rag.ingest --sources all --pinecone`, then set
-      `MOVIBOT_VECTOR_STORE=pinecone` in production
 
 ---
 
