@@ -140,7 +140,8 @@ def chunk_text(text: str) -> list[str]:
     return chunks
 
 
-def chunk_movie(movie_id: int, title: str, text: str) -> list[dict]:
+def chunk_movie(movie_id: int, title: str, text: str,
+                source: str = "mpst") -> list[dict]:
     """Chunk one film's synopsis into records ready for embedding.
 
     The embedded text is prefixed with the title so a passage carries some
@@ -150,7 +151,10 @@ def chunk_movie(movie_id: int, title: str, text: str) -> list[dict]:
     records = []
     for i, chunk in enumerate(chunk_text(text)):
         records.append({
-            "chunk_id": f"{movie_id}_{i}",
+            # The source is part of the id: the same film contributes passages
+            # from several corpora, and they must not collide.
+            "chunk_id": f"{source}_{movie_id}_{i}",
+            "source": source,
             "movie_id": int(movie_id),
             "title": title,
             "chunk_index": i,

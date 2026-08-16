@@ -76,14 +76,19 @@ def _meta() -> dict[str, Any]:
         return json.load(f)
 
 
-def _passages_matrix(query: str, fetch: int, allowed: set[int] | None) -> list[dict]:
+def _passages_matrix(query: str, fetch: int, allowed: set[int] | None,
+                     sources: list[str] | None = None) -> list[dict]:
     vectors, chunks = _matrix()
     scores = vectors @ embed.embed_query(query)
 
-    # Mask ineligible films before ranking, so a restricted search still
+    # Mask ineligible passages before ranking, so a restricted search still
     # returns `fetch` usable passages rather than whatever survives filtering.
+    eligible = np.ones(len(chunks), dtype=bool)
     if allowed is not None:
-        eligible = chunks.movie_id.isin(allowed).to_numpy()
+        eligible &= chunks.movie_id.isin(allowed).to_numpy()
+    if sources is not None and "source" in chunks.columns:
+        eligible &= chunks.source.isin(sources).to_numpy()
+    if not eligible.all():
         if not eligible.any():
             return []
         scores = np.where(eligible, scores, -np.inf)
@@ -102,12 +107,15 @@ def _passages_matrix(query: str, fetch: int, allowed: set[int] | None) -> list[d
             "movie_id": int(row.movie_id),
             "chunk_index": int(row.chunk_index),
             "text": str(row.text),
+            "source": str(getattr(row, "source", "mpst")),
+            "title": str(getattr(row, "title", "")),
             "score": float(scores[int(i)]),
         })
     return out
 
 
-def _passages_pinecone(query: str, fetch: int, allowed: set[int] | None) -> list[dict]:
+def _passages_pinecone(query: str, fetch: int, allowed: set[int] | None,
+                       sources: list[str] | None = None) -> list[dict]:
     from pinecone import Pinecone
 
     api_key = os.environ.get("PINECONE_API_KEY")
@@ -123,14 +131,21 @@ def _passages_pinecone(query: str, fetch: int, allowed: set[int] | None) -> list
         "top_k": fetch,
         "include_metadata": True,
     }
+    where: dict[str, Any] = {}
     if allowed:
-        kwargs["filter"] = {"movie_id": {"$in": sorted(allowed)}}
+        where["movie_id"] = {"$in": sorted(allowed)}
+    if sources is not None:
+        where["source"] = {"$in": sorted(sources)}
+    if where:
+        kwargs["filter"] = where
 
     return [
         {
             "movie_id": int(m["metadata"]["movie_id"]),
             "chunk_index": int(m["metadata"].get("chunk_index", 0)),
             "text": str(m["metadata"].get("text", "")),
+            "source": str(m["metadata"].get("source", "mpst")),
+            "title": str(m["metadata"].get("title", "")),
             "score": float(m["score"]),
         }
         for m in index.query(**kwargs).get("matches", [])
@@ -138,9 +153,18 @@ def _passages_pinecone(query: str, fetch: int, allowed: set[int] | None) -> list
 
 
 def search_passages(
-    query: str, top_k: int = 20, candidate_ids: list[int] | None = None
+    query: str,
+    top_k: int = 20,
+    candidate_ids: list[int] | None = None,
+    sources: list[str] | None = None,
 ) -> list[dict]:
-    """Rank individual passages, best first, for callers that want evidence."""
+    """Rank individual passages, best first, for callers that want evidence.
+
+    `sources` restricts the search to particular corpora; None searches all of
+    them. Keeping them separable matters because they answer different
+    questions -- a plot says whether someone dies, a reception section says
+    whether a film is thought frightening.
+    """
     if not query or not query.strip():
         return []
 
@@ -149,11 +173,14 @@ def search_passages(
         return []
 
     fn = _passages_pinecone if vector_store() == "pinecone" else _passages_matrix
-    return fn(query.strip(), top_k, allowed)
+    return fn(query.strip(), top_k, allowed, sources)
 
 
 def search(
-    query: str, top_k: int = TOP_K, candidate_ids: list[int] | None = None
+    query: str,
+    top_k: int = TOP_K,
+    candidate_ids: list[int] | None = None,
+    sources: list[str] | None = None,
 ) -> list[dict]:
     """Rank films by their single best-matching passage, best first.
 
@@ -163,7 +190,8 @@ def search(
     thirty others that are about something else.
     """
     fetch = max(top_k * FETCH_MULTIPLIER, top_k)
-    passages = search_passages(query, top_k=fetch, candidate_ids=candidate_ids)
+    passages = search_passages(query, top_k=fetch, candidate_ids=candidate_ids,
+                               sources=sources)
 
     best: dict[int, dict[str, Any]] = {}
     for p in passages:
@@ -175,13 +203,15 @@ def search(
                 "score": p["score"],
                 "passage": p["text"],
                 "chunk_index": p["chunk_index"],
+                "source": p.get("source", "mpst"),
                 "passage_count": 1,
             }
         else:
             existing["passage_count"] += 1
             if p["score"] > existing["score"]:
                 existing.update(
-                    score=p["score"], passage=p["text"], chunk_index=p["chunk_index"]
+                    score=p["score"], passage=p["text"],
+                    chunk_index=p["chunk_index"], source=p.get("source", "mpst"),
                 )
 
     return sorted(best.values(), key=lambda r: -r["score"])[:top_k]

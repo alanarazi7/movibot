@@ -21,6 +21,7 @@ AGENT_INFO_PATH = os.path.join(BASE_DIR, "agent_info.json")
 ARCHITECTURE_PNG_PATH = os.path.join(BASE_DIR, "assets", "architecture.png")
 GUI_PATH = os.path.join(BASE_DIR, "public", "index.html")
 TODO_PATH = os.path.join(BASE_DIR, "TODO.md")
+RAG_DECISIONS_PATH = os.path.join(BASE_DIR, "rag", "DECISIONS.md")
 
 app = Flask(__name__)
 
@@ -52,6 +53,122 @@ def status():
             return _cors(jsonify({"markdown": f.read()}))
     except FileNotFoundError:
         return _cors(jsonify({"markdown": None, "error": "TODO.md not bundled."})), 404
+
+
+@app.route("/api/rag/decisions", methods=["GET"])
+def rag_decisions():
+    with open(RAG_DECISIONS_PATH, "r", encoding="utf-8") as f:
+        return _cors(jsonify({"markdown": f.read()}))
+
+
+@app.route("/api/rag/info", methods=["GET"])
+def rag_info():
+    """Corpora, parameters, and whether the index is currently usable."""
+    from rag import config as ragcfg, corpora, store
+
+    try:
+        index = store.coverage()
+        error = None
+    except Exception as exc:
+        index, error = None, str(exc)
+
+    return _cors(jsonify({
+        "parameters": ragcfg.as_dict(),
+        "corpora": corpora.catalogue(),
+        "default_sources": corpora.DEFAULT_SOURCES,
+        "index": index,
+        "index_error": error,
+        "ingest_enabled": _ingest_enabled(),
+    }))
+
+
+@app.route("/api/rag/search", methods=["POST", "OPTIONS"])
+def rag_search():
+    """Semantic search, optionally restricted to particular corpora.
+
+    Costs one embedding call, about two millionths of a dollar.
+    """
+    if request.method == "OPTIONS":
+        return _cors(jsonify({}))
+
+    from rag import corpora, store
+
+    data = request.get_json(silent=True) or {}
+    query = (data.get("query") or "").strip()
+    if not query:
+        return _cors(jsonify({"error": "The 'query' field is required.",
+                              "results": []})), 400
+
+    requested = data.get("sources")
+    sources = corpora.resolve(requested) if requested else None
+    top_k = max(1, min(int(data.get("top_k") or 10), 50))
+
+    try:
+        passages = store.search_passages(query, top_k=top_k, sources=sources)
+    except Exception as exc:
+        return _cors(jsonify({"error": str(exc), "results": []})), 200
+
+    return _cors(jsonify({
+        "error": None,
+        "query": query,
+        "sources": sources or "all",
+        "results": passages,
+    }))
+
+
+def _ingest_enabled() -> bool:
+    """Ingest spends money, so it is off unless deliberately switched on.
+
+    Without this the public deployment would expose a button any visitor could
+    press to burn the project's budget.
+    """
+    return os.environ.get("MOVIBOT_ALLOW_INGEST", "").strip().lower() in ("1", "true", "yes")
+
+
+@app.route("/api/rag/ingest", methods=["POST", "OPTIONS"])
+def rag_ingest():
+    if request.method == "OPTIONS":
+        return _cors(jsonify({}))
+
+    if not _ingest_enabled():
+        return _cors(jsonify({
+            "error": "Ingest is disabled. It embeds the whole corpus and costs "
+                     "money, so it is not exposed by default. Set "
+                     "MOVIBOT_ALLOW_INGEST=1 to enable, or run it from a shell: "
+                     "python -m rag.ingest --sources all --pinecone",
+            "started": False,
+        })), 403
+
+    from rag import corpora
+
+    data = request.get_json(silent=True) or {}
+    sources = corpora.resolve(data.get("sources")) or corpora.DEFAULT_SOURCES
+    to_pinecone = bool(data.get("pinecone"))
+
+    try:
+        from rag import ingest as rag_ingest_mod
+        chunks = rag_ingest_mod.build_chunks(sources)
+        if data.get("dry_run", True):
+            tokens = int(chunks.tokens.sum())
+            return _cors(jsonify({
+                "started": False, "dry_run": True, "error": None,
+                "passages": int(len(chunks)),
+                "films": int(chunks.movie_id.nunique()),
+                "tokens": tokens,
+                "estimated_cost_usd": round(tokens / 1e6 * 0.02, 4),
+            }))
+
+        from rag import embed as rag_embed
+        vectors = rag_embed.embed_texts(chunks.embedding_text.tolist())
+        rag_ingest_mod.write_index(chunks, vectors, sources)
+        if to_pinecone:
+            rag_ingest_mod.upsert_pinecone(chunks, vectors)
+        return _cors(jsonify({
+            "started": True, "dry_run": False, "error": None,
+            "passages": int(len(chunks)), "pinecone": to_pinecone,
+        }))
+    except Exception as exc:
+        return _cors(jsonify({"started": False, "error": f"{type(exc).__name__}: {exc}"})), 200
 
 
 @app.route("/data/<path:filename>", methods=["GET"])

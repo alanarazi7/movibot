@@ -54,20 +54,24 @@ Decisions → Retrieval and in `agent/chunking.py`.
 - [ ] Add a line under the passages expandable: 300 tokens, 20% overlap, and
       why consecutive passages repeat a little
 
-### 2. Close the semantic coverage gap
+### 2. Close the semantic coverage gap  — ready, needs one run
 
-**234** films have readable plot text but only **159 are semantically
-searchable**, because the index was built from the MPST file before the
-Wikipedia cache existed. The other **75** can be read but never *found* — they
-surface only if a structured filter lands on them first. Their Wikipedia plots
-are not scraps: median 611 words against MPST's 892.
+The index covered only MPST synopses, so 159 of 238 films were searchable while
+234 were readable. `rag/corpora.py` now defines four corpora and the ingest and
+search paths are both source-aware, so this is a matter of running it:
 
-- [ ] Point `scripts/build_chunk_index.py` at the Wikipedia plot text as well,
-      re-embed locally (free), and confirm 159 → 234 searchable
-- [ ] Regenerate `public/data/` afterwards — the Data tab's passage counts and
-      the architecture diagram both read from the index
-- [ ] Note the trade-off before doing it: the local index would then differ
-      from a Pinecone index built only from MPST, so item 6 must match
+| Corpus | Films | Passages |
+|---|---:|---:|
+| Plot synopses (MPST) | 159 | 1,254 |
+| Wikipedia plot | 233 | 826 |
+| Wikipedia context | 237 | 841 |
+| Catalog overview | 238 | 238 |
+| **All four** | **238** | **3,159** |
+
+- [ ] `python -m rag.ingest --sources all` — 778,082 tokens, **~$0.0156**,
+      takes searchable coverage from 159 films to all 238
+- [ ] Regenerate `public/data/` and the architecture diagram afterwards; both
+      read passage counts from the index
 
 ---
 

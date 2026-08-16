@@ -267,6 +267,40 @@
     }
     .open-chips b { color: #c26a00; font-variant-numeric: tabular-nums; }
 
+    .rag-sources { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.8rem 0; }
+    .rag-src {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      border: 1px solid #ddd; border-radius: 20px;
+      padding: 0.32rem 0.75rem; font-size: 0.8rem; cursor: pointer;
+      font-weight: 500; margin: 0; background: #fff;
+    }
+    .rag-src:hover { border-color: #0070f3; }
+    .rag-src input { margin: 0; }
+    .rag-src .n { color: #999; font-variant-numeric: tabular-nums; }
+
+    .hit {
+      border: 1px solid #eee; border-left: 3px solid #0070f3;
+      border-radius: 6px; padding: 0.7rem 0.9rem; margin-bottom: 0.6rem;
+      background: #fcfdfe;
+    }
+    .hit-head {
+      display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: baseline;
+      margin-bottom: 0.35rem; font-size: 0.85rem;
+    }
+    .hit-title { font-weight: 700; }
+    .hit-score { margin-left: auto; font-family: monospace; font-size: 0.78rem; color: #666; }
+    .hit-src {
+      font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.05em;
+      background: #eef2f6; color: #556; border-radius: 3px; padding: 0.1rem 0.4rem;
+    }
+    .hit-text { font-size: 0.85rem; line-height: 1.6; color: #333; }
+
+    .index-state {
+      font-size: 0.85rem; border-radius: 6px; padding: 0.7rem 0.9rem; margin-top: 0.8rem;
+    }
+    .index-ok   { background: #f1f8f3; border: 1px solid #d7e9dc; color: #2c5c3a; }
+    .index-bad  { background: #fdf3f3; border: 1px solid #f0d8d8; color: #8c3030; }
+
     .warning-banner {
       display: none;
       background: #fff8e6;
@@ -547,6 +581,7 @@
       <button class="tab-button" onclick="switchTab('arch')">🏗️ Architecture</button>
       <button class="tab-button" onclick="switchTab('decisions')">📋 Project Decisions</button>
       <button class="tab-button" onclick="switchTab('datanav')">🗃️ Data</button>
+      <button class="tab-button" onclick="switchTab('retrieval')">🔎 Retrieval</button>
       <button class="tab-button" onclick="switchTab('status-tab')">🗒️ Status</button>
     </div>
 
@@ -652,50 +687,6 @@
 
     <!-- TAB 5: Project Decisions -->
     <div id="decisions" class="tab-content">
-
-      <details class="panel" open>
-        <summary><span class="emoji">🔎</span> Retrieval</summary>
-        <div class="panel-body">
-
-          <p>
-            Plot synopses are split into passages before being embedded, rather than
-            embedded whole. The embedding model accepts 512 tokens; the median synopsis is
-            1,143 and the longest is 9,049, so one vector per film covered only the opening
-            of each story.
-          </p>
-          <p>
-            <em>Frozen</em> is the case that exposed it. Hans first appears at character
-            5,353 of 27,969 and betrays Anna at character 22,746 &mdash; 81% of the way
-            through a synopsis whose vector reached roughly the first 7%. No phrasing of
-            &ldquo;a film about trusting the wrong person&rdquo; could retrieve it, and
-            reading the film's text returned the opening scene rather than the beat that
-            matters. It is now passage <code>109445_21</code>:
-          </p>
-          <blockquote style="border-left:3px solid #ddd;margin:0.6rem 0;padding:0.2rem 0 0.2rem 1rem;color:#555;font-style:italic;font-size:0.86rem;">
-            …and says &ldquo;Oh, Anna, if only there was someone here who loved you!&rdquo;
-            As Anna looks at him in shock, Hans explains that as the youngest of 13
-            brothers, he had no chance at claiming his family's throne, so he went looking
-            for a royal family he could marry into…
-          </blockquote>
-
-          <h4>Why sentences, not paragraphs</h4>
-          <p>
-            The obvious approach is to accumulate paragraphs up to a token budget. Measured
-            against this corpus it does nothing: <strong>zero</strong> of the 159 synopses
-            contain blank-line paragraphs and 66 have no newline at all, so a paragraph
-            splitter would emit one chunk per document. Passages are assembled from
-            sentences instead, at 300 tokens with 20% overlap &mdash; about 13 sentences,
-            roughly one scene, tight enough that a story beat dominates its passage instead
-            of being averaged into a dozen others. 1,254 passages from 159 films.
-          </p>
-
-          <p style="font-size:0.86rem;color:#777;">
-            Every passage for every film is in the <strong>🗃️ Data</strong> tab &mdash; open
-            a row and expand its passages.
-          </p>
-
-        </div>
-      </details>
 
       <details class="panel">
         <summary>
@@ -881,6 +872,68 @@ C = 6.199 catalog mean    m = 300 vote prior</pre>
       </div>
     </div>
 
+    <!-- TAB 8: Retrieval -->
+    <div id="retrieval" class="tab-content">
+      <div class="card">
+        <h2>Retrieval</h2>
+        <p style="color:#666;font-size:0.9rem;margin-top:0.4rem;">
+          Semantic search over the passage index, one corpus at a time or all together.
+          Every design decision behind it is served live from <code>rag/DECISIONS.md</code>.
+        </p>
+        <div id="rag-index"></div>
+      </div>
+
+      <div class="card">
+        <label for="rag-q">Search the corpus</label>
+        <textarea id="rag-q" style="min-height:60px;"
+          placeholder="Describe a concrete event, e.g. a prince reveals he never loved her and leaves her to die"></textarea>
+
+        <div id="rag-sources" class="rag-sources"></div>
+
+        <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
+          <button id="rag-go" onclick="ragSearch()">Search</button>
+          <span style="font-size:0.78rem;color:#888;">
+            one embedding call, ~$0.000002
+          </span>
+        </div>
+        <div id="rag-status"></div>
+      </div>
+
+      <div class="card" id="rag-results-card" style="display:none;">
+        <label>Results</label>
+        <div id="rag-results"></div>
+      </div>
+
+      <details class="panel">
+        <summary><span class="emoji">📦</span> Populate Pinecone</summary>
+        <div class="panel-body">
+          <p>
+            The committed matrix needs no vector database &mdash; 1,254 vectors score in
+            about half a millisecond. Pinecone exists for the cloud deployment path.
+            Upserting sends the same vectors, so both stores return the same ranking.
+          </p>
+          <div id="rag-ingest-state"></div>
+          <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;margin-top:0.6rem;">
+            <button onclick="ragIngest(true)">Estimate only (free)</button>
+            <button id="rag-ingest-go" onclick="ragIngest(false)"
+                    style="background:#c26a00;">Build index &amp; upsert 💰</button>
+          </div>
+          <div id="rag-ingest-status"></div>
+          <p style="font-size:0.8rem;color:#888;margin-top:0.8rem;">
+            Equivalent from a shell, which is the usual way:
+            <code>python -m rag.ingest --sources all --pinecone</code>
+          </p>
+        </div>
+      </details>
+
+      <details class="panel">
+        <summary><span class="emoji">📐</span> Design decisions</summary>
+        <div class="panel-body markdown" id="rag-decisions">
+          <p style="color:#888;">Loading&hellip;</p>
+        </div>
+      </details>
+    </div>
+
     <!-- TAB 7: Status -->
     <div id="status-tab" class="tab-content">
       <div class="card">
@@ -908,6 +961,7 @@ C = 6.199 catalog mean    m = 300 vote prior</pre>
       // rather than on every page load. navLoad() is idempotent.
       if (tabName === 'datanav') navLoad();
       if (tabName === 'status-tab') loadStatus();
+      if (tabName === 'retrieval') loadRag();
     }
 
     function copyCurl(cmd) {
@@ -952,6 +1006,149 @@ C = 6.199 catalog mean    m = 300 vote prior</pre>
     }
 
     document.addEventListener('DOMContentLoaded', checkTeamInfo);
+
+    // --- Retrieval tab ---------------------------------------------------
+    // Search, corpus selection, and the Pinecone build. The ingest call is
+    // server-gated: it embeds the whole corpus and costs money, so the button
+    // only works where MOVIBOT_ALLOW_INGEST is set. Otherwise a stranger on
+    // the public URL could spend the project's budget.
+
+    let ragInfo = null;
+
+    async function loadRag() {
+      if (ragInfo) return;
+      try {
+        const res = await fetch('/api/rag/info');
+        ragInfo = await res.json();
+      } catch (err) {
+        document.getElementById('rag-index').innerHTML =
+          '<div class="index-state index-bad">Could not reach /api/rag/info: ' +
+          escapeHtml(err.message) + '</div>';
+        return;
+      }
+
+      const p = ragInfo.parameters || {};
+      const idx = ragInfo.index;
+      document.getElementById('rag-index').innerHTML = idx
+        ? '<div class="index-state index-ok"><b>Index ready</b> &mdash; ' +
+          escapeHtml(String(idx.chunks)) + ' passages, ' + escapeHtml(String(idx.dim)) +
+          '-dim, store <code>' + escapeHtml(String(idx.store)) + '</code>, model <code>' +
+          escapeHtml(String(idx.model)) + '</code></div>'
+        : '<div class="index-state index-bad"><b>Index not usable.</b> ' +
+          escapeHtml(ragInfo.index_error || 'unknown') + '</div>';
+
+      const host = document.getElementById('rag-sources');
+      host.innerHTML = (ragInfo.corpora || []).map(c => `
+        <label class="rag-src" title="${escapeHtml(c.description)}">
+          <input type="checkbox" value="${escapeHtml(c.key)}"
+                 ${(ragInfo.default_sources || []).includes(c.key) ? 'checked' : ''} />
+          ${escapeHtml(c.label)}
+        </label>`).join('');
+
+      document.getElementById('rag-ingest-state').innerHTML = ragInfo.ingest_enabled
+        ? '<div class="index-state index-ok">Ingest is enabled on this server.</div>'
+        : '<div class="index-state index-bad">Ingest is disabled here. It spends money, ' +
+          'so it stays off unless <code>MOVIBOT_ALLOW_INGEST=1</code> is set.</div>';
+
+      loadRagDecisions();
+    }
+
+    function ragSelectedSources() {
+      return Array.from(document.querySelectorAll('#rag-sources input:checked'))
+                  .map(i => i.value);
+    }
+
+    async function ragSearch() {
+      const query = document.getElementById('rag-q').value.trim();
+      const status = document.getElementById('rag-status');
+      if (!query) { status.innerHTML = '<div id="status">Enter a query first.</div>'; return; }
+
+      const sources = ragSelectedSources();
+      const btn = document.getElementById('rag-go');
+      btn.disabled = true;
+      status.innerHTML = '<div id="status">Searching…</div>';
+      try {
+        const res = await fetch('/api/rag/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query, sources: sources.length ? sources : ['all'], top_k: 12 })
+        });
+        const data = await res.json();
+        if (data.error) {
+          status.innerHTML = '<div id="status" class="error-text">' + escapeHtml(data.error) + '</div>';
+          document.getElementById('rag-results-card').style.display = 'none';
+          return;
+        }
+        const hits = data.results || [];
+        status.innerHTML = '<div id="status" class="success-text">' + hits.length + ' passages</div>';
+        document.getElementById('rag-results').innerHTML = hits.length
+          ? hits.map(h => `
+            <div class="hit">
+              <div class="hit-head">
+                <span class="hit-title">${escapeHtml(h.title || ('film ' + h.movie_id))}</span>
+                <span class="hit-src">${escapeHtml(h.source || '')}</span>
+                <span class="hit-score">${h.score.toFixed(4)}</span>
+              </div>
+              <div class="hit-text">${escapeHtml(h.text)}</div>
+            </div>`).join('')
+          : '<p style="color:#888;font-size:0.88rem;">Nothing matched.</p>';
+        document.getElementById('rag-results-card').style.display = 'block';
+      } catch (err) {
+        status.innerHTML = '<div id="status" class="error-text">' + escapeHtml(err.message) + '</div>';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function ragIngest(dryRun) {
+      const status = document.getElementById('rag-ingest-status');
+      const sources = ragSelectedSources();
+      if (!dryRun && !confirm(
+            'This embeds every selected corpus and spends real money. Continue?')) return;
+
+      status.innerHTML = '<div id="status">' + (dryRun ? 'Estimating…' : 'Building…') + '</div>';
+      try {
+        const res = await fetch('/api/rag/ingest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sources: sources.length ? sources : ['all'],
+            dry_run: dryRun,
+            pinecone: !dryRun
+          })
+        });
+        const d = await res.json();
+        if (d.error) {
+          status.innerHTML = '<div id="status" class="error-text">' + escapeHtml(d.error) + '</div>';
+        } else if (d.dry_run) {
+          status.innerHTML = '<div id="status">' + d.passages.toLocaleString() +
+            ' passages from ' + d.films + ' films, ' + d.tokens.toLocaleString() +
+            ' tokens &mdash; about <b>$' + d.estimated_cost_usd + '</b>. Nothing sent.</div>';
+        } else {
+          status.innerHTML = '<div id="status" class="success-text">Built ' +
+            d.passages.toLocaleString() + ' passages' + (d.pinecone ? ' and upserted to Pinecone' : '') +
+            '.</div>';
+          ragInfo = null; loadRag();
+        }
+      } catch (err) {
+        status.innerHTML = '<div id="status" class="error-text">' + escapeHtml(err.message) + '</div>';
+      }
+    }
+
+    let ragDecisionsLoaded = false;
+    async function loadRagDecisions() {
+      if (ragDecisionsLoaded) return;
+      ragDecisionsLoaded = true;
+      try {
+        const res = await fetch('/api/rag/decisions');
+        const md = (await res.json()).markdown;
+        document.getElementById('rag-decisions').innerHTML = renderMarkdown(md);
+      } catch (err) {
+        ragDecisionsLoaded = false;
+        document.getElementById('rag-decisions').innerHTML =
+          '<p class="error-text">Could not load DECISIONS.md</p>';
+      }
+    }
 
     // --- Status tab ------------------------------------------------------
     // Renders TODO.md, fetched from /api/status. Deliberately not a copy of the
