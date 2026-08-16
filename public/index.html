@@ -929,7 +929,8 @@ C = 6.199 catalog mean    m = 300 vote prior</pre>
             <button onclick="ragIngest({debug: true})" style="background:#0b7a5a;">
               Ingest debug 💰 ~$0.0002
             </button>
-            <button onclick="ragIngest({})" style="background:#c26a00;">
+            <button onclick="ragIngest({full: true})"
+                    style="background:#fff;color:#c26a00;border:1px solid #e0b070;">
               Ingest all 💰 ~$0.0156
             </button>
           </div>
@@ -1129,7 +1130,8 @@ C = 6.199 catalog mean    m = 300 vote prior</pre>
     }
 
     async function ragIngest(opts) {
-      const dry = !!opts.dry, debug = !!opts.debug;
+      // debug unless the full run is explicitly asked for
+              const dry = !!opts.dry, debug = !opts.full;
       const status = document.getElementById('rag-ingest-status');
       const sources = ragSelectedSources();
 

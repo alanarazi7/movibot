@@ -171,7 +171,9 @@ def rag_ingest():
     data = request.get_json(silent=True) or {}
     sources = corpora.resolve(data.get("sources")) or corpora.DEFAULT_SOURCES
     to_pinecone = bool(data.get("pinecone"))
-    debug = bool(data.get("debug"))
+    # Debug is the default: an ingest triggered without saying which kind
+    # should be the cheap one. The full run has to be asked for.
+    debug = bool(data.get("debug", True))
     dry_run = bool(data.get("dry_run", True))
 
     # The gate exists to stop a stranger spending the budget, so it applies to
