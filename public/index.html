@@ -905,33 +905,25 @@ C = 6.199 catalog mean    m = 300 vote prior</pre>
       </div>
 
       <details class="panel">
-        <summary><span class="emoji">📦</span> Populate Pinecone</summary>
+        <summary><span class="emoji">📦</span> Building the index</summary>
         <div class="panel-body">
           <p>
-            The committed matrix needs no vector database &mdash; 1,254 vectors score in
-            about half a millisecond. Pinecone exists for the cloud deployment path.
-            Upserting sends the same vectors, so both stores return the same ranking.
+            Ingest is a local job, not a button. It writes the passage index into the repo,
+            and a serverless filesystem is read-only &mdash; so triggering it from here could
+            only ever spend money and then fail. It is also not something a visitor should be
+            able to start.
           </p>
-          <div id="rag-ingest-state"></div>
-          <p style="font-size:0.85rem;color:#555;margin-top:0.8rem;">
-            Re-running is safe. Passages are embedded once and cached by content, so an
-            unchanged passage is never paid for twice &mdash; only genuinely new or edited
-            ones are sent.
-          </p>
-          <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;margin-top:0.6rem;">
-            <button onclick="ragIngest({dry: true})">Estimate (free)</button>
-            <button onclick="ragIngest({debug: true})" style="background:#0b7a5a;">
-              Ingest debug 💰 ~$0.0002
-            </button>
-            <button onclick="ragIngest({full: true})"
-                    style="background:#fff;color:#c26a00;border:1px solid #e0b070;">
-              Ingest all 💰 ~$0.0156
-            </button>
-          </div>
-          <div id="rag-ingest-status"></div>
-          <p style="font-size:0.8rem;color:#888;margin-top:0.8rem;">
-            Equivalent from a shell, which is the usual way:
-            <code>python -m rag.ingest --sources all --pinecone</code>
+          <div id="rag-build-state"></div>
+          <p style="margin-top:0.9rem;">Run it locally, then commit the index:</p>
+          <pre class="formula">python -m rag.ingest --dry-run --sources all   # free: passages and cost
+python -m rag.ingest --debug --sources all     # 40 passages,  ~$0.0002
+python -m rag.ingest --sources all             # 3,159 passages, ~$0.0156
+python -m rag.ingest --sources all --pinecone  # and upsert to Pinecone</pre>
+          <p style="font-size:0.85rem;color:#666;">
+            Passages are embedded once and cached by content, so re-running only pays for
+            what actually changed. The deployed app reads whichever store
+            <code>MOVIBOT_VECTOR_STORE</code> selects &mdash; the committed matrix by
+            default, Pinecone if configured.
           </p>
         </div>
       </details>
@@ -1055,21 +1047,12 @@ C = 6.199 catalog mean    m = 300 vote prior</pre>
           ${escapeHtml(c.label)}
         </label>`).join('');
 
-      const notes = [];
-      if (ragInfo.ingest_enabled) {
-        notes.push('<div class="index-state index-ok">Ingest is <b>enabled</b> on this server.' +
-'</div>');
-      } else {
-        notes.push('<div class="index-state index-bad">Ingest is disabled here. It spends money, ' +
-          'so it stays off unless <code>MOVIBOT_ALLOW_INGEST=1</code> is set.</div>');
-      }
-      if (!ragInfo.index_writable) {
-        notes.push('<div class="index-state index-bad">This filesystem is read-only, so the ' +
-          'committed matrix cannot be rebuilt here &mdash; only Pinecone can be populated. ' +
-          'Rebuilding the matrix is a local job.</div>');
-      }
-      document.getElementById('rag-ingest-state').innerHTML = notes.join('');
-
+      const idx2 = ragInfo.index;
+      document.getElementById('rag-build-state').innerHTML = idx2
+        ? '<div class="index-state index-ok">Serving <b>' + escapeHtml(String(idx2.chunks)) +
+          '</b> passages from the <code>' + escapeHtml(String(idx2.store)) + '</code> store.</div>'
+        : '<div class="index-state index-bad">No usable index here. ' +
+          escapeHtml(ragInfo.index_error || '') + '</div>';
 
       loadRagDecisions();
     }
@@ -1118,50 +1101,6 @@ C = 6.199 catalog mean    m = 300 vote prior</pre>
         status.innerHTML = '<div id="status" class="error-text">' + escapeHtml(err.message) + '</div>';
       } finally {
         btn.disabled = false;
-      }
-    }
-
-    async function ragIngest(opts) {
-      // debug unless the full run is explicitly asked for
-              const dry = !!opts.dry, debug = !opts.full;
-      const status = document.getElementById('rag-ingest-status');
-      const sources = ragSelectedSources();
-
-      if (!dry && !confirm(
-            debug
-              ? 'Debug ingest: 10 passages per corpus. Spends a fraction of a cent. Continue?'
-              : 'Full ingest: embeds every selected corpus and spends real money. Continue?'
-          )) return;
-
-      status.innerHTML = '<div id="status">' + (dry ? 'Estimating…' : 'Working…') + '</div>';
-      try {
-        const res = await fetch('/api/rag/ingest', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            sources: sources.length ? sources : ['all'],
-            dry_run: dry,
-            debug: debug,
-            pinecone: !dry
-          })
-        });
-        const d = await res.json();
-        if (d.error) {
-          status.innerHTML = '<div id="status" class="error-text">' + escapeHtml(d.error) + '</div>';
-        } else if (d.dry_run) {
-          status.innerHTML = '<div id="status">' + d.passages.toLocaleString() +
-            ' passages from ' + d.films + ' films, ' + d.tokens.toLocaleString() +
-            ' tokens &mdash; about <b>$' + d.estimated_cost_usd + '</b>. Nothing sent.</div>';
-        } else {
-          status.innerHTML = '<div id="status" class="success-text">Built ' +
-            d.passages.toLocaleString() + ' passages' + (d.debug ? ' (debug subset)' : '') +
-            ' &mdash; ' + d.reused.toLocaleString() + ' reused from cache, ' +
-            d.embedded.toLocaleString() + ' newly embedded' +
-            ((d.destinations || []).length ? ' -> ' + d.destinations.join(', ') : '') + '.</div>';
-          ragInfo = null; loadRag();
-        }
-      } catch (err) {
-        status.innerHTML = '<div id="status" class="error-text">' + escapeHtml(err.message) + '</div>';
       }
     }
 

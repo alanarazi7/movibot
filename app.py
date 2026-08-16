@@ -79,8 +79,6 @@ def rag_info():
         "default_sources": corpora.DEFAULT_SOURCES,
         "index": index,
         "index_error": error,
-        "ingest_enabled": _ingest_enabled(),
-        "index_writable": _index_writable(),
     }))
 
 
@@ -116,104 +114,6 @@ def rag_search():
         "sources": sources or "all",
         "results": passages,
     }))
-
-
-def _ingest_enabled() -> bool:
-    """Ingest spends money, so it is off unless deliberately switched on."""
-    return os.environ.get("MOVIBOT_ALLOW_INGEST", "").strip().lower() in ("1", "true", "yes")
-
-
-def _index_writable() -> bool:
-    """Can the passage index actually be written here?
-
-    Probed rather than inferred from an env var. Vercel's serverless
-    filesystem is read-only outside /tmp, so an ingest there would embed the
-    whole corpus, spend the money, and only then fail on write -- the worst
-    possible ordering. Pinecone is unaffected: it writes over the network.
-    """
-    from rag.config import DATA_READY
-
-    return os.path.isdir(DATA_READY) and os.access(DATA_READY, os.W_OK)
-
-
-@app.route("/api/rag/ingest", methods=["POST", "OPTIONS"])
-def rag_ingest():
-    if request.method == "OPTIONS":
-        return _cors(jsonify({}))
-
-    from rag import corpora
-
-    data = request.get_json(silent=True) or {}
-    sources = corpora.resolve(data.get("sources")) or corpora.DEFAULT_SOURCES
-    to_pinecone = bool(data.get("pinecone"))
-    # Debug is the default: an ingest triggered without saying which kind
-    # should be the cheap one. The full run has to be asked for.
-    debug = bool(data.get("debug", True))
-    dry_run = bool(data.get("dry_run", True))
-
-    # The gate exists to stop a stranger spending the budget, so it applies to
-    # spending only. Estimating costs nothing and stays available everywhere --
-    # otherwise the free button on the public page would 403.
-    if not dry_run:
-        if not _ingest_enabled():
-            return _cors(jsonify({
-                "error": "Ingest is disabled here. It embeds the corpus and costs "
-                         "money, so it is not exposed by default. Set "
-                         "MOVIBOT_ALLOW_INGEST=1 to enable, or run it from a shell: "
-                         "python -m rag.ingest --sources all --pinecone",
-                "started": False,
-            })), 403
-
-        # Anyone may trigger this, so it must be impossible to spend money on a
-        # run that cannot succeed. Every destination is checked BEFORE
-        # embedding: failing afterwards would mean paying for vectors that are
-        # then thrown away, which is exactly how the budget got charged once
-        # already.
-        pinecone_key = os.environ.get("PINECONE_API_KEY", "")
-        pinecone_ready = bool(pinecone_key) and "your-" not in pinecone_key
-        destinations = []
-        if _index_writable():
-            destinations.append("matrix")
-        if to_pinecone and pinecone_ready:
-            destinations.append("pinecone")
-
-        if not destinations:
-            return _cors(jsonify({
-                "error": "Nowhere to put the vectors, so nothing was embedded and "
-                         "nothing was spent. This filesystem is read-only (as on "
-                         "Vercel) so the committed matrix cannot be rebuilt here"
-                         + ("" if pinecone_ready else ", and PINECONE_API_KEY is not set")
-                         + ". Run ingest locally and commit the index instead.",
-                "started": False,
-            })), 409
-
-    try:
-        from rag import ingest as rag_ingest_mod
-        chunks = rag_ingest_mod.build_chunks(sources, debug=debug)
-        if dry_run:
-            tokens = int(chunks.tokens.sum())
-            return _cors(jsonify({
-                "started": False, "dry_run": True, "error": None,
-                "passages": int(len(chunks)),
-                "films": int(chunks.movie_id.nunique()),
-                "tokens": tokens,
-                "debug": debug,
-                "estimated_cost_usd": round(tokens / 1e6 * 0.02, 4),
-            }))
-
-        from rag import embed as rag_embed
-        vectors, stats = rag_embed.embed_texts_cached(chunks.embedding_text.tolist())
-        if "matrix" in destinations:
-            rag_ingest_mod.write_index(chunks, vectors, sources, debug=debug)
-        if "pinecone" in destinations:
-            rag_ingest_mod.upsert_pinecone(chunks, vectors)
-        return _cors(jsonify({
-            "started": True, "dry_run": False, "error": None, "debug": debug,
-            "passages": int(len(chunks)), "destinations": destinations,
-            "reused": stats["reused"], "embedded": stats["embedded"],
-        }))
-    except Exception as exc:
-        return _cors(jsonify({"started": False, "error": f"{type(exc).__name__}: {exc}"})), 200
 
 
 @app.route("/data/<path:filename>", methods=["GET"])
