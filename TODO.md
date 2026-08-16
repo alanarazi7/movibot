@@ -262,6 +262,8 @@ Placeholder credentials are detected and rejected rather than attempted.
       tool, both scope limits, and the plausible failure modes
 - [x] Team-email warning banner, derived from `/api/team_info` so it clears
       itself
+- [x] **🗒️ Status tab** — this checklist, served live from `TODO.md` via
+      `/api/status`, with progress counted from the checkboxes themselves
 
 ### Docs and deployment
 

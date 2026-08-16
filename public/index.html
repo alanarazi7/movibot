@@ -210,6 +210,63 @@
     }
     #expected-box b { color: #0070f3; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 0.25rem; }
 
+    /* Status tab: rendered TODO.md */
+    .markdown { font-size: 0.9rem; line-height: 1.65; color: #333; }
+    .markdown > *:first-child { margin-top: 0; }
+    .markdown h1 { font-size: 1.3rem; margin: 0 0 0.8rem; }
+    .markdown h2 {
+      font-size: 1.05rem;
+      margin: 1.9rem 0 0.7rem;
+      padding-bottom: 0.35rem;
+      border-bottom: 2px solid #eee;
+    }
+    .markdown h3 { font-size: 0.95rem; margin: 1.4rem 0 0.5rem; color: #0070f3; }
+    .markdown p { margin: 0.6rem 0; }
+    .markdown ul, .markdown ol { margin: 0.5rem 0 0.5rem 1.2rem; }
+    .markdown li { margin: 0.3rem 0; }
+    .markdown code {
+      background: #f0f0f0; border-radius: 3px; padding: 0.1rem 0.32rem;
+      font-size: 0.85em; font-family: monospace;
+    }
+    .markdown pre {
+      background: #f9f9f9; border: 1px solid #eee; border-left: 3px solid #0070f3;
+      border-radius: 4px; padding: 0.8rem; overflow-x: auto;
+      font-size: 0.78rem; line-height: 1.5; margin: 0.8rem 0;
+    }
+    .markdown pre code { background: none; padding: 0; }
+    .markdown hr { border: none; border-top: 1px solid #eee; margin: 1.8rem 0; }
+    .markdown a { color: #0070f3; }
+
+    /* Task list items, rendered from "- [x]" / "- [ ]". */
+    .markdown ul.tasks { list-style: none; margin-left: 0; }
+    .markdown li.task { padding-left: 1.6rem; position: relative; margin: 0.4rem 0; }
+    .markdown li.task::before {
+      position: absolute; left: 0; top: 0.05em;
+      width: 1.05rem; height: 1.05rem;
+      border-radius: 3px; text-align: center;
+      font-size: 0.78rem; line-height: 1.05rem; font-weight: 700;
+    }
+    .markdown li.done::before  { content: "✓"; background: #2e7d32; color: #fff; }
+    .markdown li.open::before  { content: ""; border: 1.5px solid #c9cdd2; background: #fff; }
+    .markdown li.done { color: #8a9099; }
+
+    .progress-row {
+      display: flex; align-items: baseline; gap: 0.6rem;
+      margin-top: 1rem; font-size: 0.85rem;
+    }
+    .progress-bar {
+      flex: 1; height: 0.55rem; background: #eceff2;
+      border-radius: 3px; overflow: hidden; min-width: 6rem;
+    }
+    .progress-bar > span { display: block; height: 100%; background: #2e7d32; }
+    .progress-num { font-variant-numeric: tabular-nums; color: #555; white-space: nowrap; }
+    .open-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.8rem; }
+    .open-chips span {
+      background: #f4f6f8; border: 1px solid #e6e9ec; border-radius: 20px;
+      padding: 0.2rem 0.65rem; font-size: 0.75rem; color: #555;
+    }
+    .open-chips b { color: #c26a00; font-variant-numeric: tabular-nums; }
+
     .warning-banner {
       display: none;
       background: #fff8e6;
@@ -490,6 +547,7 @@
       <button class="tab-button" onclick="switchTab('arch')">🏗️ Architecture</button>
       <button class="tab-button" onclick="switchTab('decisions')">📋 Project Decisions</button>
       <button class="tab-button" onclick="switchTab('datanav')">🗃️ Data</button>
+      <button class="tab-button" onclick="switchTab('status-tab')">🗒️ Status</button>
     </div>
 
     <!-- TAB 1: Agent Query -->
@@ -822,6 +880,22 @@ C = 6.199 catalog mean    m = 300 vote prior</pre>
         </div>
       </div>
     </div>
+
+    <!-- TAB 7: Status -->
+    <div id="status-tab" class="tab-content">
+      <div class="card">
+        <h2>Status</h2>
+        <p style="color:#666;font-size:0.9rem;margin-top:0.4rem;">
+          The team's working checklist, served live from <code>TODO.md</code> — the same
+          file we edit, so this page cannot fall behind the plan.
+        </p>
+        <div id="status-progress"></div>
+      </div>
+
+      <div class="card markdown" id="status-body">
+        <p style="color:#888;font-size:0.88rem;">Loading…</p>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -833,6 +907,7 @@ C = 6.199 catalog mean    m = 300 vote prior</pre>
       // The catalog is 261 KB, so it loads the first time the tab is opened
       // rather than on every page load. navLoad() is idempotent.
       if (tabName === 'datanav') navLoad();
+      if (tabName === 'status-tab') loadStatus();
     }
 
     function copyCurl(cmd) {
@@ -877,6 +952,151 @@ C = 6.199 catalog mean    m = 300 vote prior</pre>
     }
 
     document.addEventListener('DOMContentLoaded', checkTeamInfo);
+
+    // --- Status tab ------------------------------------------------------
+    // Renders TODO.md, fetched from /api/status. Deliberately not a copy of the
+    // checklist: the file the team edits is the one shown, so the demo cannot
+    // drift from the plan the way the docs did. The renderer covers only what
+    // TODO.md actually uses.
+
+    const MD_TOKEN = '\uE000';
+
+    function mdInline(text) {
+      const code = [];
+      let out = String(text).replace(/`([^`]+)`/g, (_, c) => {
+        code.push(c);
+        return MD_TOKEN + (code.length - 1) + MD_TOKEN;
+      });
+      out = escapeHtml(out)
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/(^|[\s(])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+      return out.replace(
+        new RegExp(MD_TOKEN + '(\\d+)' + MD_TOKEN, 'g'),
+        (_, i) => '<code>' + escapeHtml(code[i]) + '</code>');
+    }
+
+    function mdCells(line) {
+      return line.replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
+    }
+
+    function renderMarkdown(src) {
+      const lines = String(src).replace(/\r\n/g, '\n').split('\n');
+      const out = [];
+      let list = null, para = [];
+
+      const flushPara = () => { if (para.length) { out.push('<p>' + mdInline(para.join(' ')) + '</p>'); para = []; } };
+      const closeList = () => { if (list) { out.push('</ul>'); list = null; } };
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+
+        if (/^```/.test(line)) {
+          flushPara(); closeList();
+          const body = [];
+          while (++i < lines.length && !/^```/.test(lines[i].trim())) body.push(lines[i]);
+          out.push('<pre><code>' + escapeHtml(body.join('\n')) + '</code></pre>');
+          continue;
+        }
+
+        if (!line) { flushPara(); continue; }
+
+        if (/^(-{3,})$/.test(line)) { flushPara(); closeList(); out.push('<hr />'); continue; }
+
+        const h = line.match(/^(#{1,6})\s+(.*)$/);
+        if (h) {
+          flushPara(); closeList();
+          out.push(`<h${h[1].length}>${mdInline(h[2])}</h${h[1].length}>`);
+          continue;
+        }
+
+        if (line.startsWith('|') && i + 1 < lines.length && /^\|[\s:|-]+\|$/.test(lines[i + 1].trim())) {
+          flushPara(); closeList();
+          const head = mdCells(line);
+          const rows = [];
+          i++;
+          while (i + 1 < lines.length && lines[i + 1].trim().startsWith('|')) rows.push(mdCells(lines[++i].trim()));
+          out.push('<div class="data-table"><table><thead><tr>' +
+            head.map(c => `<th>${mdInline(c)}</th>`).join('') + '</tr></thead><tbody>' +
+            rows.map(r => '<tr>' + r.map(c => `<td>${mdInline(c)}</td>`).join('') + '</tr>').join('') +
+            '</tbody></table></div>');
+          continue;
+        }
+
+        // "- [x] done" / "- [ ] open", and plain bullets.
+        const task = line.match(/^-\s+\[([ xX])\]\s+(.*)$/);
+        const bullet = line.match(/^[-*]\s+(.*)$/);
+        if (task || bullet) {
+          flushPara();
+          if (!list) { out.push(task ? '<ul class="tasks">' : '<ul>'); list = true; }
+          out.push(task
+            ? `<li class="task ${task[1].toLowerCase() === 'x' ? 'done' : 'open'}">${mdInline(task[2])}</li>`
+            : `<li>${mdInline(bullet[1])}</li>`);
+          continue;
+        }
+
+        // An indented continuation line belongs to the item above it.
+        if (list && /^\s/.test(lines[i]) && out.length && out[out.length - 1].startsWith('<li')) {
+          out[out.length - 1] = out[out.length - 1].replace(/<\/li>$/, ' ' + mdInline(line) + '</li>');
+          continue;
+        }
+
+        closeList();
+        para.push(line);
+      }
+      flushPara(); closeList();
+      return out.join('\n');
+    }
+
+    // Progress is computed from the checkboxes rather than written down, so it
+    // is always the file's real state. Every checkbox counts, including the
+    // Done changelog: excluding it reported 3% for a project that is mostly
+    // built, because all the finished work lived there. The per-section chips
+    // carry the useful signal -- where the remaining work actually is.
+    function statusProgress(md) {
+      const sections = [];
+      let current = null;
+
+      md.split('\n').forEach(raw => {
+        const h = raw.match(/^##\s+(.*)$/);
+        if (h) { current = { name: h[1].trim(), done: 0, open: 0 }; sections.push(current); return; }
+        if (!current) return;
+        const t = raw.match(/^\s*-\s+\[([ xX])\]/);
+        if (t) current[t[1].toLowerCase() === 'x' ? 'done' : 'open']++;
+      });
+
+      const done = sections.reduce((a, s) => a + s.done, 0);
+      const open = sections.reduce((a, s) => a + s.open, 0);
+      const total = done + open;
+      const pct = total ? Math.round((done / total) * 100) : 0;
+      const remaining = sections.filter(s => s.open > 0);
+
+      return `
+        <div class="progress-row">
+          <span class="progress-bar"><span style="width:${pct}%"></span></span>
+          <span class="progress-num"><b>${done}</b> done &middot; <b>${open}</b> open &middot; ${pct}%</span>
+        </div>
+        <div class="open-chips">${
+          remaining.map(s => `<span>${escapeHtml(s.name)} <b>${s.open}</b></span>`).join('')
+        }</div>`;
+    }
+
+    let statusLoaded = false;
+    async function loadStatus() {
+      if (statusLoaded) return;
+      statusLoaded = true;
+      const body = document.getElementById('status-body');
+      try {
+        const res = await fetch('/api/status');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const md = (await res.json()).markdown;
+        document.getElementById('status-progress').innerHTML = statusProgress(md);
+        body.innerHTML = renderMarkdown(md);
+      } catch (err) {
+        statusLoaded = false;
+        body.innerHTML = '<p class="error-text">Could not load TODO.md: ' + escapeHtml(err.message) + '</p>';
+      }
+    }
 
     // --- Test bed -------------------------------------------------------
     // Each case pairs a query with what the agent should do. Chosen to cover
