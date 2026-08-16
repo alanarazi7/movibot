@@ -40,6 +40,23 @@
       color: #0070f3;
       border-bottom-color: #0070f3;
     }
+    .tab-group-label {
+      align-self: center;
+      font-size: 0.62rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: #aaa;
+      padding: 0 0.15rem 0 0.2rem;
+      cursor: default;
+    }
+    .tab-divider {
+      align-self: center;
+      width: 1px;
+      height: 1.4rem;
+      background: #ddd;
+      margin: 0 0.3rem;
+    }
     .tab-content { display: none; }
     .tab-content.active { display: block; }
 
@@ -570,18 +587,26 @@
 <body>
   <div class="container">
     <h1>MoviBot API</h1>
-    <p class="subtitle">Test all endpoints: run queries, view team info, agent details, and architecture.</p>
+    <p class="subtitle">
+      The four required endpoints are grouped first below. Everything after the divider is
+      extra &mdash; tools we built to inspect the data and the retrieval behind it.
+    </p>
 
     <div class="warning-banner" id="team-warning"></div>
 
     <div class="tabs">
+      <span class="tab-group-label" title="The four endpoints the assignment grades">Required</span>
       <button class="tab-button active" onclick="switchTab('agent')">🎬 Agent Query</button>
       <button class="tab-button" onclick="switchTab('team')">👥 Team Info</button>
       <button class="tab-button" onclick="switchTab('agentinfo')">🤖 Agent Info</button>
       <button class="tab-button" onclick="switchTab('arch')">🏗️ Architecture</button>
-      <button class="tab-button" onclick="switchTab('decisions')">📋 Project Decisions</button>
+
+      <span class="tab-divider" aria-hidden="true"></span>
+
+      <span class="tab-group-label" title="Everything beyond the assignment's requirements">Extras</span>
       <button class="tab-button" onclick="switchTab('datanav')">🗃️ Data</button>
       <button class="tab-button" onclick="switchTab('retrieval')">🔎 Retrieval</button>
+      <button class="tab-button" onclick="switchTab('decisions')">📋 Decisions</button>
       <button class="tab-button" onclick="switchTab('status-tab')">🗒️ Status</button>
     </div>
 
@@ -607,6 +632,41 @@
       <div class="card" id="steps-card">
         <label>Steps trace (Reason → Act → Observe)</label>
         <div id="steps-list"></div>
+      </div>
+
+      <div class="card">
+        <label>The four required endpoints</label>
+        <p style="color:#666;font-size:0.85rem;margin-bottom:0.7rem;">
+          These are what the assignment specifies. Each has its own tab above.
+        </p>
+        <div class="data-table">
+          <table>
+            <thead><tr><th>Endpoint</th><th>Returns</th><th>Tab</th></tr></thead>
+            <tbody>
+              <tr><td><code>POST /api/execute</code></td><td>The agent's answer plus the full traced steps</td><td>🎬 Agent Query</td></tr>
+              <tr><td><code>GET /api/team_info</code></td><td>Student names and emails</td><td>👥 Team Info</td></tr>
+              <tr><td><code>GET /api/agent_info</code></td><td>Description, purpose, prompt template, examples</td><td>🤖 Agent Info</td></tr>
+              <tr><td><code>GET /api/model_architecture</code></td><td>The architecture diagram, as PNG</td><td>🏗️ Architecture</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <label style="margin-top:1.2rem;">Everything else we added</label>
+        <p style="color:#666;font-size:0.85rem;margin-bottom:0.7rem;">
+          Not required. Built to make the system inspectable rather than to be graded.
+        </p>
+        <div class="data-table">
+          <table>
+            <thead><tr><th>Endpoint</th><th>Returns</th><th>Tab</th></tr></thead>
+            <tbody>
+              <tr><td><code>POST /api/rag/search</code></td><td>Semantic search over any corpus</td><td>🔎 Retrieval</td></tr>
+              <tr><td><code>GET /api/rag/info</code></td><td>Corpora, parameters, index state</td><td>🔎 Retrieval</td></tr>
+              <tr><td><code>GET /api/rag/decisions</code></td><td>The retrieval design decisions</td><td>🔎 Retrieval</td></tr>
+              <tr><td><code>GET /api/status</code></td><td>The team's live checklist</td><td>🗒️ Status</td></tr>
+              <tr><td><code>GET /data/&hellip;</code></td><td>The prepared catalog, film by film</td><td>🗃️ Data</td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
 
       <div class="card">
@@ -878,7 +938,7 @@ C = 6.199 catalog mean    m = 300 vote prior</pre>
         <h2>Retrieval</h2>
         <p style="color:#666;font-size:0.9rem;margin-top:0.4rem;">
           Semantic search over the passage index, one corpus at a time or all together.
-          Every design decision behind it is served live from <code>rag/DECISIONS.md</code>.
+          How it was built, and where it departs from the course defaults, is below.
         </p>
         <div id="rag-index"></div>
       </div>
@@ -929,9 +989,91 @@ python -m rag.ingest --sources all --pinecone  # and upsert to Pinecone</pre>
       </details>
 
       <details class="panel">
-        <summary><span class="emoji">📐</span> Design decisions</summary>
-        <div class="panel-body markdown" id="rag-decisions">
-          <p style="color:#888;">Loading&hellip;</p>
+        <summary><span class="emoji">📐</span> How retrieval was built</summary>
+        <div class="panel-body">
+
+          <p>
+            Four corpora, chunked into passages, embedded by one model, scored with a dot
+            product. Each corpus answers a different kind of question, which is why they stay
+            separable: a plot says whether someone <em>dies</em>, a reception section says
+            whether a film is <em>thought frightening</em>.
+          </p>
+
+          <div class="data-table">
+            <table>
+              <thead><tr><th>Corpus</th><th>Films</th><th>Passages</th><th>What it answers</th></tr></thead>
+              <tbody>
+                <tr><td>Plot synopses (MPST)</td><td class="n">159</td><td class="n">1,254</td><td>What happens, in full</td></tr>
+                <tr><td>Wikipedia plot</td><td class="n">233</td><td class="n">826</td><td>The same, for the 75 films MPST misses</td></tr>
+                <tr><td>Wikipedia context</td><td class="n">237</td><td class="n">841</td><td>Cast, production, reception, tone</td></tr>
+                <tr><td>Catalog overview</td><td class="n">238</td><td class="n">238</td><td>Thin, but exists for every film</td></tr>
+                <tr><td><strong>All four</strong></td><td class="n"><strong>238</strong></td><td class="n"><strong>3,159</strong></td><td>Every film is now searchable</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h4>Why passages, not whole films</h4>
+          <p>
+            The embedding model accepts 8,191 tokens and the median synopsis is 1,143, so a
+            whole film <em>would</em> fit in one vector. It still shouldn't. One vector for a
+            28,000-character story averages thirty unrelated beats together: Frozen's
+            betrayal sits 81% of the way through and could never outrank the film's own
+            opening. Splitting also gives the agent something to quote &mdash; a passage is
+            evidence, a document-level vector is not.
+          </p>
+
+          <h4>Sentences, not paragraphs</h4>
+          <p>
+            The obvious approach is to accumulate paragraphs to a token budget, which is what
+            our earlier RAG project did. Measured here it produces nothing: <strong>zero</strong>
+            of the 159 synopses contain blank-line paragraphs and 66 have no newline at all, so
+            a paragraph splitter would emit one chunk per film. Passages are built from
+            sentences instead.
+          </p>
+
+          <h4>The parameters, against the course guidance</h4>
+          <div class="data-table">
+            <table>
+              <thead><tr><th>Parameter</th><th>Ours</th><th>Course default</th><th>Why we differ</th></tr></thead>
+              <tbody>
+                <tr><td>Chunk size</td><td class="n">300</td><td>512&ndash;1024</td><td>The retrieval unit is a story beat, not a section. At 23 tokens per sentence, 300 holds about one scene.</td></tr>
+                <tr><td>Overlap</td><td class="n">20%</td><td>5&ndash;15%</td><td>A beat split across a boundary must survive whole somewhere; a half-quoted betrayal is not usable evidence.</td></tr>
+                <tr><td>Min passage</td><td class="n">50</td><td>&mdash;</td><td>Not a discard threshold. A shorter tail is merged into the previous passage, so no sentence is ever lost.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h4>One embedding model, everywhere</h4>
+          <p>
+            <code>text-embedding-3-small</code>, 1536-dim, for both indexing and queries. An
+            earlier design ran a local model in development and this one in production, which
+            meant local testing never exercised the rankings production would return. Passages
+            are embedded once and cached by content, so re-running only pays for what changed.
+          </p>
+
+          <h4>No vector database required</h4>
+          <p>
+            3,159 vectors score in about half a millisecond with numpy, faster than a network
+            round trip. The matrix ships with the repo, so search works from a fresh clone with
+            no credentials. Pinecone is supported for the cloud path but is not needed.
+          </p>
+
+          <h4>What still doesn't work</h4>
+          <p>
+            Retrieval is sensitive to phrasing. Asked for &ldquo;a prince reveals he never
+            loved her and leaves her to die&rdquo;, Frozen ranks <strong>#2</strong>. Asked the
+            same thing abstractly &mdash; &ldquo;someone you just met turns out to be the
+            villain&rdquo; &mdash; it falls outside the top 25. Moving to a stronger embedding
+            model did not fix this. The agent is therefore instructed to search for concrete
+            events rather than themes, which is a workaround, not a solution.
+          </p>
+
+          <p style="font-size:0.85rem;color:#888;">
+            Full write-up, with the measurements behind each number, in
+            <code>rag/DECISIONS.md</code> &mdash; also served raw at
+            <code>GET /api/rag/decisions</code>.
+          </p>
+
         </div>
       </details>
     </div>
@@ -1054,7 +1196,6 @@ python -m rag.ingest --sources all --pinecone  # and upsert to Pinecone</pre>
         : '<div class="index-state index-bad">No usable index here. ' +
           escapeHtml(ragInfo.index_error || '') + '</div>';
 
-      loadRagDecisions();
     }
 
     function ragSelectedSources() {
@@ -1101,21 +1242,6 @@ python -m rag.ingest --sources all --pinecone  # and upsert to Pinecone</pre>
         status.innerHTML = '<div id="status" class="error-text">' + escapeHtml(err.message) + '</div>';
       } finally {
         btn.disabled = false;
-      }
-    }
-
-    let ragDecisionsLoaded = false;
-    async function loadRagDecisions() {
-      if (ragDecisionsLoaded) return;
-      ragDecisionsLoaded = true;
-      try {
-        const res = await fetch('/api/rag/decisions');
-        const md = (await res.json()).markdown;
-        document.getElementById('rag-decisions').innerHTML = renderMarkdown(md);
-      } catch (err) {
-        ragDecisionsLoaded = false;
-        document.getElementById('rag-decisions').innerHTML =
-          '<p class="error-text">Could not load DECISIONS.md</p>';
       }
     }
 

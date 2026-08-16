@@ -2,177 +2,97 @@
 
 Working checklist. Due **2026-08-23**.
 
-Spending needs explicit go-ahead. **Spent so far: 2 model calls, ~5,200 prompt
-and ~150 completion tokens — well under a cent of the $13 cap.**
+Spending needs explicit go-ahead. **Spent so far: ~$0.018 of $13** — the corpus
+embedded once (~$0.0156), plus a handful of planner calls.
+
+The app is live at [movibot-gamma.vercel.app](https://movibot-gamma.vercel.app)
+and **answers real queries in production**. All four required endpoints work,
+semantic search works, and the passage index covers every film in the catalog.
 
 ---
 
-## Credentials — what is still missing
+## Credentials
 
-LLMod is done and verified: the key authenticates, `MB5R2CF-azure/gpt-5.4-mini`
-is confirmed against the tenant's model list, and a real query has run. **That
-is everything the 11 test cases need locally.** Two gaps remain, both only for
-the cloud backends:
-
-- [ ] **`PINECONE_API_KEY`** — still a placeholder here. A real 75-char key
-      exists in the sibling `medium-rag-hw/.env`; reuse it or issue a new one.
-      Needed only for `MOVIBOT_EMBEDDINGS=cloud`, which production requires
-      because torch cannot ship to Vercel
-- [ ] **`SUPABASE_KEY`** — present but unusable: 41 chars, where an anon or
-      service key is a JWT starting `eyJ`, usually 200+ chars. Looks truncated
-      or the wrong field was copied. Re-copy from Supabase → Settings → API
-- [ ] **Vercel has no environment variables at all** (`vercel env ls` is
-      empty), so production still cannot answer any query. Needs at minimum
-      `OPENAI_API_KEY` and `OPENAI_BASE_URL`, then a redeploy — env changes do
-      not affect the running deployment
-
-Already set and correct: `OPENAI_API_KEY`, `OPENAI_BASE_URL`,
-`PINECONE_INDEX_NAME`, `SUPABASE_URL`.
-
-Check what is usable at any point, without spending anything:
+- [x] `OPENAI_API_KEY` + `OPENAI_BASE_URL` in `.env` **and in Vercel production**
+- [x] Model ids confirmed against the tenant's list:
+      `MB5R2CF-azure/gpt-5.4-mini`, `MB5R2CF-azure/text-embedding-3-small`
+- [ ] `PINECONE_API_KEY` — **optional now.** The committed matrix serves search
+      in production, so Pinecone is only for demonstrating the vector-DB path. A
+      real key exists in the sibling `medium-rag-hw/.env` if we want it
+- [ ] `SUPABASE_KEY` — unusable at 41 chars; the anon key is a JWT of 200+.
+      Also optional: the CSV backend works
 
 ```bash
-python scripts/check_credentials.py          # free, no network
-python scripts/check_credentials.py --ping   # 💰 end-to-end proof, a few tokens
+python scripts/check_credentials.py     # free, no network
 ```
-- [ ] **Confirm the LLMod.ai chat model id.** The sibling `medium-rag-hw`
-      project uses `4UHRUIN-text-embedding-3-small` and `4UHRUIN-gpt-5-mini` —
-      `<TENANT>-<model>`, no `azure/` segment, and gpt-5-**mini**. So the
-      current default `MB5R2CF-azure/gpt-4o-mini` is probably wrong on both
-      counts; likely `MB5R2CF-gpt-5-mini`. Override with `MOVIBOT_MODEL`.
 
 ---
 
-## Next up — free, agreed, not yet done
+## Next up
 
-### 1. Explain chunking where it is actually seen
+### 1. Guard the public endpoint  ⚠️ the one real exposure
 
-The Data tab shows "N passages in the search index" with no explanation, which
-is where the question gets asked. The parameters are only documented in Project
-Decisions → Retrieval and in `agent/chunking.py`.
+`/api/execute` is public and ungated at up to ~$0.0143 per request, so roughly
+**900 requests would exhaust the $13**. `MAX_ROUNDS` caps cost per request but
+nothing caps requests.
 
-- [ ] Add a line under the passages expandable: 300 tokens, 20% overlap, and
-      why consecutive passages repeat a little
+- [ ] Accumulate real token usage against a `MOVIBOT_BUDGET_USD` cap and refuse
+      once hit — the same shape as `MOVIBOT_OFFLINE`, but automatic. The budget
+      block now reports true token counts, so the numbers exist
 
-### 2. Close the semantic coverage gap  — ready, needs one run
+### 2. Retrieval quality — the open question
 
-The index covered only MPST synopses, so 159 of 238 films were searchable while
-234 were readable. `rag/corpora.py` now defines four corpora and the ingest and
-search paths are both source-aware, so this is a matter of running it:
-
-| Corpus | Films | Passages |
-|---|---:|---:|
-| Plot synopses (MPST) | 159 | 1,254 |
-| Wikipedia plot | 233 | 826 |
-| Wikipedia context | 237 | 841 |
-| Catalog overview | 238 | 238 |
-| **All four** | **238** | **3,159** |
-
-- [ ] `python -m rag.ingest --sources all` — 778,082 tokens, **~$0.0156**,
-      takes searchable coverage from 159 films to all 238
-- [ ] Regenerate `public/data/` and the architecture diagram afterwards; both
-      read passage counts from the index
-
----
-
-## Free track — larger, still open
-
-### 3. Retrieval quality — partially solved, needs a decision after the first run
-
-Chunking fixed reading completely and improved retrieval substantially, but
-exposed a different problem: **E5-small-v2 ranks by surface events, not by
-theme**, and its scores sit in a very narrow band.
-
-Frozen's rank for the same underlying question, by phrasing:
+Moving from E5 to `text-embedding-3-small` did **not** fix phrasing
+sensitivity, which was the hoped-for outcome. Measured on the same probe:
 
 | Query | Rank |
 |---|---|
-| "a prince reveals he never loved her and leaves her to die" | **#3** |
-| "a man pretends to love a woman so he can seize the throne" | **#4** |
-| "a charming stranger wins someone's trust and then betrays them" | #34 |
-| "someone you just met turns out to be the villain" | #93 |
+| "a prince reveals he never loved her and leaves her to die" | **#2** |
+| "someone you just met turns out to be the villain" | outside top 25 |
 
-Total score spread across all 159 films is 0.076; across the top 20 it is
-0.033. Signal exists but is weak and highly phrasing-sensitive. Mitigated for
-now by instructing the planner to search for concrete events rather than themes.
+Mitigated by instructing the planner to search for concrete events, which is a
+workaround rather than a fix.
 
-- [ ] Try `text-embedding-3-small` instead of E5 — 1536-dim and much stronger;
-      ~$0.01 to index all 1,254 passages
+- [ ] Try 200 / 300 / 450 token chunks — ~$0.007 each, and the content cache
+      means only changed passages are re-embedded
 - [ ] Or have the planner issue 2–3 differently-phrased searches and union them
-- [ ] Or accept it: the planner reads `matching_passage` as evidence, so a weak
-      ranker degrades to "reads a few more candidates", not to a wrong answer
 
-### 4. Decide whether to keep the local embedding backend
+### 3. Explain chunking where it is seen
 
-torch is ~518 MB against Vercel's 250 MB limit, so the local backend cannot ship
-to production — which means local and cloud already take different paths.
-
-- [ ] Decide: keep local E5 for free offline dev, or drop it and use the API in
-      both (query embedding is ~$0.000002 per call)
-
-### 5. Load Supabase (free, no model calls)
-
-- [ ] Run `data_preprocessing/schema.sql` in the Supabase SQL editor — must go
-      through the web UI, API keys don't grant DDL
-- [ ] Implement the `--supabase-only` half of `scripts/ingest.py` (36 lines,
-      still a stub)
-- [ ] Verify 238 rows, and that `genres`/`keywords` land as real `jsonb` rather
-      than JSON-encoded strings
-- [ ] Sanity-check `MOVIBOT_BACKEND=cloud` returns identical results to local
+- [x] The Retrieval tab now carries the parameters, the course defaults, and
+      why we differ
 
 ---
 
-## Paid track — needs explicit go-ahead
+## Remaining, in rough order
 
-### 6. First real planner run  💰 small
+### 4. Run the 11 test cases  💰 ~$0.09
 
-**This is the highest-value remaining step.** Every behaviour below is
-currently a prediction; none has been observed.
+The agent answers in production, but only the identity prompt has actually been
+run. Every other expected behaviour is still a prediction.
 
-- [x] Credentials in `.env`; **first real call succeeded 2026-08-16**
-      ("what is your name and purpose" → 1 model call, 0 tool calls, 2,613 +
-      73 tokens, ~$0.0008). Two fixes it exposed: gpt-5 models reject
-      `temperature != 1`, and token counts were structurally always zero
-      because `complete()` discarded the response carrying `.usage`
-- [ ] **Trim the system prompt.** It is 8,373 chars / ~2,600 tokens on every
-      turn, and the brief asks to "minimize prompt/context size (only what's
-      needed)". At 5 turns that is ~13K tokens of instructions per query
-- [ ] Run the **11 test-bed cases** on the front page, in order. Each shows its
-      expected behaviour; compare against what actually happens
-- [ ] The three that are traps rather than exercises:
-      - "starring Tom Hanks" — must refuse for want of cast data, *not* answer
-        Toy Story from pretraining
-      - "besides Frozen and Moana" — must become an `exclude_titles` filter,
-        not merely a title it avoids naming
-      - "a Disney movie in Hindi" — Dangal has 140 votes and sits #40 of 238 on
-        broad queries; it must still win this narrow one
-- [ ] Confirm the planner stays inside `MAX_ROUNDS = 5` and check the returned
-      `budget` block for real token usage
-- [ ] Watch for over-refusal on "a nice comedy" (should qualify, not refuse) and
-      for invented post-2017 titles on "the latest Disney hit"
-- [ ] Capture a real response into `agent_info.json` `prompt_examples` — both
-      entries still say the prose is pending this run
+- [ ] Run all 11 from the front page and compare against the stated expectation
+- [ ] The three that are traps: "starring Tom Hanks" must refuse rather than
+      answer Toy Story from pretraining; "besides Frozen and Moana" must become
+      a filter; "a Disney movie in Hindi" must still surface Dangal at 140 votes
+- [ ] Watch for over-refusal on "a nice comedy" and invented post-2017 titles
+- [ ] Capture a real response into `agent_info.json` `prompt_examples`, which
+      still says the prose is pending
 
-### 7. Pinecone index  💰 ~$0.01
+### 5. Trim the system prompt
 
-- [ ] Create index `movibot-plots`, cosine, dim **1536**, serverless
-- [ ] Implement the `--pinecone-only` half of `scripts/ingest.py`
-- [ ] Index **1,254 passages** (or 2,000-odd if item 2 lands first), not 159
-      documents — ingestion must use `agent/chunking.py` to stay identical to
-      the local path
-- [ ] Test with `--limit 20`, verify vector count, then the full run
-- [ ] Metadata per vector: `{movie_id, title, chunk_index, text}` — never
-      `embedding_text`
+2,613 tokens on every turn, and the brief asks to minimise prompt size. At five
+turns that is ~13K tokens of instructions per query.
 
-### 8. Production with credentials  💰 inherits above
+- [ ] Cut it, measuring that behaviour on the 11 cases does not regress
 
-- [ ] Set Vercel env vars: `OPENAI_API_KEY`, `OPENAI_BASE_URL`,
-      `PINECONE_API_KEY`, `PINECONE_INDEX_NAME`, `SUPABASE_URL`, `SUPABASE_KEY`,
-      `MOVIBOT_BACKEND=cloud`, **`MOVIBOT_EMBEDDINGS=cloud`**
-- [ ] `MOVIBOT_EMBEDDINGS=cloud` is mandatory in production — the local E5
-      backend cannot run there, so item 7 is a hard prerequisite
-- [ ] Confirm a real query finishes well inside Vercel's 300s limit
-- [ ] Re-run the 11 test cases against production, not just locally
+### 6. Optional: Supabase and Pinecone
+
+Neither is needed. Both are supported and would only demonstrate the cloud path.
+
+- [ ] Supabase: run `schema.sql`, implement the loader, verify 238 rows
+- [ ] Pinecone: `python -m rag.ingest --sources all --pinecone`, then set
+      `MOVIBOT_VECTOR_STORE=pinecone` in production
 
 ---
 
@@ -201,8 +121,8 @@ vercel curl -sI https://movibot-gamma.vercel.app/ | grep -i content-length
 
 ## Budget
 
-$13 cap. **Spent so far: 2 model calls, ~5,200 prompt + ~150 completion
-tokens — well under a cent.**
+$13 cap. **Spent so far: ~$0.018** — one full corpus embedding
+(~$0.0156) plus a handful of planner calls.
 
 | Item | Estimate |
 |---|---|
@@ -261,6 +181,27 @@ Placeholder credentials are detected and rejected rather than attempted.
       adaptations of…*, and *Beverly Hills Chihuahua 3* → the 2008 first film,
       which had been caching the **wrong plot** entirely
 - [x] Coverage: articles 228 → **237**, Plot sections 167 → **233**
+
+### Retrieval rebuilt (2026-08-16)
+
+- [x] **`rag/` package** — chunking, embedding, storage, search, ingest and the
+      decisions doc in one place, replacing logic spread over four files
+- [x] **E5 dropped entirely.** It meant dev and production embedded with
+      different models, so local testing never exercised production's rankings,
+      and torch's 518 MB could not deploy at all
+- [x] **Coverage gap closed.** Four corpora indexed, not one: 3,159 passages
+      covering **all 238 films**, up from 1,254 covering 159
+- [x] **Content-addressed embedding cache** — a passage is never embedded
+      twice; verified against six invariants with a stubbed embedder
+- [x] `--debug` ingests 10 passages per corpus for ~$0.0002
+- [x] Tail passages are **merged, never discarded**: 0 sentences lost across
+      the corpus, at a cost of one token on one passage
+- [x] Ingest removed from the app — it writes into the repo, and a serverless
+      filesystem is read-only, so it could only ever spend and fail
+- [x] Three undeclared dependencies found by production and fixed: `tiktoken`,
+      `pyarrow`, and `MOVIBOT_OFFLINE` failing to gate embedding
+- [x] GUI: **Data**, **Retrieval** and **Status** tabs, with the four required
+      endpoints grouped and labelled separately from the extras
 
 ### Scope and honesty (2026-08-15)
 
