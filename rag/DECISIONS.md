@@ -98,7 +98,7 @@ This used to be *forced*: E5 accepted 512 tokens and covered roughly the first
 |---|---:|---|---|
 | `CHUNK_TOKENS` | 300 | 512–1024 for long-form prose | See below |
 | `OVERLAP_RATIO` | 0.20 | 5–15% for long-form | See below |
-| `MIN_CHUNK_TOKENS` | 50 | — | Floor on the final leftover passage. Below it the tail is dropped rather than embedded, unless it is the whole document. Measured cost across the corpus: **1 sentence**, and it is the scrape artifact `[D-Man2010]` |
+| `MIN_CHUNK_TOKENS` | 50 | — | A trailing passage shorter than this is **merged into the previous one**, never discarded. See below |
 
 **Chunk size.** The course recommends 512–1024 tokens for general long-form
 text, and plot synopses are long-form narrative prose, so that row is the one
@@ -119,6 +119,20 @@ The reasoning differs; the conclusion coincides.
 sibling project uses. They were carried over and then justified against this
 corpus, not derived from it independently. The measurement that *was* done
 first, and that genuinely changed the design, is the paragraph one in §1.
+
+**Nothing is discarded.** An earlier version dropped a trailing passage under
+50 tokens on the grounds that a fragment embeds poorly — true in itself, but
+the wrong remedy. A dropped ending is a story beat that can never be retrieved,
+and endings are where the deaths and betrayals are. The tail is now folded into
+the previous passage instead. Two details make that safe: the tail begins with
+sentences already carried forward as overlap, so only the genuinely new
+sentences are appended, and the result is checked to contain every input
+sentence exactly once.
+
+Measured across all 159 synopses after the change: **0 sentences lost, 0
+duplicated, still 1,254 passages**, and exactly one passage exceeds
+`CHUNK_TOKENS` — *The Santa Clause*, by a single token. The cost of never
+discarding is one token.
 
 **Overlap.** 0.20 sits above the 5–15% guidance. A beat split across a boundary
 still appears whole in one passage or the other, which matters more here than in

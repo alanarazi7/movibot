@@ -65,9 +65,12 @@ def split_sentences(text: str) -> list[str]:
 def chunk_text(text: str) -> list[str]:
     """Split one synopsis into overlapping passages of ~CHUNK_TOKENS.
 
-    Returns [] for empty input, and a single passage for text shorter than
-    MIN_CHUNK_TOKENS only when that is the whole document -- a short synopsis
-    should still be searchable, even though a short *tail* should not.
+    Returns [] for empty input. Every sentence of the input appears in at
+    least one passage: a tail too short to stand on its own is merged into the
+    previous passage rather than discarded, so the last passage may exceed
+    CHUNK_TOKENS by up to MIN_CHUNK_TOKENS. Losing a sentence is worse than a
+    slightly long passage -- a dropped ending is a story beat that can never be
+    retrieved, and endings are where the deaths and betrayals tend to be.
     """
     if not text or not text.strip():
         return []
@@ -82,6 +85,10 @@ def chunk_text(text: str) -> list[str]:
     chunks: list[str] = []
     current: list[str] = []
     current_tokens = 0
+    # How many leading sentences of `current` were carried from the previous
+    # passage as overlap. They are already in chunks[-1], so a merge must skip
+    # them or the text would be duplicated.
+    carried_count = 0
 
     for sentence in sentences:
         n = len(enc.encode(sentence))
@@ -91,7 +98,7 @@ def chunk_text(text: str) -> list[str]:
         if n > CHUNK_TOKENS:
             if current:
                 chunks.append(" ".join(current))
-                current, current_tokens = [], 0
+                current, current_tokens, carried_count = [], 0, 0
             chunks.append(sentence)
             continue
 
@@ -111,22 +118,24 @@ def chunk_text(text: str) -> list[str]:
 
             current = carried + [sentence]
             current_tokens = carried_tokens + n
+            carried_count = len(carried)
         else:
             current.append(sentence)
             current_tokens += n
 
     if current:
-        tail = " ".join(current)
-        # A sub-threshold tail is dropped: too little content to embed well,
-        # and short fragments score spuriously high on short queries. Some of
-        # it is already duplicated by the previous chunk's overlap, but not
-        # all -- the tail is carried overlap plus new sentences, so this can
-        # lose text. Measured on this corpus it costs 1 sentence across all
-        # 159 synopses, and that sentence is the scrape artifact
-        # "[D-Man2010]". Kept when it is the whole document, so that a very
-        # short synopsis still yields one searchable passage.
         if current_tokens >= MIN_CHUNK_TOKENS or not chunks:
-            chunks.append(tail)
+            # Long enough to stand alone -- or it is the whole document, in
+            # which case a short synopsis must still be searchable.
+            chunks.append(" ".join(current))
+        else:
+            # Too short to embed well on its own: a fragment has little to
+            # represent and scores spuriously high against short queries. So
+            # fold it into the previous passage instead of dropping it,
+            # skipping the leading sentences that passage already contains.
+            new = current[carried_count:]
+            if new:
+                chunks[-1] = chunks[-1] + " " + " ".join(new)
 
     return chunks
 

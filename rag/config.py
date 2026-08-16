@@ -33,6 +33,10 @@ EMBED_BATCH = 96
 # chunk per document. Measured, not assumed -- see DECISIONS.md.
 CHUNK_TOKENS = 300
 OVERLAP_RATIO = 0.2
+
+# Not a discard threshold: a trailing passage shorter than this is folded into
+# the previous one rather than dropped. Nothing is ever thrown away, so the
+# final passage of a synopsis may run up to this much over CHUNK_TOKENS.
 MIN_CHUNK_TOKENS = 50
 
 # text-embedding-3-small tokenises with cl100k_base, so these counts are the
