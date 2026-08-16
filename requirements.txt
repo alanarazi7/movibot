@@ -6,5 +6,10 @@ requests>=2.31.0
 Pillow>=10.0.0
 
 pandas>=2.2,<3
+
+# Chunking counts tokens with cl100k_base, the embedding model's own
+# tokeniser. Previously present only as a transitive dependency of
+# sentence-transformers, so removing that broke a clean install.
+tiktoken>=0.7
 numpy>=1.26,<3
 python-dotenv>=1.0.0
