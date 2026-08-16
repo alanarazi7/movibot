@@ -12,11 +12,6 @@ gated on credentials.
 
 ---
 
-## Blocked on other people
-
-- [ ] Yair Zack's email → `team_info.json` — the GUI shows a warning banner
-      until this lands; it is driven from `/api/team_info`, so it clears itself
-
 ## Blocked on credentials
 
 `.env` still holds placeholder values. Everything below the "free" line works
@@ -291,6 +286,8 @@ Placeholder credentials are detected and rejected rather than attempted.
       tool, both scope limits, and the plausible failure modes
 - [x] Team-email warning banner, derived from `/api/team_info` so it clears
       itself
+- [x] All three team emails in `team_info.json`; the warning banner that
+      tracked them clears itself, so it is now gone from the page
 - [x] **🗒️ Status tab** — this checklist, served live from `TODO.md` via
       `/api/status`, with progress counted from the checkboxes themselves
 
