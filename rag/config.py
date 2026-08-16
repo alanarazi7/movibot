@@ -87,6 +87,14 @@ CHUNKS_PARQUET = os.path.join(DATA_READY, "plot_chunks.parquet")
 VECTORS_NPY = os.path.join(DATA_READY, "chunk_embeddings.npy")
 INDEX_META = os.path.join(DATA_READY, "chunk_index_meta.json")
 
+# Local accelerator, gitignored: text -> vector, so re-running ingest never
+# pays twice for a passage that has not changed.
+EMBED_CACHE = os.path.join(DATA_READY, "embedding_cache.npz")
+
+# --debug ingests this many passages per corpus -- enough to exercise the whole
+# pipeline (chunk, embed, store, search) for a fraction of a cent.
+DEBUG_CHUNKS_PER_CORPUS = 10
+
 
 def as_dict() -> dict:
     """The parameters, for /api/agent_info and the Status page.

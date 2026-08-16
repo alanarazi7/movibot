@@ -913,10 +913,19 @@ C = 6.199 catalog mean    m = 300 vote prior</pre>
             Upserting sends the same vectors, so both stores return the same ranking.
           </p>
           <div id="rag-ingest-state"></div>
+          <p style="font-size:0.85rem;color:#555;margin-top:0.8rem;">
+            Re-running is safe. Passages are embedded once and cached by content, so an
+            unchanged passage is never paid for twice &mdash; only genuinely new or edited
+            ones are sent.
+          </p>
           <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;margin-top:0.6rem;">
-            <button onclick="ragIngest(true)">Estimate only (free)</button>
-            <button id="rag-ingest-go" onclick="ragIngest(false)"
-                    style="background:#c26a00;">Build index &amp; upsert 💰</button>
+            <button onclick="ragIngest({dry: true})">Estimate (free)</button>
+            <button onclick="ragIngest({debug: true})" style="background:#0b7a5a;">
+              Ingest debug 💰 ~$0.0002
+            </button>
+            <button onclick="ragIngest({})" style="background:#c26a00;">
+              Ingest all 💰 ~$0.0156
+            </button>
           </div>
           <div id="rag-ingest-status"></div>
           <p style="font-size:0.8rem;color:#888;margin-top:0.8rem;">
@@ -1100,21 +1109,27 @@ C = 6.199 catalog mean    m = 300 vote prior</pre>
       }
     }
 
-    async function ragIngest(dryRun) {
+    async function ragIngest(opts) {
+      const dry = !!opts.dry, debug = !!opts.debug;
       const status = document.getElementById('rag-ingest-status');
       const sources = ragSelectedSources();
-      if (!dryRun && !confirm(
-            'This embeds every selected corpus and spends real money. Continue?')) return;
 
-      status.innerHTML = '<div id="status">' + (dryRun ? 'Estimating…' : 'Building…') + '</div>';
+      if (!dry && !confirm(
+            debug
+              ? 'Debug ingest: 10 passages per corpus. Spends a fraction of a cent. Continue?'
+              : 'Full ingest: embeds every selected corpus and spends real money. Continue?'
+          )) return;
+
+      status.innerHTML = '<div id="status">' + (dry ? 'Estimating…' : 'Working…') + '</div>';
       try {
         const res = await fetch('/api/rag/ingest', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             sources: sources.length ? sources : ['all'],
-            dry_run: dryRun,
-            pinecone: !dryRun
+            dry_run: dry,
+            debug: debug,
+            pinecone: !dry
           })
         });
         const d = await res.json();
@@ -1126,8 +1141,10 @@ C = 6.199 catalog mean    m = 300 vote prior</pre>
             ' tokens &mdash; about <b>$' + d.estimated_cost_usd + '</b>. Nothing sent.</div>';
         } else {
           status.innerHTML = '<div id="status" class="success-text">Built ' +
-            d.passages.toLocaleString() + ' passages' + (d.pinecone ? ' and upserted to Pinecone' : '') +
-            '.</div>';
+            d.passages.toLocaleString() + ' passages' + (d.debug ? ' (debug subset)' : '') +
+            ' &mdash; ' + d.reused.toLocaleString() + ' reused from cache, ' +
+            d.embedded.toLocaleString() + ' newly embedded' +
+            (d.pinecone ? ', upserted to Pinecone' : '') + '.</div>';
           ragInfo = null; loadRag();
         }
       } catch (err) {

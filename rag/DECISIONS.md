@@ -190,6 +190,23 @@ the model changed.
 
 ---
 
+## 6. Re-running ingest
+
+Embedding is content-addressed. Each passage is keyed by a hash of the model id
+and its exact text, so re-running ingest sends only what genuinely changed: a
+new corpus, an edited synopsis, a chunker change that moved a boundary. An
+unchanged passage is never paid for twice, and changing the model invalidates
+everything automatically because the id is part of the key.
+
+The cache is a local accelerator, not an artifact — gitignored, and a fresh
+clone simply re-embeds. The committed index is the thing that matters.
+
+`--debug` caps each corpus at 10 passages. That exercises the whole pipeline —
+chunk, embed, store, search — for about $0.0002, which is the difference
+between testing the plumbing and paying to test the plumbing.
+
+---
+
 ## 6. Cost
 
 | Operation | Tokens | Cost |

@@ -35,6 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from rag import chunking, corpora, embed  # noqa: E402
 from rag.config import (  # noqa: E402
     CHUNK_TOKENS,
+    DEBUG_CHUNKS_PER_CORPUS,
     CHUNKS_PARQUET,
     EMBED_MODEL,
     INDEX_META,
@@ -45,24 +46,37 @@ from rag.config import (  # noqa: E402
 )
 
 
-def build_chunks(sources: list[str], limit: int | None = None) -> pd.DataFrame:
+def build_chunks(sources: list[str], limit: int | None = None,
+                 debug: bool = False) -> pd.DataFrame:
     """Chunk every selected corpus, tagging each passage with where it came
-    from so search can be restricted to one kind of evidence."""
+    from so search can be restricted to one kind of evidence.
+
+    `debug` caps each corpus at DEBUG_CHUNKS_PER_CORPUS passages -- enough to
+    exercise chunk, embed, store and search end to end for a fraction of a
+    cent, without waiting for or paying for the full corpus.
+    """
     records = []
     for key in sources:
         corpus = corpora.CORPORA[key]
         df = corpus.load()
         if limit:
             df = df.head(limit)
-        before = len(records)
+
+        produced = []
         for row in df.itertuples():
-            records.extend(
+            produced.extend(
                 chunking.chunk_movie(
                     int(row.movie_id), str(row.title), str(row.text), source=key
                 )
             )
-        print(f"  {corpus.label:24} {len(df):>4} films -> "
-              f"{len(records) - before:>5} passages")
+            if debug and len(produced) >= DEBUG_CHUNKS_PER_CORPUS:
+                break
+        if debug:
+            produced = produced[:DEBUG_CHUNKS_PER_CORPUS]
+
+        records.extend(produced)
+        print(f"  {corpus.label:24} {len(df):>4} films -> {len(produced):>5} passages"
+              + ("   (debug cap)" if debug else ""))
 
     if not records:
         raise SystemExit("No chunks produced -- are the prepared CSVs populated?")
@@ -113,11 +127,15 @@ def main() -> None:
                         help="also upsert the vectors to Pinecone")
     parser.add_argument("--dry-run", action="store_true",
                         help="chunk and report only; embeds nothing, costs nothing")
+    parser.add_argument("--debug", action="store_true",
+                        help=f"only {DEBUG_CHUNKS_PER_CORPUS} passages per corpus, "
+                             "to exercise the pipeline cheaply")
     args = parser.parse_args()
 
     sources = corpora.resolve(args.sources) if args.sources else corpora.DEFAULT_SOURCES
-    print(f"Chunking {len(sources)} corpus/corpora ...")
-    chunks = build_chunks(sources, args.limit)
+    print(f"Chunking {len(sources)} corpus/corpora"
+          + (f", debug cap {DEBUG_CHUNKS_PER_CORPUS}/corpus" if args.debug else "") + " ...")
+    chunks = build_chunks(sources, args.limit, debug=args.debug)
     films = chunks.movie_id.nunique()
     tokens = int(chunks.tokens.sum())
 
@@ -132,12 +150,14 @@ def main() -> None:
         return
 
     print(f"\nEmbedding with {EMBED_MODEL} ...")
-    vectors = embed.embed_texts(chunks.embedding_text.tolist(), progress=True)
+    vectors, stats = embed.embed_texts_cached(
+        chunks.embedding_text.tolist(), progress=True
+    )
 
     if vectors.shape[0] != len(chunks):
         raise SystemExit(f"Vector/chunk mismatch: {vectors.shape[0]} vs {len(chunks)}")
 
-    write_index(chunks, vectors, sources)
+    write_index(chunks, vectors, sources, debug=args.debug)
 
     print(f"\nWrote {Path(CHUNKS_PARQUET).name}, "
           f"{Path(VECTORS_NPY).name} {vectors.shape}, {Path(INDEX_META).name}")
@@ -146,10 +166,16 @@ def main() -> None:
         print(f"\nUpserting to Pinecone index {PINECONE_INDEX} ...")
         upsert_pinecone(chunks, vectors)
 
-    print(f"\nApproximate embedding cost: ${tokens / 1e6 * 0.02:.4f}")
+    # Only the freshly-embedded passages cost anything; the rest came from the
+    # cache, which is the whole point of re-running this safely.
+    sent_tokens = int(tokens * stats["embedded"] / max(len(chunks), 1))
+    print(f"\nReused {stats['reused']:,} cached, embedded {stats['embedded']:,} new")
+    print(f"Approximate cost this run: ${sent_tokens / 1e6 * 0.02:.4f}"
+          f"  (full corpus would be ${tokens / 1e6 * 0.02:.4f})")
 
 
-def write_index(chunks: pd.DataFrame, vectors: np.ndarray, sources: list[str]) -> None:
+def write_index(chunks: pd.DataFrame, vectors: np.ndarray, sources: list[str],
+                debug: bool = False) -> None:
     """Persist the passages, their vectors, and the metadata that lets a stale
     index be detected later."""
     tokens = int(chunks.tokens.sum())
@@ -161,6 +187,7 @@ def write_index(chunks: pd.DataFrame, vectors: np.ndarray, sources: list[str]) -
         "num_chunks": int(len(chunks)),
         "num_movies": int(films),
         "sources": sources,
+        "debug": bool(debug),
         "passages_by_source": {
             k: int(v) for k, v in chunks.source.value_counts().items()
         },

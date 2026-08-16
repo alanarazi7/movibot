@@ -10,3 +10,4 @@ venv/
 data_preprocessing/data_full/
 .vercel
 .env*
+data_preprocessing/data_ready/embedding_cache.npz

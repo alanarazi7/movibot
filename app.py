@@ -130,42 +130,49 @@ def rag_ingest():
     if request.method == "OPTIONS":
         return _cors(jsonify({}))
 
-    if not _ingest_enabled():
+    from rag import corpora
+
+    data = request.get_json(silent=True) or {}
+    sources = corpora.resolve(data.get("sources")) or corpora.DEFAULT_SOURCES
+    to_pinecone = bool(data.get("pinecone"))
+    debug = bool(data.get("debug"))
+    dry_run = bool(data.get("dry_run", True))
+
+    # The gate exists to stop a stranger spending the budget, so it applies to
+    # spending only. Estimating costs nothing and stays available everywhere --
+    # otherwise the free button on the public page would 403.
+    if not dry_run and not _ingest_enabled():
         return _cors(jsonify({
-            "error": "Ingest is disabled. It embeds the whole corpus and costs "
+            "error": "Ingest is disabled here. It embeds the corpus and costs "
                      "money, so it is not exposed by default. Set "
                      "MOVIBOT_ALLOW_INGEST=1 to enable, or run it from a shell: "
                      "python -m rag.ingest --sources all --pinecone",
             "started": False,
         })), 403
 
-    from rag import corpora
-
-    data = request.get_json(silent=True) or {}
-    sources = corpora.resolve(data.get("sources")) or corpora.DEFAULT_SOURCES
-    to_pinecone = bool(data.get("pinecone"))
-
     try:
         from rag import ingest as rag_ingest_mod
-        chunks = rag_ingest_mod.build_chunks(sources)
-        if data.get("dry_run", True):
+        chunks = rag_ingest_mod.build_chunks(sources, debug=debug)
+        if dry_run:
             tokens = int(chunks.tokens.sum())
             return _cors(jsonify({
                 "started": False, "dry_run": True, "error": None,
                 "passages": int(len(chunks)),
                 "films": int(chunks.movie_id.nunique()),
                 "tokens": tokens,
+                "debug": debug,
                 "estimated_cost_usd": round(tokens / 1e6 * 0.02, 4),
             }))
 
         from rag import embed as rag_embed
-        vectors = rag_embed.embed_texts(chunks.embedding_text.tolist())
-        rag_ingest_mod.write_index(chunks, vectors, sources)
+        vectors, stats = rag_embed.embed_texts_cached(chunks.embedding_text.tolist())
+        rag_ingest_mod.write_index(chunks, vectors, sources, debug=debug)
         if to_pinecone:
             rag_ingest_mod.upsert_pinecone(chunks, vectors)
         return _cors(jsonify({
-            "started": True, "dry_run": False, "error": None,
+            "started": True, "dry_run": False, "error": None, "debug": debug,
             "passages": int(len(chunks)), "pinecone": to_pinecone,
+            "reused": stats["reused"], "embedded": stats["embedded"],
         }))
     except Exception as exc:
         return _cors(jsonify({"started": False, "error": f"{type(exc).__name__}: {exc}"})), 200
