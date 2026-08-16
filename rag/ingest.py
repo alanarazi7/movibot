@@ -185,7 +185,7 @@ def write_index(chunks: pd.DataFrame, vectors: np.ndarray, sources: list[str],
         "model": EMBED_MODEL,
         "embedding_dim": int(vectors.shape[1]),
         "num_chunks": int(len(chunks)),
-        "num_movies": int(films),
+        "num_movies": int(chunks.movie_id.nunique()),
         "sources": sources,
         "debug": bool(debug),
         "passages_by_source": {

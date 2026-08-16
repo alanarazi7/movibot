@@ -918,6 +918,12 @@ C = 6.199 catalog mean    m = 300 vote prior</pre>
             unchanged passage is never paid for twice &mdash; only genuinely new or edited
             ones are sent.
           </p>
+          <div id="rag-token-row" style="display:none;margin-top:0.8rem;">
+            <label for="rag-token" style="font-size:0.8rem;">Admin token</label>
+            <input type="password" id="rag-token" placeholder="required to spend"
+                   style="padding:0.45rem 0.6rem;border:1px solid #ddd;border-radius:6px;
+                          font-size:0.85rem;font-family:inherit;width:16rem;max-width:100%;" />
+          </div>
           <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;margin-top:0.6rem;">
             <button onclick="ragIngest({dry: true})">Estimate (free)</button>
             <button onclick="ragIngest({debug: true})" style="background:#0b7a5a;">
@@ -1054,10 +1060,23 @@ C = 6.199 catalog mean    m = 300 vote prior</pre>
           ${escapeHtml(c.label)}
         </label>`).join('');
 
-      document.getElementById('rag-ingest-state').innerHTML = ragInfo.ingest_enabled
-        ? '<div class="index-state index-ok">Ingest is enabled on this server.</div>'
-        : '<div class="index-state index-bad">Ingest is disabled here. It spends money, ' +
-          'so it stays off unless <code>MOVIBOT_ALLOW_INGEST=1</code> is set.</div>';
+      const notes = [];
+      if (ragInfo.ingest_enabled) {
+        notes.push('<div class="index-state index-ok">Ingest is <b>enabled</b> on this server.' +
+          (ragInfo.admin_token_required ? ' An admin token is required to spend.' : '') +
+          '</div>');
+      } else {
+        notes.push('<div class="index-state index-bad">Ingest is disabled here. It spends money, ' +
+          'so it stays off unless <code>MOVIBOT_ALLOW_INGEST=1</code> is set.</div>');
+      }
+      if (!ragInfo.index_writable) {
+        notes.push('<div class="index-state index-bad">This filesystem is read-only, so the ' +
+          'committed matrix cannot be rebuilt here &mdash; only Pinecone can be populated. ' +
+          'Rebuilding the matrix is a local job.</div>');
+      }
+      document.getElementById('rag-ingest-state').innerHTML = notes.join('');
+      document.getElementById('rag-token-row').style.display =
+        ragInfo.admin_token_required ? 'block' : 'none';
 
       loadRagDecisions();
     }
@@ -1129,7 +1148,8 @@ C = 6.199 catalog mean    m = 300 vote prior</pre>
             sources: sources.length ? sources : ['all'],
             dry_run: dry,
             debug: debug,
-            pinecone: !dry
+            pinecone: !dry,
+            token: (document.getElementById('rag-token') || {}).value || undefined
           })
         });
         const d = await res.json();

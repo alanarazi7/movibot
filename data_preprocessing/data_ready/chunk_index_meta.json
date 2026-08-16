@@ -1,9 +1,23 @@
 {
-  "model": "intfloat/e5-small-v2",
-  "embedding_dim": 384,
-  "num_chunks": 1254,
-  "num_movies": 159,
+  "model": "MB5R2CF-azure/text-embedding-3-small",
+  "embedding_dim": 1536,
+  "num_chunks": 3159,
+  "num_movies": 238,
+  "sources": [
+    "mpst",
+    "wiki_plot",
+    "wiki_context",
+    "overview"
+  ],
+  "debug": false,
+  "passages_by_source": {
+    "mpst": 1254,
+    "wiki_context": 841,
+    "wiki_plot": 826,
+    "overview": 238
+  },
   "chunk_tokens": 300,
   "overlap_ratio": 0.2,
-  "min_chunk_tokens": 50
+  "min_chunk_tokens": 50,
+  "source_tokens": 778082
 }

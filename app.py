@@ -1,3 +1,4 @@
+import hmac
 import json
 import os
 
@@ -79,6 +80,8 @@ def rag_info():
         "index": index,
         "index_error": error,
         "ingest_enabled": _ingest_enabled(),
+        "admin_token_required": _admin_token_required(),
+        "index_writable": _index_writable(),
     }))
 
 
@@ -117,12 +120,45 @@ def rag_search():
 
 
 def _ingest_enabled() -> bool:
-    """Ingest spends money, so it is off unless deliberately switched on.
-
-    Without this the public deployment would expose a button any visitor could
-    press to burn the project's budget.
-    """
+    """Ingest spends money, so it is off unless deliberately switched on."""
     return os.environ.get("MOVIBOT_ALLOW_INGEST", "").strip().lower() in ("1", "true", "yes")
+
+
+def _admin_token_required() -> bool:
+    return bool(os.environ.get("MOVIBOT_ADMIN_TOKEN", "").strip())
+
+
+def _admin_ok(req) -> bool:
+    """Second lock, for when ingest is enabled on a public deployment.
+
+    MOVIBOT_ALLOW_INGEST alone is a switch, not a guard: flipping it on in
+    production would let anyone who finds the URL press the button and spend
+    the budget. With MOVIBOT_ADMIN_TOKEN set, the switch says *whether* ingest
+    is possible and the token says *who* may trigger it. Constant-time compare
+    so the token cannot be recovered a character at a time.
+    """
+    expected = os.environ.get("MOVIBOT_ADMIN_TOKEN", "").strip()
+    if not expected:
+        return True
+    supplied = (
+        req.headers.get("X-Admin-Token")
+        or (req.get_json(silent=True) or {}).get("token")
+        or ""
+    ).strip()
+    return bool(supplied) and hmac.compare_digest(supplied, expected)
+
+
+def _index_writable() -> bool:
+    """Can the passage index actually be written here?
+
+    Probed rather than inferred from an env var. Vercel's serverless
+    filesystem is read-only outside /tmp, so an ingest there would embed the
+    whole corpus, spend the money, and only then fail on write -- the worst
+    possible ordering. Pinecone is unaffected: it writes over the network.
+    """
+    from rag.config import DATA_READY
+
+    return os.path.isdir(DATA_READY) and os.access(DATA_READY, os.W_OK)
 
 
 @app.route("/api/rag/ingest", methods=["POST", "OPTIONS"])
@@ -141,14 +177,35 @@ def rag_ingest():
     # The gate exists to stop a stranger spending the budget, so it applies to
     # spending only. Estimating costs nothing and stays available everywhere --
     # otherwise the free button on the public page would 403.
-    if not dry_run and not _ingest_enabled():
-        return _cors(jsonify({
-            "error": "Ingest is disabled here. It embeds the corpus and costs "
-                     "money, so it is not exposed by default. Set "
-                     "MOVIBOT_ALLOW_INGEST=1 to enable, or run it from a shell: "
-                     "python -m rag.ingest --sources all --pinecone",
-            "started": False,
-        })), 403
+    if not dry_run:
+        if not _ingest_enabled():
+            return _cors(jsonify({
+                "error": "Ingest is disabled here. It embeds the corpus and costs "
+                         "money, so it is not exposed by default. Set "
+                         "MOVIBOT_ALLOW_INGEST=1 to enable, or run it from a shell: "
+                         "python -m rag.ingest --sources all --pinecone",
+                "started": False,
+            })), 403
+
+        if not _admin_ok(request):
+            return _cors(jsonify({
+                "error": "Wrong or missing admin token. Ingest spends money, so "
+                         "on a public deployment it needs the token as well as "
+                         "the switch.",
+                "started": False,
+            })), 401
+
+        # Refuse *before* embedding: failing after would mean paying for
+        # vectors that were then thrown away.
+        if not to_pinecone and not _index_writable():
+            return _cors(jsonify({
+                "error": "The passage index cannot be written here -- this "
+                         "filesystem is read-only, as it is on Vercel. Embedding "
+                         "first and failing afterwards would spend the budget for "
+                         "nothing. Either tick Pinecone, which writes over the "
+                         "network, or run ingest locally and commit the index.",
+                "started": False,
+            })), 409
 
     try:
         from rag import ingest as rag_ingest_mod
@@ -166,7 +223,8 @@ def rag_ingest():
 
         from rag import embed as rag_embed
         vectors, stats = rag_embed.embed_texts_cached(chunks.embedding_text.tolist())
-        rag_ingest_mod.write_index(chunks, vectors, sources, debug=debug)
+        if _index_writable():
+            rag_ingest_mod.write_index(chunks, vectors, sources, debug=debug)
         if to_pinecone:
             rag_ingest_mod.upsert_pinecone(chunks, vectors)
         return _cors(jsonify({
