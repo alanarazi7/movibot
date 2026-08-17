@@ -10,18 +10,29 @@ typed here.
 
 WHY THE CYCLE IS THE SUBJECT
 
-The previous version drew the planner fanning out to four tools. Everything in
-it was true, but with no return edge and no turn counter it read as one-shot
+An earlier version drew the planner fanning out to four tools. Everything in it
+was true, but with no return edge and no turn counter it read as one-shot
 dispatch -- a router in front of a fixed pipeline. That is the wrong takeaway:
 agent/loop.py offers every tool on every turn, the model picks which and how
 many, and the loop exits only when it emits no tool call. So the cycle, not the
 fan-out, is what the diagram has to show: Reason -> Act -> Observe -> Stop?,
 with the "No" edge closing it and the turn bound printed on the frame.
 
-The tools are drawn as an inventory the Act step reaches into, deliberately
-*not* as a left-to-right chain. There is no code path that runs them in order;
-the ordering is a preference stated in the system prompt, and a diagram that
-chains them asserts a mechanism that does not exist.
+The tools are drawn as an inventory the loop reaches into, deliberately *not*
+as a left-to-right chain. There is no code path that runs them in order; the
+ordering is a preference stated in the system prompt, and a diagram that chains
+them asserts a mechanism that does not exist. The connector leaves the frame as
+a whole rather than the Act box, because any turn may call any tool.
+
+WHY THE CANVAS IS NEARLY SQUARE
+
+The Architecture tab renders this inside a 900px container with `max-width:
+100%`. A wide canvas is therefore downscaled hard -- the previous 1240x560
+landscape lost a third of its size before it reached the reader, which took
+15px labels down to about 10px on screen. So the layout is laid out portrait-
+ish, close to the container width, and the whole thing is drawn at SS times
+final size and resampled down. Nothing here is sized for a slide; it is sized
+for that column.
 
 There is deliberately no data layer. Drawing one meant either a store per tool,
 which is false -- LexicalScreen and PlotSearch read the same passage index --
@@ -42,12 +53,17 @@ from agent import loop, tools  # noqa: E402
 _ROOT = os.path.join(os.path.dirname(__file__), "..")
 OUTPUT_PATH = os.path.join(_ROOT, "assets", "architecture.png")
 
-WIDTH, HEIGHT = 1240, 560
+# Every coordinate below is in layout units, which are the pixels the reader
+# actually gets. SS only buys resampling quality: the image is drawn SS times
+# larger and shrunk back down at save time, so curves and small type stay clean
+# on a retina display and survive the browser's own scaling.
+WIDTH, HEIGHT = 900, 930
+SS = 2
 
 BG = (255, 255, 255)
 INK = (24, 28, 34)
-MUTED = (118, 124, 132)
-FAINT = (176, 183, 191)
+MUTED = (110, 117, 126)
+FAINT = (174, 181, 190)
 ARROW = (128, 134, 142)
 
 # Blue marks the one metered step; green marks everything that is free and
@@ -62,6 +78,15 @@ PANEL_FILL, PANEL_LINE = (250, 251, 252), (219, 224, 230)
 CYCLE = (208, 92, 42)
 
 
+def _s(v):
+    """Layout units -> device pixels."""
+    return v * SS
+
+
+def _st(xy):
+    return tuple(v * SS for v in xy)
+
+
 def _font(size: int, bold: bool = False):
     candidates = (
         ["/System/Library/Fonts/Supplemental/Arial Bold.ttf",
@@ -72,7 +97,7 @@ def _font(size: int, bold: bool = False):
     )
     for path in candidates:
         if os.path.exists(path):
-            return ImageFont.truetype(path, size)
+            return ImageFont.truetype(path, int(size * SS))
     return ImageFont.load_default()
 
 
@@ -97,43 +122,56 @@ def _emoji(char: str, size: int) -> "Image.Image | None":
     tile = Image.new("RGBA", (76, 76), (0, 0, 0, 0))
     ImageDraw.Draw(tile).text((4, 4), char, font=font, embedded_color=True)
     return tile.crop(tile.getbbox() or (0, 0, 76, 76)).resize(
-        (size, size), Image.LANCZOS
+        (int(size * SS), int(size * SS)), Image.LANCZOS
     )
 
 
-def _centre(draw, cx, y, text, font, fill):
+def _centre_dev(draw, cx, y, text, font, fill):
+    """Centre already-scaled text at already-scaled coordinates."""
     b = draw.textbbox((0, 0), text, font=font)
     draw.text((cx - (b[2] - b[0]) / 2, y), text, fill=fill, font=font)
 
 
+def _text(draw, xy, text, fill=INK, size=16, bold=False):
+    draw.text(_st(xy), text, fill=fill, font=_font(size, bold))
+
+
+def _width(draw, text, size=16, bold=False):
+    """Text width, back in layout units, for right-aligning."""
+    return draw.textbbox((0, 0), text, font=_font(size, bold))[2] / SS
+
+
 def _box(draw, xy, title, lines=(), fill=PLAIN_FILL, line=PLAIN_LINE,
          title_size=22, sub_size=15):
-    draw.rounded_rectangle(xy, radius=10, fill=fill, outline=line, width=2)
-    x0, y0, x1, y1 = xy
+    x0, y0, x1, y1 = _st(xy)
+    draw.rounded_rectangle((x0, y0, x1, y1), radius=_s(11), fill=fill,
+                           outline=line, width=_s(2))
     cx = (x0 + x1) / 2
 
     tf = _font(title_size, bold=True)
     sf = _font(sub_size)
-    step = sub_size + 5
-    block = (draw.textbbox((0, 0), title, font=tf)[3] + 6) + len(lines) * step
+    step = _s(sub_size + 6)
+    title_h = draw.textbbox((0, 0), title, font=tf)[3]
+    block = title_h + _s(9) + len(lines) * step
     y = (y0 + y1) / 2 - block / 2
 
-    _centre(draw, cx, y, title, tf, INK)
-    y += draw.textbbox((0, 0), title, font=tf)[3] + 8
+    _centre_dev(draw, cx, y, title, tf, INK)
+    y += title_h + _s(9)
     for text in lines:
-        _centre(draw, cx, y, text, sf, MUTED)
+        _centre_dev(draw, cx, y, text, sf, MUTED)
         y += step
 
 
 def _arrow(draw, p0, p1, both=False, width=2, fill=None):
     fill = fill or ARROW
-    draw.line([p0, p1], fill=fill, width=width)
+    p0, p1 = _st(p0), _st(p1)
+    draw.line([p0, p1], fill=fill, width=_s(width))
 
     def head(tip, frm):
         dx, dy = tip[0] - frm[0], tip[1] - frm[1]
         n = max((dx * dx + dy * dy) ** 0.5, 1e-6)
         ux, uy = dx / n, dy / n
-        s = 9
+        s = _s(10)
         draw.polygon([
             tip,
             (tip[0] - s * ux + s * 0.55 * -uy, tip[1] - s * uy + s * 0.55 * ux),
@@ -148,12 +186,13 @@ def _arrow(draw, p0, p1, both=False, width=2, fill=None):
 def _elbow(draw, points, fill=None, width=2):
     """A polyline with a head on the final segment only."""
     fill = fill or ARROW
-    draw.line(points, fill=fill, width=width, joint="curve")
+    draw.line([_st(p) for p in points], fill=fill, width=_s(width), joint="curve")
     _arrow(draw, points[-2], points[-1], fill=fill, width=width)
 
 
-def _dashed_rect(draw, xy, colour=FAINT, dash=9, gap=7, width=2):
-    x0, y0, x1, y1 = xy
+def _dashed_rect(draw, xy, colour=FAINT, dash=10, gap=8, width=2):
+    x0, y0, x1, y1 = _st(xy)
+    dash, gap, width = _s(dash), _s(gap), _s(width)
     for x in range(int(x0), int(x1), dash + gap):
         draw.line([(x, y0), (min(x + dash, x1), y0)], fill=colour, width=width)
         draw.line([(x, y1), (min(x + dash, x1), y1)], fill=colour, width=width)
@@ -163,84 +202,91 @@ def _dashed_rect(draw, xy, colour=FAINT, dash=9, gap=7, width=2):
 
 
 def _label(draw, cx, cy, text, colour=MUTED, size=15, bold=False):
+    """A text label that knocks out whatever it sits on top of."""
     font = _font(size, bold=bold)
+    cx, cy = _s(cx), _s(cy)
     b = draw.textbbox((0, 0), text, font=font)
     w, h = b[2] - b[0], b[3] - b[1]
-    draw.rectangle((cx - w / 2 - 6, cy - h / 2 - 4, cx + w / 2 + 6, cy + h / 2 + 6),
-                   fill=BG)
-    draw.text((cx - w / 2, cy - h / 2 - 1), text, fill=colour, font=font)
+    draw.rectangle((cx - w / 2 - _s(7), cy - h / 2 - _s(5),
+                    cx + w / 2 + _s(7), cy + h / 2 + _s(7)), fill=BG)
+    draw.text((cx - w / 2, cy - h / 2 - _s(1)), text, fill=colour, font=font)
 
 
 def main() -> None:
-    img = Image.new("RGB", (WIDTH, HEIGHT), BG)
+    img = Image.new("RGB", (WIDTH * SS, HEIGHT * SS), BG)
     draw = ImageDraw.Draw(img)
 
-    draw.text((40, 24), "MoviBot Architecture", fill=INK, font=_font(32, bold=True))
-    draw.text((40, 64), "One ReAct loop. The planner chooses the tools, their "
-                        "arguments, and when to stop.",
-              fill=MUTED, font=_font(16))
+    _text(draw, (36, 26), "MoviBot Architecture", INK, 32, bold=True)
+    _text(draw, (36, 72),
+          "One ReAct loop. The planner chooses the tools, their arguments, "
+          "and when to stop.", MUTED, 16)
 
     # ---- the loop ------------------------------------------------------
     # The frame carries the turn bound, because "bounded" is the honest
     # qualifier on "the model decides when to stop": it decides, up to here.
-    frame = (300, 128, 800, 452)
+    frame = (210, 130, 680, 555)
     _dashed_rect(draw, frame)
-    _label(draw, 550, 128,
+    _label(draw, 445, 130,
            f"REACT LOOP  ·  at most {loop.MAX_ROUNDS} model turns",
-           colour=MUTED, size=14, bold=True)
+           colour=MUTED, size=15, bold=True)
 
-    reason = (330, 168, 520, 268)
-    act = (600, 168, 770, 268)
-    observe = (600, 322, 770, 422)
-    stop = (330, 322, 520, 422)
+    reason = (235, 175, 425, 300)
+    act = (490, 175, 655, 300)
+    observe = (490, 385, 655, 510)
+    stop = (235, 385, 425, 510)
 
-    _box(draw, reason, "Reason",
-         ("Planner", "the only metered step"),
-         fill=PAID_FILL, line=PAID_LINE, title_size=23, sub_size=14)
+    _box(draw, reason, "Reason", ("Planner", "the only metered step"),
+         fill=PAID_FILL, line=PAID_LINE, title_size=27, sub_size=15)
     _box(draw, act, "Act", ("call one or", "more tools"),
-         title_size=23, sub_size=14)
+         title_size=27, sub_size=15)
     _box(draw, observe, "Observe", ("read results,", "update working set"),
-         title_size=23, sub_size=14)
+         title_size=27, sub_size=15)
     _box(draw, stop, "Stop?", ("enough evidence", "to answer?"),
-         title_size=23, sub_size=14)
+         title_size=27, sub_size=15)
 
     # Clockwise, with the return edge closing it. Without that edge the same
     # four boxes read as four stages.
-    _arrow(draw, (522, 218), (596, 218), fill=CYCLE, width=3)
-    _arrow(draw, (685, 270), (685, 318), fill=CYCLE, width=3)
-    _arrow(draw, (598, 372), (524, 372), fill=CYCLE, width=3)
-    _arrow(draw, (392, 320), (392, 272), fill=CYCLE, width=3)
-    _label(draw, 462, 296, "No  →  loop", colour=CYCLE, size=14, bold=True)
+    _arrow(draw, (427, 237), (486, 237), fill=CYCLE, width=3)
+    _arrow(draw, (572, 302), (572, 381), fill=CYCLE, width=3)
+    _arrow(draw, (488, 447), (429, 447), fill=CYCLE, width=3)
+    _arrow(draw, (320, 383), (320, 304), fill=CYCLE, width=3)
+    _label(draw, 390, 343, "No  →  loop", colour=CYCLE, size=16, bold=True)
 
     # ---- request in, answer out ----------------------------------------
-    request = (36, 178, 258, 258)
-    answer = (952, 400, 1200, 496)
+    request = (20, 187, 185, 287)
+    answer = (705, 385, 878, 510)
 
-    _box(draw, request, "User request", ("natural language,", "mixed constraints"),
-         title_size=20, sub_size=14)
-    _box(draw, answer, "Final answer", ("with the evidence", "it actually checked"),
-         title_size=20, sub_size=14)
+    _box(draw, request, "User request",
+         ("natural language,", "mixed constraints"), title_size=20, sub_size=14)
+    _box(draw, answer, "Final answer",
+         ("with the evidence", "it actually checked"), title_size=20, sub_size=14)
 
-    _arrow(draw, (260, 218), (326, 218))
+    _arrow(draw, (187, 237), (231, 237))
 
     # "Yes" leaves the loop from Stop?, under the frame, and comes up into the
     # answer -- so the one exit from the cycle is a decision, not a fall-through.
-    _elbow(draw, [(392, 424), (392, 520), (1076, 520), (1076, 500)],
+    # It runs right of x=390 so the tool connector, which drops on the left, has
+    # nothing to cross.
+    _elbow(draw, [(390, 512), (390, 590), (791, 590), (791, 514)],
            fill=CYCLE, width=3)
-    _label(draw, 700, 520, "Yes  →  answer", colour=CYCLE, size=14, bold=True)
+    _label(draw, 600, 590, "Yes  →  answer", colour=CYCLE, size=16, bold=True)
 
     # ---- tools ---------------------------------------------------------
     # An inventory, not a chain: every tool is available on every turn. Left to
     # right is cheapest to dearest, which is the order the prompt recommends and
     # the planner usually adopts -- a preference, not a path, so nothing here
-    # connects one tool to the next.
-    panel = (852, 128, 1200, 344)
-    draw.rounded_rectangle(panel, radius=10, fill=PANEL_FILL, outline=PANEL_LINE,
-                           width=2)
-    draw.text((874, 146), "TOOLS", fill=MUTED, font=_font(14, bold=True))
-    draw.text((874 + draw.textbbox((0, 0), "TOOLS", font=_font(14, bold=True))[2] + 10,
-               146), "free · local · any order, any turn",
-              fill=FAINT, font=_font(13))
+    # connects one tool to the next. The connector leaves the frame rather than
+    # the Act box for the same reason: any turn may call any tool.
+    panel = (36, 645, 864, 905)
+    draw.rounded_rectangle(_st(panel), radius=_s(11), fill=PANEL_FILL,
+                           outline=PANEL_LINE, width=_s(2))
+    _text(draw, (60, 664), "TOOLS", MUTED, 15, bold=True)
+    _text(draw, (60 + _width(draw, "TOOLS", 15, True) + 12, 665),
+          "free · local · any order, any turn", FAINT, 14)
+
+    # Left of x=390, so the "Yes" elbow above has nothing to knock out.
+    _arrow(draw, (280, 557), (280, 641), both=True)
+    _label(draw, 188, 599, "call · result", colour=MUTED, size=14)
 
     specs = [
         ("filter_catalog", "structured facts", "\U0001F5C2"),
@@ -248,30 +294,27 @@ def main() -> None:
         ("search_plots", "vector search", "\U0001F50E"),
         ("read_synopses", "full plot text", "\U0001F4D6"),
     ]
-    row_h, row_y = 40, 176
+    row_h, row_gap, row_y = 44, 7, 694
     for i, (key, sub, glyph) in enumerate(specs):
-        y0 = row_y + i * (row_h + 8)
-        draw.rounded_rectangle((874, y0, 1178, y0 + row_h), radius=7,
-                               fill=FREE_FILL, outline=FREE_LINE, width=1)
-        tx = 890
-        icon = _emoji(glyph, 17)
+        y0 = row_y + i * (row_h + row_gap)
+        draw.rounded_rectangle(_st((60, y0, 840, y0 + row_h)), radius=_s(8),
+                               fill=FREE_FILL, outline=FREE_LINE, width=_s(1))
+        tx = 76
+        icon = _emoji(glyph, 20)
         if icon is not None:
-            img.paste(icon, (tx, y0 + int((row_h - 17) / 2)), icon)
-            tx += 25
-        nf = _font(16, bold=True)
-        draw.text((tx, y0 + 11), tools.TRACE_NAMES[key], fill=INK, font=nf)
-        sf = _font(13)
-        sw = draw.textbbox((0, 0), sub, font=sf)[2]
-        draw.text((1166 - sw, y0 + 14), sub, fill=MUTED, font=sf)
+            img.paste(icon, (_s(tx), _s(y0) + int((_s(row_h) - _s(20)) / 2)), icon)
+            tx += 30
+        _text(draw, (tx, y0 + 11), tools.TRACE_NAMES[key], INK, 19, bold=True)
+        _text(draw, (824 - _width(draw, sub, 15), y0 + 15), sub, MUTED, 15)
 
-    # One double-headed edge: Act calls a tool, the result comes back for the
-    # planner to observe. Drawn as a pair rather than separate call/return lines,
-    # which turned into a thicket of overlapping dashes in an earlier version.
-    _arrow(draw, (772, 210), (848, 210), both=True)
-
+    # Saved at full SS resolution rather than resampled back down. The browser
+    # caps it at the container width either way, so the layout sizes above are
+    # what the reader gets; keeping the extra pixels is what makes it sharp on
+    # a retina display and legible when someone zooms in.
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
     img.save(OUTPUT_PATH)
-    print(f"Wrote {OUTPUT_PATH}")
+    print(f"Wrote {OUTPUT_PATH}  ({WIDTH * SS}x{HEIGHT * SS}, "
+          f"laid out as {WIDTH}x{HEIGHT} at {SS}x)")
     print(f"  loop bound: {loop.MAX_ROUNDS} model turns")
     print(f"  modules: {', '.join(tools.TRACE_NAMES[k] for k, _, _ in specs)}")
 
