@@ -20,13 +20,12 @@ from PIL import Image, ImageDraw, ImageFont
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from agent import loop, tools  # noqa: E402
-from rag import screen  # noqa: E402
 
 _ROOT = os.path.join(os.path.dirname(__file__), "..")
 _DATA = os.path.join(_ROOT, "data_preprocessing", "data_ready")
 OUTPUT_PATH = os.path.join(_ROOT, "assets", "architecture.png")
 
-WIDTH, HEIGHT = 1280, 720
+WIDTH, HEIGHT = 1280, 580
 
 BG = (255, 255, 255)
 INK = (24, 28, 34)
@@ -87,14 +86,14 @@ def _centre(draw, cx, y, text, font, fill):
 
 
 def _box(draw, xy, title, lines=(), fill=PLAIN_FILL, line=PLAIN_LINE,
-         title_size=17, img=None, emoji=None):
+         title_size=22, img=None, emoji=None):
     draw.rounded_rectangle(xy, radius=10, fill=fill, outline=line, width=2)
     x0, y0, x1, y1 = xy
     cx = (x0 + x1) / 2
 
     tf = _font(title_size, bold=True)
-    sf = _font(12.5)
-    block = (draw.textbbox((0, 0), title, font=tf)[3] + 4) + len(lines) * 16
+    sf = _font(16)
+    block = (draw.textbbox((0, 0), title, font=tf)[3] + 4) + len(lines) * 21
     y = (y0 + y1) / 2 - block / 2
 
     _centre(draw, cx, y, title, tf, INK)
@@ -103,7 +102,7 @@ def _box(draw, xy, title, lines=(), fill=PLAIN_FILL, line=PLAIN_LINE,
         # An emoji cannot be drawn in the same call as the text -- it comes
         # from a different font -- so the pair is centred as one unit and the
         # two are placed side by side.
-        glyph = _emoji(emoji, 15) if (emoji and text is lines[0]) else None
+        glyph = _emoji(emoji, 19) if (emoji and text is lines[0]) else None
         if glyph is not None and img is not None:
             tw = draw.textbbox((0, 0), text, font=sf)[2]
             total = glyph.width + 5 + tw
@@ -112,7 +111,7 @@ def _box(draw, xy, title, lines=(), fill=PLAIN_FILL, line=PLAIN_LINE,
             draw.text((gx + glyph.width + 5, y), text, fill=MUTED, font=sf)
         else:
             _centre(draw, cx, y, text, sf, MUTED)
-        y += 16
+        y += 21
 
 
 def _arrow(draw, p0, p1, both=False, width=2):
@@ -135,7 +134,7 @@ def _arrow(draw, p0, p1, both=False, width=2):
 
 
 def _label(draw, cx, cy, text, font=None):
-    font = font or _font(12.5)
+    font = font or _font(15)
     b = draw.textbbox((0, 0), text, font=font)
     w, h = b[2] - b[0], b[3] - b[1]
     draw.rectangle((cx - w / 2 - 5, cy - h / 2 - 3, cx + w / 2 + 5, cy + h / 2 + 5), fill=BG)
@@ -143,7 +142,7 @@ def _label(draw, cx, cy, text, font=None):
 
 
 def _band(draw, y, text, note):
-    f, fn = _font(11, bold=True), _font(11)
+    f, fn = _font(14, bold=True), _font(14)
     draw.text((40, y), text.upper(), fill=MUTED, font=f)
     w = draw.textbbox((0, 0), text.upper(), font=f)[2]
     draw.text((40 + w + 12, y), note, fill=(180, 186, 193), font=fn)
@@ -176,29 +175,33 @@ def main() -> None:
     img = Image.new("RGB", (WIDTH, HEIGHT), BG)
     draw = ImageDraw.Draw(img)
 
-    draw.text((40, 30), "MoviBot Architecture", fill=INK, font=_font(27, bold=True))
+    draw.text((40, 28), "MoviBot Architecture", fill=INK, font=_font(34, bold=True))
 
     # ---- request / planner / answer -----------------------------------
-    req = (40, 118, 250, 178)
-    plan = (470, 108, 810, 190)
-    ans = (1070, 118, 1240, 178)
+    req = (40, 112, 268, 186)
+    plan = (452, 100, 828, 198)
+    ans = (1052, 112, 1240, 186)
 
     _box(draw, req, "User request")
     _box(draw, plan, tools.TRACE_NAMES.get("planner", "Planner"),
          ("Which tool should I use?",),
-         fill=PAID_FILL, line=PAID_LINE, title_size=18,
+         fill=PAID_FILL, line=PAID_LINE, title_size=24,
          img=img, emoji="\U0001F527")
     _box(draw, ans, "Final answer")
 
-    _arrow(draw, (250, 148), (466, 148))
-    _arrow(draw, (814, 148), (1066, 148))
-    _label(draw, 940, 148, "no more tools needed")
+    _arrow(draw, (268, 149), (448, 149))
+    _arrow(draw, (832, 149), (1048, 149))
+    _label(draw, 940, 149, "no more tools needed")
 
-    draw.text((476, 194), f"metered · at most {loop.MAX_ROUNDS} model turns",
-              fill=PAID_LINE, font=_font(11.5))
+    # Right-aligned to stop short of x=640, where the planner's bus line drops
+    # to the tool row -- centred under the box, the line struck through it.
+    metered = f"metered · at most {loop.MAX_ROUNDS} model turns"
+    mf = _font(14)
+    draw.text((624 - draw.textbbox((0, 0), metered, font=mf)[2], 203), metered,
+              fill=PAID_LINE, font=mf)
 
     # ---- tools ---------------------------------------------------------
-    _band(draw, 232, "Tools", "")
+    _band(draw, 244, "Tools", "")
 
     # Left to right is cheapest to dearest, which is also the order the planner
     # is told to work in. The ordering is the design, so the diagram encodes it.
@@ -213,7 +216,7 @@ def main() -> None:
     ]
     tw, gap = 268, 38
     start = (WIDTH - (tw * len(specs) + gap * (len(specs) - 1))) / 2
-    ty0, ty1 = 268, 348
+    ty0, ty1 = 274, 366
 
     tool_boxes = []
     for i, (key, sub) in enumerate(specs):
@@ -221,14 +224,14 @@ def main() -> None:
         box = (x0, ty0, x0 + tw, ty1)
         tool_boxes.append(box)
         _box(draw, box, tools.TRACE_NAMES[key], sub, fill=FREE_FILL, line=FREE_LINE,
-             title_size=15)
+             title_size=20)
 
     # One bus off the planner, then a two-way link into each tool: the planner
     # calls, the result comes back to the planner. Drawn as double-headed
     # arrows rather than separate call/return lines, which turned into a
     # thicket of overlapping dashes in the previous version.
-    bus_y = 246
-    draw.line([(640, 190), (640, bus_y)], fill=ARROW, width=2)
+    bus_y = 256
+    draw.line([(640, 198), (640, bus_y)], fill=ARROW, width=2)
     draw.line([((tool_boxes[0][0] + tool_boxes[0][2]) / 2, bus_y),
                ((tool_boxes[-1][0] + tool_boxes[-1][2]) / 2, bus_y)], fill=ARROW, width=2)
     for box in tool_boxes:
@@ -238,7 +241,7 @@ def main() -> None:
     # ---- data ----------------------------------------------------------
     # Kept short: the bus and its four feeder lines now occupy this row, and a
     # longer note here runs straight into the leftmost of them.
-    _band(draw, 360, "Data", "")
+    _band(draw, 424, "Data", "")
 
     data = [
         ("Catalog", (f"{n['films']} films × {n['columns']} columns",)),
@@ -249,10 +252,10 @@ def main() -> None:
     # tool boxes: there are four tools and three stores, and they do not pair off
     # -- the screen and the search read the same passage index. So the tools feed
     # a bus, and the bus feeds the stores, the same idiom used above the tools.
-    dy0, dy1 = 428, 508
+    dy0, dy1 = 452, 540
     dw, dgap = 356, 42
     dstart = (WIDTH - (dw * 3 + dgap * 2)) / 2
-    bus_y = 382
+    bus_y = 400
 
     draw.line([((tool_boxes[0][0] + tool_boxes[0][2]) / 2, bus_y),
                ((tool_boxes[-1][0] + tool_boxes[-1][2]) / 2, bus_y)],
@@ -264,32 +267,9 @@ def main() -> None:
     for i, (title, sub) in enumerate(data):
         x0 = dstart + i * (dw + dgap)
         _box(draw, (x0, dy0, x0 + dw, dy1), title, sub,
-             fill=DATA_FILL, line=DATA_LINE, title_size=15)
+             fill=DATA_FILL, line=DATA_LINE, title_size=19)
         _arrow(draw, (x0 + dw / 2, bus_y), (x0 + dw / 2, dy0 - 2))
     _label(draw, 640, bus_y, "reads")
-
-    # ---- guardrails ----------------------------------------------------
-    gy = 552
-    draw.rounded_rectangle((40, gy, WIDTH - 40, gy + 126), radius=10,
-                           fill=(252, 250, 244), outline=(228, 218, 196), width=1)
-    draw.text((60, gy + 16), "Guardrails live in the data and the tool code, never in the prompt",
-              fill=(122, 96, 40), font=_font(14, bold=True))
-    draw.text(
-        (60, gy + 42),
-        "The model cannot forget them and a bad plan cannot route around them:\n"
-        "  ·  the catalog holds feature films only — shorts under 45 minutes were dropped at preparation time\n"
-        "  ·  results are ordered by a vote-weighted rating, never the raw average, so a 5-vote film cannot top a list\n"
-        f"  ·  the screen refuses to certify a film with under {screen.MIN_SCREEN_TOKENS} tokens of plot, "
-        "so absence of evidence is never reported as evidence",
-        fill=(140, 116, 62), font=_font(12.5), spacing=5,
-    )
-
-    draw.text(
-        (40, HEIGHT - 34),
-        "All data is committed to the repo and read from disk — no API call is made at query time.  ·  "
-        "Every box above appears by this exact name in the `module` field of the /api/execute steps trace.",
-        fill=(178, 184, 191), font=_font(12),
-    )
 
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
     img.save(OUTPUT_PATH)
