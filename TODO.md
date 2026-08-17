@@ -1,19 +1,3 @@
-# TODO
-
-Open items only. Due **2026-08-23**.
-
-Spending needs explicit go-ahead. **The live figure and the per-item costs are
-on the Budget tab**, read from LLMod.ai's own accounting via `/api/budget`
-rather than typed here, where the number went stale the moment anyone ran a
-query.
-
-The app is live at [movibot-gamma.vercel.app](https://movibot-gamma.vercel.app)
-and answers real queries in production. Nothing is blocked on a credential:
-the Pinecone and Supabase backends were removed, and the two that remain
-(`OPENAI_API_KEY`, `OPENAI_BASE_URL`) are set locally and in production.
-
----
-
 ## Architecture
 
 The shape we agreed: decompose a request into conditions, exhaust the
