@@ -15,9 +15,39 @@ the Pinecone and Supabase backends were removed, and the two that remain
 ## Architecture
 
 The shape we agreed: decompose a request into conditions, exhaust the
-structured ones, then spend money only on what is left. The candidate set now
-lives in Python and films are addressed by name, so what remains is making the
-decomposition explicit and describing the whole thing honestly.
+structured ones, then spend money only on what is left.
+
+### Where it stands
+
+```
+POST /api/execute
+  └─ loop.py            up to MAX_ROUNDS = 5 model turns; last turn gets no
+                        tools, so it must answer rather than ask
+       └─ Planner       one prompt, 2,005 tokens, every turn. The only paid step
+            ├─ filter_catalog   238 -> N by column. Free. Sets the working set
+            ├─ search_plots     ranks within it. One embedding, ~$0.0000002
+            └─ read_synopses    <= 8 films, <= 6,000 chars each. Free
+```
+
+In place:
+
+- **Working set in Python.** `filter_catalog` records every matching id in a
+  request-scoped `ToolContext`; search and read scope to it automatically.
+  Nothing is passed between tools, and no match is lost to a display cap —
+  which it used to be, 172 films at a time.
+- **Films addressed by name.** `Title (Year)` is unique across all 238, so no
+  id enters the prompt. A filter response is 373 tokens where it was 13,791.
+- **Four corpora, 3,159 passages, 1536-dim, scored in memory.** Search covers
+  the two plot-bearing ones by default; `wiki_context` and `overview` stay
+  reachable but no longer outrank plots on story questions.
+- **Data**: 238 films × 26 columns from committed CSVs (2 ms); 234 films
+  readable in full; no database of any kind.
+- **Guardrails in code, not prose**: the 45-minute floor and `weighted_rating`
+  ordering are properties of the data; `MAX_RECOMMENDATIONS = 3`,
+  `PREVIEW_FILMS = 15`, `MAX_SEARCH_RESULTS = 25`, `MAX_SYNOPSES = 8`.
+
+What is missing is making the decomposition explicit, and describing the whole
+thing honestly.
 
 ### A1. Condition plan — the remaining piece
 
