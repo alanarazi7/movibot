@@ -4,10 +4,14 @@ Offline only (PIL, no network or model calls).
 
 Two things this diagram must not drift from, so both are read rather than typed:
 module names come from agent.tools.TRACE_NAMES and the turn bound from
-agent.loop.MAX_ROUNDS -- the assignment requires identical naming across the
-diagram, the /api/execute steps trace, and agent_info.json -- and the row counts
-come from data_ready/, so a re-prepared catalog cannot leave a stale figure on
-the page.
+agent.loop.MAX_ROUNDS. The assignment requires identical naming across the
+diagram, the /api/execute steps trace, and agent_info.json, so none of it is
+typed here.
+
+There is deliberately no data layer. Drawing one meant either a store per tool,
+which is false -- LexicalScreen and PlotSearch read the same passage index --
+or a shared bus, which implies every tool reads every store and is equally
+false. The counts live in the Architecture tab and /api/rag/info instead.
 
 Usage: python scripts/generate_architecture_diagram.py
 """
@@ -15,7 +19,6 @@ Usage: python scripts/generate_architecture_diagram.py
 import os
 import sys
 
-import pandas as pd
 from PIL import Image, ImageDraw, ImageFont
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -25,7 +28,7 @@ _ROOT = os.path.join(os.path.dirname(__file__), "..")
 _DATA = os.path.join(_ROOT, "data_preprocessing", "data_ready")
 OUTPUT_PATH = os.path.join(_ROOT, "assets", "architecture.png")
 
-WIDTH, HEIGHT = 1280, 580
+WIDTH, HEIGHT = 1280, 420
 
 BG = (255, 255, 255)
 INK = (24, 28, 34)
@@ -148,30 +151,7 @@ def _band(draw, y, text, note):
     draw.text((40 + w + 12, y), note, fill=(180, 186, 193), font=fn)
 
 
-def counts() -> dict:
-    """Figures for the data layer, read from the prepared files."""
-    catalog = pd.read_csv(os.path.join(_DATA, "supabase_movies.csv"))
-    synopses = pd.read_csv(os.path.join(_DATA, "pinecone_candidates.csv"))
-    wiki = pd.read_csv(os.path.join(_DATA, "wikipedia_cache.csv"))
-    import json
-    import numpy as np
-    blob = np.load(os.path.join(_DATA, "chunk_index.npz"), allow_pickle=False)
-    chunks = pd.DataFrame(json.loads(str(blob["table"].item())))
-
-    mpst = set(synopses["movie_id"])
-    wiki_plot = set(wiki.loc[wiki["plot_text"].notna(), "id"])
-
-    return {
-        "films": len(catalog),
-        "columns": catalog.shape[1],
-        "passages": len(chunks),
-        "indexed_films": chunks["movie_id"].nunique(),
-        "readable": len(mpst | wiki_plot),
-    }
-
-
 def main() -> None:
-    n = counts()
     img = Image.new("RGB", (WIDTH, HEIGHT), BG)
     draw = ImageDraw.Draw(img)
 
@@ -238,44 +218,10 @@ def main() -> None:
         cx = (box[0] + box[2]) / 2
         _arrow(draw, (cx, bus_y), (cx, ty0 - 2), both=True)
 
-    # ---- data ----------------------------------------------------------
-    # Kept short: the bus and its four feeder lines now occupy this row, and a
-    # longer note here runs straight into the leftmost of them.
-    _band(draw, 424, "Data", "")
-
-    data = [
-        ("Catalog", (f"{n['films']} films × {n['columns']} columns",)),
-        ("Passage index", (f"{n['passages']:,} passages, 1536-d",)),
-        ("Plot texts", (f"{n['readable']} films readable in full",)),
-    ]
-    # The data row has its own three-column layout rather than sitting under the
-    # tool boxes: there are four tools and three stores, and they do not pair off
-    # -- the screen and the search read the same passage index. So the tools feed
-    # a bus, and the bus feeds the stores, the same idiom used above the tools.
-    dy0, dy1 = 452, 540
-    dw, dgap = 356, 42
-    dstart = (WIDTH - (dw * 3 + dgap * 2)) / 2
-    bus_y = 400
-
-    draw.line([((tool_boxes[0][0] + tool_boxes[0][2]) / 2, bus_y),
-               ((tool_boxes[-1][0] + tool_boxes[-1][2]) / 2, bus_y)],
-              fill=ARROW, width=2)
-    for box in tool_boxes:
-        cx = (box[0] + box[2]) / 2
-        draw.line([(cx, ty1 + 2), (cx, bus_y)], fill=ARROW, width=2)
-
-    for i, (title, sub) in enumerate(data):
-        x0 = dstart + i * (dw + dgap)
-        _box(draw, (x0, dy0, x0 + dw, dy1), title, sub,
-             fill=DATA_FILL, line=DATA_LINE, title_size=19)
-        _arrow(draw, (x0 + dw / 2, bus_y), (x0 + dw / 2, dy0 - 2))
-    _label(draw, 640, bus_y, "reads")
-
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
     img.save(OUTPUT_PATH)
     print(f"Wrote {OUTPUT_PATH}")
     print(f"  modules: {', '.join(tools.TRACE_NAMES[k] for k, _ in specs)}")
-    print(f"  data:    {n}")
 
 
 if __name__ == "__main__":
