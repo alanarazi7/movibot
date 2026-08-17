@@ -20,6 +20,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from agent import loop, tools  # noqa: E402
+from rag import screen  # noqa: E402
 
 _ROOT = os.path.join(os.path.dirname(__file__), "..")
 _DATA = os.path.join(_ROOT, "data_preprocessing", "data_ready")
@@ -142,9 +143,9 @@ def main() -> None:
     draw.text((40, 30), "MoviBot Architecture", fill=INK, font=_font(27, bold=True))
     draw.text(
         (40, 68),
-        f"A planner with three tools over {n['films']} Disney and Pixar feature films. "
-        f"Only the planner costs anything, and it is capped at {loop.MAX_ROUNDS} turns "
-        f"per request.",
+        f"A planner with four tools over {n['films']} Disney and Pixar feature films, "
+        f"cheapest first. Only the planner costs anything, and it is capped at "
+        f"{loop.MAX_ROUNDS} turns per request.",
         fill=MUTED, font=_font(14),
     )
 
@@ -169,16 +170,20 @@ def main() -> None:
     # ---- tools ---------------------------------------------------------
     _band(draw, 232, "Tools", "called by the planner, run locally, no model cost")
 
+    # Left to right is cheapest to dearest, which is also the order the planner
+    # is told to work in. The ordering is the design, so the diagram encodes it.
     specs = [
         ("filter_catalog", ("answers from columns",
                             "year · genre · studio · language")),
+        ("screen_out", ("rules out what must be absent",
+                        "exhaustive scan, every passage")),
         ("search_plots", ("answers from meaning",
                           "passage-level semantic search")),
         ("read_synopses", ("answers from full text",
                            "who dies, who betrays whom")),
     ]
-    tw, gap = 356, 42
-    start = (WIDTH - (tw * 3 + gap * 2)) / 2
+    tw, gap = 268, 38
+    start = (WIDTH - (tw * len(specs) + gap * (len(specs) - 1))) / 2
     ty0, ty1 = 268, 348
 
     tool_boxes = []
@@ -186,7 +191,8 @@ def main() -> None:
         x0 = start + i * (tw + gap)
         box = (x0, ty0, x0 + tw, ty1)
         tool_boxes.append(box)
-        _box(draw, box, tools.TRACE_NAMES[key], sub, fill=FREE_FILL, line=FREE_LINE)
+        _box(draw, box, tools.TRACE_NAMES[key], sub, fill=FREE_FILL, line=FREE_LINE,
+             title_size=15)
 
     # One bus off the planner, then a two-way link into each tool: the planner
     # calls, the result comes back to the planner. Drawn as double-headed
@@ -201,7 +207,9 @@ def main() -> None:
         _arrow(draw, (cx, bus_y), (cx, ty0 - 2), both=True)
 
     # ---- data ----------------------------------------------------------
-    _band(draw, 392, "Data", "prepared offline")
+    # Kept short: the bus and its four feeder lines now occupy this row, and a
+    # longer note here runs straight into the leftmost of them.
+    _band(draw, 360, "Data", "")
 
     data = [
         ("Catalog", (f"{n['films']} films × {n['columns']} columns",
@@ -211,17 +219,32 @@ def main() -> None:
         ("Plot texts", (f"{n['readable']} films readable in full",
                         "MPST synopsis, else Wikipedia plot")),
     ]
+    # The data row has its own three-column layout rather than sitting under the
+    # tool boxes: there are four tools and three stores, and they do not pair off
+    # -- the screen and the search read the same passage index. So the tools feed
+    # a bus, and the bus feeds the stores, the same idiom used above the tools.
     dy0, dy1 = 428, 508
-    for box, (title, sub) in zip(tool_boxes, data):
-        dbox = (box[0], dy0, box[2], dy1)
-        _box(draw, dbox, title, sub, fill=DATA_FILL, line=DATA_LINE, title_size=15)
+    dw, dgap = 356, 42
+    dstart = (WIDTH - (dw * 3 + dgap * 2)) / 2
+    bus_y = 382
+
+    draw.line([((tool_boxes[0][0] + tool_boxes[0][2]) / 2, bus_y),
+               ((tool_boxes[-1][0] + tool_boxes[-1][2]) / 2, bus_y)],
+              fill=ARROW, width=2)
+    for box in tool_boxes:
         cx = (box[0] + box[2]) / 2
-        _arrow(draw, (cx, ty1 + 2), (cx, dy0 - 2))
-        _label(draw, cx, ty1 + 20, "reads")
+        draw.line([(cx, ty1 + 2), (cx, bus_y)], fill=ARROW, width=2)
+
+    for i, (title, sub) in enumerate(data):
+        x0 = dstart + i * (dw + dgap)
+        _box(draw, (x0, dy0, x0 + dw, dy1), title, sub,
+             fill=DATA_FILL, line=DATA_LINE, title_size=15)
+        _arrow(draw, (x0 + dw / 2, bus_y), (x0 + dw / 2, dy0 - 2))
+    _label(draw, 640, bus_y, "reads")
 
     # ---- guardrails ----------------------------------------------------
     gy = 552
-    draw.rounded_rectangle((40, gy, WIDTH - 40, gy + 108), radius=10,
+    draw.rounded_rectangle((40, gy, WIDTH - 40, gy + 126), radius=10,
                            fill=(252, 250, 244), outline=(228, 218, 196), width=1)
     draw.text((60, gy + 16), "Guardrails live in the data and the tool code, never in the prompt",
               fill=(122, 96, 40), font=_font(14, bold=True))
@@ -229,7 +252,9 @@ def main() -> None:
         (60, gy + 42),
         "The model cannot forget them and a bad plan cannot route around them:\n"
         "  ·  the catalog holds feature films only — shorts under 45 minutes were dropped at preparation time\n"
-        "  ·  results are ordered by a vote-weighted rating, never the raw average, so a 5-vote film cannot top a list",
+        "  ·  results are ordered by a vote-weighted rating, never the raw average, so a 5-vote film cannot top a list\n"
+        f"  ·  the screen refuses to certify a film with under {screen.MIN_SCREEN_TOKENS} tokens of plot, "
+        "so absence of evidence is never reported as evidence",
         fill=(140, 116, 62), font=_font(12.5), spacing=5,
     )
 

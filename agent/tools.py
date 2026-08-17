@@ -1,24 +1,32 @@
-"""The three tools MoviBot can call, and their function-calling schemas.
+"""The four tools MoviBot can call, and their function-calling schemas.
 
-Design note -- why three tools and not six:
+Design note -- why four tools, and why in this order:
 
-The catalog is 238 films. At that size the expensive thing is not searching,
-it is reasoning: every LLM turn costs money and latency, so the tools are
-shaped to answer a query in as few turns as possible rather than to mirror a
-tidy pipeline. Each tool does one thing the others cannot:
+The catalog is 238 films. At that size the expensive thing is not searching, it
+is reasoning: every model turn costs money and latency. So the tools are ordered
+cheapest-and-most-exhaustive first, and each one hands the next a smaller
+candidate set:
 
-    filter_catalog   answers from columns      (year, genre, language, studio)
-    search_plots     answers from meaning      (theme, character, premise)
-    read_synopses    answers from full text    (does anyone die, who betrays whom)
+    filter_catalog   columns      238 -> N     free, exact, exhaustive
+    screen_out       regex        N -> clear   free, exhaustive, one-sided
+    search_plots     vectors      N -> ~10     one embedding, ~$0.0000002
+    read_synopses    full text    <= 8 films   free, but token-heavy
 
-A query needs only the tools that its constraints actually require, so simple
-queries finish in one round and hard ones in three.
+Each answers something the others cannot. Columns settle era, studio and
+language. A lexical screen settles negations ("nobody dies") exhaustively, which
+ranking cannot: embed "nobody dies" and the top hits are the films where
+somebody does. Vectors settle positive story questions. Full text settles what
+actually happens.
+
+The consequence is that the token-heavy tool only ever sees what survived the
+free ones, and a query pays for exactly the layers its conditions require.
 
 Guardrails live here, not in the prompt. The model cannot forget them, and a
 bad plan cannot bypass them:
 
   * results are ordered by `weighted_rating`, never raw `vote_average`
-  * `filter_catalog` returns at most MAX_FILTER_RESULTS rows
+  * `screen_out` refuses to certify a film with less than MIN_SCREEN_TOKENS of
+    plot text, so absence of evidence can never be reported as evidence
   * `read_synopses` reads at most MAX_SYNOPSES movies, truncated to
     MAX_SYNOPSIS_CHARS each, which is what bounds the context cost per turn
 """
@@ -30,6 +38,7 @@ from typing import Any
 from dataclasses import dataclass, field
 
 from agent import catalog
+from rag import screen as screening
 from rag import store as retrieval
 from rag.corpora import DEFAULT_SOURCES
 
@@ -58,13 +67,15 @@ class ToolContext:
     def candidates(self) -> list[int] | None:
         return sorted(self.working_set) if self.working_set is not None else None
 
-# A structured filter is for narrowing, not for dumping the catalog into the
-# context window. 40 rows is enough for the model to choose from, and roughly
-# 1.5 KB of JSON.
 # How many labels come back when a filter matches more than this. The full set
 # is always in scope regardless; this only bounds what is *shown*, and
 # list_all=true lifts it. Not a cost guard -- all 238 labels are ~2,300 tokens.
 PREVIEW_FILMS = 15
+
+# How many flagged films come back with a quote attached. A quote is ~100 tokens
+# against ~1,500 for reading the same film's synopsis, so shipping the evidence
+# with the flag is what lets most negations resolve without a fourth tool call.
+MAX_FLAGGED_EVIDENCE = 8
 
 # Full plot texts are large (median ~5 KB). These two caps together bound the
 # worst-case tool payload at ~48 KB, which is what keeps a turn affordable.
@@ -208,7 +219,104 @@ def _describe(applied: dict[str, Any]) -> str:
 
 
 # ---------------------------------------------------------------------
-# Tool 2: semantic search
+# Tool 2: lexical screen, for negations
+# ---------------------------------------------------------------------
+
+def screen_out(
+    words: list[str] | None = None,
+    vocabulary: str | None = None,
+    ctx: "ToolContext | None" = None,
+) -> dict[str, Any]:
+    """Exclude every candidate whose plot mentions any of `words`. Free.
+
+    This is how a negation gets answered: exhaustively and in one pass, rather
+    than by ranking (which surfaces the films that fail the condition) or by
+    reading (which is bounded at eight films and cannot cover a set of 200).
+
+    The working set narrows to the `clear` films, so whatever follows is already
+    restricted to candidates that passed. Flagged films are NOT rejected -- a
+    match may be an attempt or a rumour -- and can still be read by name.
+    """
+    resolved = screening.resolve_words(words, vocabulary)
+    if not resolved:
+        return {"error": "Pass `words`, or a `vocabulary` from: "
+                         + ", ".join(screening.VOCABULARIES)}
+
+    # Always hand the screen an explicit candidate list. Left to infer its own
+    # universe it can only see films that have plot passages, so the four films
+    # with none would disappear from all three buckets rather than being
+    # reported as unverifiable -- they would look considered when they were not.
+    # rag/ does not import the catalog, so the fallback belongs here.
+    candidates = ctx.candidates() if ctx is not None else None
+    if candidates is None:
+        candidates = [int(i) for i in catalog.movies()["id"]]
+
+    result = screening.screen(resolved, candidate_ids=candidates)
+
+    clear, flagged = result["clear"], result["flagged"]
+    thin = result["insufficient_text"]
+
+    if ctx is not None:
+        ctx.narrow(set(clear), f"screened out {len(resolved)} words, "
+                               f"{len(flagged)} flagged")
+
+    def labels(ids: list[int]) -> list[dict[str, Any]]:
+        rows = [(catalog.label_of(i), catalog.rating_of(i)) for i in ids]
+        rows = [(f, r) for f, r in rows if f]
+        rows.sort(key=lambda fr: -(fr[1] or 0))
+        return [{"film": f, "rating": round(r, 2) if r else None} for f, r in rows]
+
+    clear_labels = labels(clear)
+    out: dict[str, Any] = {
+        "screened_for": resolved if len(resolved) <= 12 else
+                        resolved[:12] + [f"... and {len(resolved) - 12} more"],
+        "clear": len(clear),
+        "flagged": len(flagged),
+        "insufficient_text": len(thin),
+        "scope": "search and reading now cover only the clear films",
+        "meaning": (
+            "clear = no listed word appears anywhere in the film's plot text, "
+            f"and it has at least {result['min_screen_tokens']} tokens of plot "
+            "for that absence to be meaningful. flagged = a word appears, which "
+            "may be an attempt, threat or rumour rather than an outcome; read "
+            "the quote before rejecting. insufficient_text = too little plot "
+            "text to screen; these were NOT verified either way."
+        ),
+    }
+
+    out["clear_films"] = clear_labels[:PREVIEW_FILMS]
+    if len(clear_labels) > PREVIEW_FILMS:
+        out["clear_note"] = (
+            f"Showing the {PREVIEW_FILMS} best rated of {len(clear_labels)} "
+            "clear films; all of them are in scope."
+        )
+
+    # Evidence only when the flagged set is small enough to be worth quoting.
+    # Beyond that the model should not be resolving flags one by one anyway --
+    # it should recommend from the clear set.
+    if flagged and len(flagged) <= MAX_FLAGGED_EVIDENCE:
+        out["flagged_films"] = [
+            {
+                "film": catalog.label_of(i),
+                "matched": [h["word"] for h in result["evidence"].get(i, [])],
+                "quote": (result["evidence"].get(i) or [{}])[0].get("quote"),
+            }
+            for i in flagged
+        ]
+    elif flagged:
+        out["flagged_note"] = (
+            f"{len(flagged)} films flagged -- too many to quote. Recommend from "
+            "the clear set, or narrow further before screening."
+        )
+
+    if thin:
+        out["insufficient_films"] = [catalog.label_of(i) for i in thin][:PREVIEW_FILMS]
+
+    return out
+
+
+# ---------------------------------------------------------------------
+# Tool 3: semantic search
 # ---------------------------------------------------------------------
 
 def search_plots(
@@ -438,6 +546,46 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
+            "name": "screen_out",
+            "description": (
+                "Exclude every film whose plot mentions any of the given words. "
+                "This is the RIGHT tool for a negative condition -- 'nobody "
+                "dies', 'nothing scary', 'no romance' -- and search_plots is "
+                "the wrong one, because searching for 'nobody dies' returns the "
+                "films where somebody does. Free, and it checks every plot "
+                "passage of every candidate rather than a top-ranked few, so "
+                "the result is exhaustive. Films that match are flagged, not "
+                "rejected: the match may be an attempt or a rumour, and a quote "
+                "comes back so you can judge. Run it AFTER filter_catalog."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "vocabulary": {
+                        "type": "string",
+                        "enum": sorted(screening.VOCABULARIES),
+                        "description": (
+                            "A curated word list. Prefer this over inventing "
+                            "words: 'death' covers 30+ terms including "
+                            "'funeral', 'sacrificed' and 'perished'."
+                        ),
+                    },
+                    "words": {
+                        "type": "array", "items": {"type": "string"},
+                        "description": (
+                            "Extra words to exclude on, added to `vocabulary` "
+                            "if both are given. Matched on word boundaries, so "
+                            "pass each inflection you care about."
+                        ),
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
             "name": "search_plots",
             "description": (
                 "Rank movies by how closely their plot matches a described "
@@ -518,15 +666,10 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
     },
 ]
 
-TOOLS = {
-    "filter_catalog": filter_catalog,
-    "search_plots": search_plots,
-    "read_synopses": read_synopses,
-}
-
-# Human-readable trace names, matching the boxes in assets/architecture.png.
+# Human-readable trace names, matching the boxes in the Architecture tab.
 TRACE_NAMES = {
     "filter_catalog": "CatalogFilter",
+    "screen_out": "LexicalScreen",
     "search_plots": "PlotSearch",
     "read_synopses": "SynopsisReader",
 }
@@ -548,6 +691,7 @@ def dispatch(name: str, arguments: dict[str, Any],
 
 _DISPATCH = {
     "filter_catalog": filter_catalog,
+    "screen_out": screen_out,
     "search_plots": search_plots,
     "read_synopses": read_synopses,
 }

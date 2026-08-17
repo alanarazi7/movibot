@@ -23,11 +23,16 @@ structured ones, then spend money only on what is left.
 POST /api/execute
   └─ loop.py            up to MAX_ROUNDS = 5 model turns; last turn gets no
                         tools, so it must answer rather than ask
-       └─ Planner       one prompt, 2,005 tokens, every turn. The only paid step
-            ├─ filter_catalog   238 -> N by column. Free. Sets the working set
-            ├─ search_plots     ranks within it. One embedding, ~$0.0000002
-            └─ read_synopses    <= 8 films, <= 6,000 chars each. Free
+       └─ Planner       one prompt, 2,552 tokens, every turn. The only paid step
+                        turn 1 also writes the condition ledger, at no extra cost
+            ├─ filter_catalog   238 -> N by column.  Free, exhaustive
+            ├─ screen_out       N -> clear/flagged/insufficient.  Free, exhaustive
+            ├─ search_plots     ranks what remains. One embedding, ~$0.0000002
+            └─ read_synopses    <= 8 films, <= 6,000 chars each.  Free
 ```
+
+Cheapest and most exhaustive first, so the token-heavy layer only ever sees
+what survived the free ones.
 
 In place:
 
@@ -42,39 +47,35 @@ In place:
   reachable but no longer outrank plots on story questions.
 - **Data**: 238 films × 26 columns from committed CSVs (2 ms); 234 films
   readable in full; no database of any kind.
+- **Negations screened, not ranked.** `screen_out` scans every plot passage of
+  every candidate (2,080 passages, 66 ms) rather than a top-ranked few, because
+  embedding "nobody dies" returns the films where somebody does. On the full
+  catalog: 76 clear, 149 flagged, 13 with too little plot text to screen. Its
+  error is one-sided by design, and `scripts/check_screen.py` asserts that —
+  13 known-death films must never come back clear.
+- **The ledger rides turn 1.** The planner writes its typed conditions as
+  content alongside its first tool call, so decomposition is visible in the
+  trace without a dedicated planning turn, which would have doubled the paid
+  turns of every request to produce the same text.
 - **Guardrails in code, not prose**: the 45-minute floor and `weighted_rating`
   ordering are properties of the data; `MAX_RECOMMENDATIONS = 3`,
-  `PREVIEW_FILMS = 15`, `MAX_SEARCH_RESULTS = 25`, `MAX_SYNOPSES = 8`.
+  `PREVIEW_FILMS = 15`, `MAX_SEARCH_RESULTS = 25`, `MAX_SYNOPSES = 8`,
+  `MIN_SCREEN_TOKENS = 600`.
 
-What is missing is making the decomposition explicit, and describing the whole
-thing honestly.
-
-### A1. Condition plan — the remaining piece
-
-`filter_catalog` establishes the working set, but *which* conditions are
-structured is still free-form model judgement rather than a visible step.
-
-- [ ] A `plan` tool the planner calls first, classifying each condition as
-      structured / semantic / subjective, so the split is traced and a
-      mis-classification is diagnosable rather than mysterious
-
-### A2. Architecture tab
-
-- [ ] Show the diagram immediately instead of behind a button
-- [ ] "How a request flows", using the narrowing trace as the worked example
-- [ ] A section per component — Planner, each tool, each store — with its
-      guardrail constants live, and the Planner's prompt served from
-      `prompts.py` so it cannot drift
-- [ ] Redraw the diagram: it mentions neither the working set nor the four
-      corpora, which are now the two most interesting things about the flow
+### A3. Prompt review  ← the remaining architecture item
 
 ### A3. Prompt review
 
-Never reviewed whole; it grew one section per problem we hit. ~2,100 tokens on
-every turn, against a brief that asks to minimise context.
+Never reviewed whole; it grew one section per problem we hit. Now **2,552
+tokens** on every turn plus 1,277 of tool schemas, against a brief that asks to
+minimise context — and the four-layer rewrite added 547 of that.
 
-- [ ] Read it end to end against each component, once the tab puts them side
-      by side
+The growth is arguably paid for: one avoided wrong-tool call (searching for a
+negation) costs a full round at ~3,800 tokens, so preventing one covers the
+increase seven times over. That is an argument, not a measurement.
+
+- [ ] Read it end to end against each component — the Architecture tab now puts
+      the prompt and every tool description side by side, served live
 - [ ] Trim, then confirm the 11 cases do not regress
 
 ---
@@ -116,6 +117,9 @@ working set. Stale in several ways, and none has ever been run.
       `mpst_<id>_<n>`, answers may name up to 3 films, results carry a corpus
 - [ ] Add a case for the corpus defect — a story question where a cast list
       could plausibly win — so it cannot silently return
+- [ ] Add a negation case that exercises all three screen buckets, and one
+      where the right answer is a *flagged* film (an attempted killing, not a
+      death) so `flagged` is not treated as `rejected`
 - [ ] Run all 11 and compare against what each says should happen
 - [ ] The three traps: "starring Tom Hanks" must refuse rather than answer Toy
       Story from pretraining; "besides Frozen and Moana" must become a filter;

@@ -173,6 +173,20 @@ def search(
     return sorted(best.values(), key=lambda r: -r["score"])[:top_k]
 
 
+def plot_passages(sources: list[str] | None = None) -> list[dict]:
+    """The passage table itself, for callers that scan text rather than rank it.
+
+    The lexical screen (rag/screen.py) needs every passage, not the top few, and
+    needs no vectors at all. It reads through here so there is still exactly one
+    definition of what a passage is.
+    """
+    _, passages = _matrix()
+    if sources is None:
+        return passages
+    wanted = set(sources)
+    return [p for p in passages if p.get("source", "mpst") in wanted]
+
+
 def coverage() -> dict[str, Any]:
     """Index size and parameters, for diagnostics and /api/agent_info."""
     vectors, passages = _matrix()

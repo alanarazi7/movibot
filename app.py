@@ -139,6 +139,51 @@ def model_architecture():
     return send_file(ARCHITECTURE_PNG_PATH, mimetype="image/png")
 
 
+@app.route("/api/prompts", methods=["GET"])
+def prompts_endpoint():
+    """Every prompt and guardrail the agent actually runs on.
+
+    Served from the modules themselves rather than copied into the page, for the
+    same reason rag/DECISIONS.md is: a prompt pasted into HTML is a prompt that
+    silently stops matching the one in prompts.py. Anything shown here is the
+    live string.
+    """
+    from agent import loop as agent_loop
+    from agent import prompts as agent_prompts
+    from agent import tools as agent_tools
+    from rag import screen as rag_screen
+
+    return _cors(jsonify({
+        "system_prompt": agent_prompts.SYSTEM_PROMPT,
+        "tools": [
+            {
+                "name": schema["function"]["name"],
+                "trace_name": agent_tools.TRACE_NAMES.get(schema["function"]["name"]),
+                "description": schema["function"]["description"],
+                "parameters": sorted(
+                    schema["function"]["parameters"].get("properties", {})
+                ),
+            }
+            for schema in agent_tools.TOOL_SCHEMAS
+        ],
+        "guardrails": {
+            "MAX_ROUNDS": agent_loop.MAX_ROUNDS,
+            "MAX_RECOMMENDATIONS": agent_prompts.MAX_RECOMMENDATIONS,
+            "PREVIEW_FILMS": agent_tools.PREVIEW_FILMS,
+            "MAX_SEARCH_RESULTS": agent_tools.MAX_SEARCH_RESULTS,
+            "MAX_SYNOPSES": agent_tools.MAX_SYNOPSES,
+            "MAX_SYNOPSIS_CHARS": agent_tools.MAX_SYNOPSIS_CHARS,
+            "MAX_PASSAGE_CHARS": agent_tools.MAX_PASSAGE_CHARS,
+            "MAX_FLAGGED_EVIDENCE": agent_tools.MAX_FLAGGED_EVIDENCE,
+            "MIN_SCREEN_TOKENS": rag_screen.MIN_SCREEN_TOKENS,
+        },
+        "vocabularies": {
+            name: words for name, words in rag_screen.VOCABULARIES.items()
+        },
+        "blacklist_phrases": rag_screen.BLACKLIST_PHRASES,
+    }))
+
+
 @app.route("/api/execute", methods=["POST", "OPTIONS"])
 def execute():
     if request.method == "OPTIONS":

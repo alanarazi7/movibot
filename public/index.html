@@ -389,6 +389,44 @@
     }
     .panel-body .pending { color: #888; font-style: italic; }
 
+    /* Architecture tab: the layer diagram and the live prompt dumps. */
+    .arch-diagram {
+      background: #fbfbfb; border: 1px solid #eee; border-radius: 6px;
+      padding: 1rem; overflow-x: auto; font-size: 0.72rem; line-height: 1.55;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      margin: 1rem 0 0; color: #333;
+    }
+    .prompt-box {
+      background: #fbfbfb; border: 1px solid #eee; border-left: 3px solid #0070f3;
+      border-radius: 4px; padding: 0.8rem; margin-top: 0.5rem;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.73rem; line-height: 1.55; white-space: pre-wrap;
+      word-break: break-word; max-height: 460px; overflow-y: auto; color: #333;
+    }
+    .prompt-meta {
+      font-size: 0.7rem; color: #999; text-transform: uppercase;
+      letter-spacing: 0.05em; margin-top: 1.2rem;
+    }
+    .tool-card {
+      border: 1px solid #eee; border-radius: 6px; padding: 0.8rem;
+      margin-top: 0.6rem; background: #fff;
+    }
+    .tool-card .tool-name {
+      font-family: monospace; font-weight: 700; font-size: 0.82rem; color: #0070f3;
+    }
+    .tool-card .tool-cost {
+      float: right; font-size: 0.7rem; color: #888; font-family: monospace;
+    }
+    .tool-card p { font-size: 0.8rem; margin: 0.45rem 0 0; }
+    .tool-card .tool-params {
+      margin-top: 0.5rem; font-size: 0.72rem; color: #777; font-family: monospace;
+    }
+    .word-chips { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.4rem; }
+    .word-chips span {
+      background: #f0f0f0; border-radius: 3px; padding: 0.1rem 0.35rem;
+      font-size: 0.7rem; font-family: monospace; color: #555;
+    }
+
     .data-table { overflow-x: auto; }
     .data-table table {
       border-collapse: collapse;
@@ -623,7 +661,15 @@
       </div>
 
       <div class="card" id="steps-card">
-        <label>Steps trace (Reason → Act → Observe)</label>
+        <div id="plan-block" style="display:none;">
+          <label>Condition ledger &mdash; written on turn 1, at no extra cost</label>
+          <div class="prompt-box" id="plan-text" style="max-height:220px;"></div>
+        </div>
+        <div id="narrowing-block" style="display:none;">
+          <label style="margin-top:1rem;">Narrowing &mdash; how the working set shrank</label>
+          <div class="arch-diagram" id="narrowing-text" style="margin-top:0.5rem;"></div>
+        </div>
+        <label style="margin-top:1rem;">Steps trace (Reason → Act → Observe)</label>
         <div id="steps-list"></div>
       </div>
 
@@ -643,7 +689,7 @@
                 <tr><td>🎬 Agent Query</td><td>Ask MoviBot anything; returns the answer and the full traced steps</td></tr>
                 <tr><td>👥 Team Info</td><td>Who built it</td></tr>
                 <tr><td>🤖 Agent Info</td><td>What the agent is, what it can and cannot do, worked examples</td></tr>
-                <tr><td>🏗️ Architecture</td><td>The diagram: planner, three tools, and the data under them</td></tr>
+                <tr><td>🏗️ Architecture</td><td>The four layers, why they run in that order, and every prompt verbatim</td></tr>
               </tbody>
             </table>
           </div>
@@ -722,8 +768,183 @@
     <!-- TAB 4: Architecture -->
     <div id="arch" class="tab-content">
       <div class="card">
+        <h2>Architecture</h2>
+        <p>
+          One planner, four tools, at most five model turns. <strong>Exactly one step
+          costs money</strong> &mdash; the planner. Three of the four tools are free, and
+          the fourth costs two millionths of a dollar.
+        </p>
+
+<pre class="arch-diagram">                       user request
+                            │
+                            ▼
+  ┌────────────────────────────────────────────────────────────────┐
+  │  PLANNER          gpt-5.4-mini · ≤ 5 turns · the only paid step │
+  │  turn 1 also writes the condition ledger, at no extra cost      │
+  └────────────────────────────────────────────────────────────────┘
+        │
+        │   working set — film ids, held in Python, never in the prompt
+        │
+        ├──▶ 1  CatalogFilter    columns     238 → N      free · exhaustive
+        ├──▶ 2  LexicalScreen    regex       N → clear     free · exhaustive
+        ├──▶ 3  PlotSearch       vectors     N → ~10       $0.0000002
+        └──▶ 4  SynopsisReader   full text   ≤ 8 films     free · token-heavy
+        │
+        ▼
+   answer — up to 3 films, claims bounded by which layers actually ran</pre>
+
+        <p style="margin-top:1rem;">
+          <strong>The ordering principle is cheapest-and-most-exhaustive first.</strong>
+          Each layer hands the next a smaller candidate set, so the token-heavy layer
+          only ever sees what survived the free ones, and a request pays for exactly
+          the layers its conditions require. A question answerable by filtering alone
+          costs two model turns and nothing else.
+        </p>
+      </div>
+
+      <details class="panel" open>
+        <summary><span class="emoji">🧭</span> How a request flows</summary>
+        <div class="panel-body">
+          <p>
+            Before its first tool call, the planner decomposes the request into
+            conditions and types each one. This is free: it rides along in the same
+            message that makes the first call, rather than costing a turn of its own.
+            A dedicated planning step would have doubled the paid turns of every
+            request to produce the same text.
+          </p>
+
+          <p>
+            The types matter because <strong>each kind of condition is settled by
+            exactly one layer</strong>, and a condition is not satisfied until its own
+            layer has settled it.
+          </p>
+
+          <div class="data-table">
+            <table>
+              <thead><tr><th>Condition kind</th><th>Example</th><th>Settled by</th></tr></thead>
+              <tbody>
+                <tr><td>structured</td><td>&ldquo;a Pixar film&rdquo;, &ldquo;before 2000&rdquo;, &ldquo;in French&rdquo;</td><td><code>filter_catalog</code></td></tr>
+                <tr><td>negative</td><td>&ldquo;nobody dies&rdquo;, &ldquo;nothing scary&rdquo;</td><td><code>screen_out</code></td></tr>
+                <tr><td>semantic</td><td>&ldquo;a rat who wants to cook&rdquo;</td><td><code>search_plots</code></td></tr>
+                <tr><td>narrative</td><td>&ldquo;who betrays whom&rdquo;, &ldquo;is the ending sad&rdquo;</td><td><code>read_synopses</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h4>Why a negation is screened, not searched</h4>
+          <p>
+            This is the one counter-intuitive piece. Embed &ldquo;nobody dies&rdquo; and
+            the top results are the films where somebody <em>does</em> &mdash; because
+            that is what the text of those films says. Similarity finds the films that
+            <strong>fail</strong> the condition.
+          </p>
+          <p>
+            So negations are screened instead: every plot passage of every candidate is
+            scanned for a word list. Two properties make this the right tool rather
+            than a shortcut. It is <strong>exhaustive</strong> &mdash; a scan touches
+            all 2,080 plot passages in 66&nbsp;ms, so no film escapes the check by
+            ranking eleventh, which top-k retrieval can never promise. And its error is
+            <strong>one-sided</strong>: &ldquo;dead heat&rdquo; over-excludes, it never
+            under-excludes, which for a negative request is the harmless direction.
+          </p>
+          <p>
+            What it cannot do is tell an attempt from an outcome. <em>&ldquo;Randall
+            attempts to kill Sulley&rdquo;</em>, <em>&ldquo;believing Woody murdered
+            Buzz&rdquo;</em> &mdash; nobody dies in either. That is modality, not
+            vocabulary, and no word list resolves it. So a match makes a film
+            <strong>flagged</strong>, meaning unresolved, never rejected, and the
+            matching quote comes back with the flag so the planner judges two sentences
+            instead of a 5,000-word plot.
+          </p>
+
+          <h4>Worked example</h4>
+          <p><em>&ldquo;a Pixar film where nobody dies, besides Toy Story&rdquo;</em></p>
+          <div class="data-table">
+            <table>
+              <thead><tr><th>Condition</th><th>Kind</th><th>Layer</th><th>Working set</th></tr></thead>
+              <tbody>
+                <tr><td>Pixar</td><td>structured</td><td>CatalogFilter</td><td class="n">238 &rarr; 18</td></tr>
+                <tr><td>besides Toy Story</td><td>structured</td><td>same call</td><td class="n">18 &rarr; 17</td></tr>
+                <tr><td>nobody dies</td><td>negative</td><td>LexicalScreen</td><td class="n">17 &rarr; 7 clear</td></tr>
+                <tr><td>a good one</td><td>ranking</td><td>rating order</td><td class="n">&mdash;</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>
+            Answer: <em>Inside Out</em> (7.83), <em>WALL&middot;E</em> (7.73),
+            <em>Toy Story 3</em> (7.52). Ten films were flagged and none had
+            insufficient text. <strong>Two model turns, no embedding, no synopsis
+            read.</strong> Ranking-then-verifying would have spent a search plus up to
+            eight synopsis reads to reach somewhere less certain.
+          </p>
+
+          <h4>What the answer may claim</h4>
+          <p>
+            Two layers are exhaustive and two are not, and the difference decides what
+            the agent is entitled to say. <code>filter_catalog</code> and
+            <code>screen_out</code> check every candidate, so their findings are
+            complete: 76 films clear on the death screen means all of them, not a
+            sample. <code>search_plots</code> returns a top handful and
+            <code>read_synopses</code> is capped at eight films, so anything resting on
+            those is the best <em>among those examined</em> &mdash; and the prompt
+            requires saying which is meant.
+          </p>
+          <p>
+            The screen returns three buckets for the same reason. <code>clear</code> is
+            a finding. <code>flagged</code> is unresolved. <code>insufficient_text</code>
+            means the film had too little plot text to screen at all, so it was verified
+            neither way &mdash; that bucket exists because 13 films would otherwise pass
+            a death screen simply by having nothing to scan, and absence of evidence
+            would get reported as evidence.
+          </p>
+        </div>
+      </details>
+
+      <details class="panel" open>
+        <summary><span class="emoji">📋</span> The prompts, exactly as they run</summary>
+        <div class="panel-body">
+          <p>
+            Read from <code>agent/prompts.py</code> and <code>agent/tools.py</code> at
+            request time rather than copied into this page &mdash; a prompt pasted into
+            HTML is a prompt that quietly stops matching the one the agent runs on.
+          </p>
+          <div id="prompts-status"></div>
+          <div id="prompts-body"></div>
+        </div>
+      </details>
+
+      <details class="panel" open>
+        <summary><span class="emoji">🔒</span> Guardrails, and where they live</summary>
+        <div class="panel-body">
+          <p>
+            The invariants are enforced in the data and the tool code, never in the
+            prompt. A prompt is the wrong place for a rule that must not be forgotten:
+            the 45-minute feature floor is applied at data preparation time, and results
+            are ordered by a vote-count-adjusted rating inside the tools, so no plan can
+            bypass either. The prompt is not even told about them.
+          </p>
+          <p>
+            The one that matters most for the screen is
+            <code>MIN_SCREEN_TOKENS</code>. A film is only certified clear if it offered
+            enough plot text for the absence of a match to mean something &mdash; median
+            plot length is 1,207 tokens for clear films against 2,153 for flagged ones,
+            precisely because a short summary has fewer chances to contain any given
+            word. Without that floor, the thinnest entries in the catalog would look
+            like the safest.
+          </p>
+          <div id="guardrails-body"><p class="pending">Load the prompts above to see the live values.</p></div>
+        </div>
+      </details>
+
+      <div class="card">
         <label>GET /api/model_architecture</label>
-        <button onclick="fetchArchitecture()">Test Endpoint</button>
+        <p style="font-size:0.8rem;color:#666;margin:0.3rem 0 0.6rem;">
+          The same four layers as a rendered PNG, generated by
+          <code>scripts/generate_architecture_diagram.py</code> from
+          <code>TRACE_NAMES</code> and the prepared data, so the boxes cannot drift
+          from the modules or the counts go stale.
+        </p>
+        <button onclick="fetchArchitecture(true)">Reload</button>
         <div id="arch-status"></div>
         <div id="arch-response" style="display: none;">
           <label style="margin-top: 1rem;">Architecture Diagram</label>
@@ -1041,10 +1262,6 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
     <div id="status-tab" class="tab-content">
       <div class="card">
         <h2>TODO</h2>
-        <p style="color:#666;font-size:0.9rem;margin-top:0.4rem;">
-          What is still open, served live from <code>TODO.md</code> — the same file we
-          edit, so this page cannot fall behind the plan. Completed work is not listed.
-        </p>
         <div id="status-progress"></div>
       </div>
 
@@ -1065,6 +1282,7 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
       if (tabName === 'datanav') navLoad();
       if (tabName === 'status-tab') loadStatus();
       if (tabName === 'retrieval') loadRag();
+      if (tabName === 'arch') { fetchPrompts(); fetchArchitecture(); }
     }
 
     function copyCurl(cmd) {
@@ -1703,6 +1921,7 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
         responseText.textContent = data.response;
         responseCard.style.display = 'block';
 
+        renderPlan(data);
         renderSteps(data.steps);
         if ((data.steps || []).length) stepsCard.style.display = 'block';
       } catch (err) {
@@ -1748,7 +1967,12 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
       }
     }
 
-    async function fetchArchitecture() {
+    let archLoaded = false;
+
+    async function fetchArchitecture(force = false) {
+      // Guarded like fetchPrompts: switchTab calls this on every open, and
+      // re-fetching would leak a new object URL for the same 74 KB PNG each time.
+      if (archLoaded && !force) return;
       const status = document.getElementById('arch-status');
       const responseDiv = document.getElementById('arch-response');
       const img = document.getElementById('arch-img');
@@ -1761,6 +1985,129 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
         img.src = url;
         status.textContent = '';
         responseDiv.style.display = 'block';
+        archLoaded = true;
+      } catch (err) {
+        status.innerHTML = `<span class="error-text">Error: ${escapeHtml(err.message)}</span>`;
+      }
+    }
+
+    // The ledger and the narrowing trace: the two things that make the agent's
+    // reasoning auditable rather than asserted. Both are absent on a request
+    // that answered without any tool call, which is a legitimate outcome (asking
+    // MoviBot what it is, for instance) rather than a missing field.
+    function renderPlan(data) {
+      const planBlock = document.getElementById('plan-block');
+      const narrowBlock = document.getElementById('narrowing-block');
+
+      if (data.plan) {
+        document.getElementById('plan-text').textContent = data.plan;
+        planBlock.style.display = 'block';
+      } else {
+        planBlock.style.display = 'none';
+      }
+
+      const steps = data.narrowing || [];
+      if (steps.length > 1) {
+        document.getElementById('narrowing-text').textContent =
+          steps.map((s, i) => (i ? '  ↓  ' : '     ') + s).join('\n');
+        narrowBlock.style.display = 'block';
+      } else {
+        narrowBlock.style.display = 'none';
+      }
+    }
+
+    // Rough token count, only to show the prompt's size honestly. Real counting
+    // is cl100k_base server-side; ~4 chars per token is close enough to be
+    // useful and is labelled as an estimate.
+    function approxTokens(text) {
+      return Math.round(text.length / 4);
+    }
+
+    let promptsLoaded = false;
+
+    async function fetchPrompts() {
+      if (promptsLoaded) return;
+      const status = document.getElementById('prompts-status');
+      const body = document.getElementById('prompts-body');
+      const rails = document.getElementById('guardrails-body');
+
+      status.textContent = '⏳ Loading...';
+      try {
+        const res = await fetch('/api/prompts');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const d = await res.json();
+        status.textContent = '';
+
+        const costs = {
+          filter_catalog: 'free',
+          screen_out: 'free',
+          search_plots: '~$0.0000002',
+          read_synopses: 'free, token-heavy'
+        };
+
+        let html = `
+          <div class="prompt-meta">System prompt &mdash; sent on every turn
+            (${d.system_prompt.length.toLocaleString()} chars, ~${approxTokens(d.system_prompt).toLocaleString()} tokens)</div>
+          <div class="prompt-box">${escapeHtml(d.system_prompt)}</div>
+          <div class="prompt-meta">Tool descriptions &mdash; the other half of the instructions</div>
+          <p style="font-size:0.8rem;">
+            Each tool's schema carries its own usage rules, so they do not have to be
+            repeated in the system prompt. The planner sees these on every turn except
+            the last, when they are withheld deliberately so it must answer with what
+            it already has instead of requesting a call that would be discarded.
+          </p>`;
+
+        for (const t of d.tools) {
+          html += `
+            <div class="tool-card">
+              <span class="tool-cost">${escapeHtml(costs[t.name] || '')}</span>
+              <span class="tool-name">${escapeHtml(t.name)}</span>
+              ${t.trace_name ? ` <span style="font-size:0.7rem;color:#999;">shown in the trace as ${escapeHtml(t.trace_name)}</span>` : ''}
+              <p>${escapeHtml(t.description)}</p>
+              <div class="tool-params">parameters: ${t.parameters.length ? escapeHtml(t.parameters.join(', ')) : 'none'}</div>
+            </div>`;
+        }
+
+        const schemaChars = d.tools.reduce((n, t) => n + t.description.length, 0);
+        html += `
+          <p style="font-size:0.78rem;color:#888;margin-top:1rem;">
+            Fixed overhead per model turn: the system prompt plus these four schemas,
+            roughly ${(approxTokens(d.system_prompt) + approxTokens(String(schemaChars * 1.6))).toLocaleString()}&ndash;3,900
+            tokens. Everything else in the context is tool results, which is why those
+            are capped rather than the prompt being trimmed to the bone.
+          </p>`;
+        body.innerHTML = html;
+        promptsLoaded = true;
+
+        let railHtml = '<div class="data-table"><table><thead><tr><th>Constant</th><th>Value</th></tr></thead><tbody>';
+        for (const [k, v] of Object.entries(d.guardrails)) {
+          railHtml += `<tr><td><code>${escapeHtml(k)}</code></td><td class="n">${escapeHtml(String(v))}</td></tr>`;
+        }
+        railHtml += '</tbody></table></div>';
+
+        railHtml += `<div class="prompt-meta">Curated screen vocabularies</div>
+          <p style="font-size:0.8rem;">
+            The planner may pass its own words, but these exist so answer quality does
+            not depend on whichever synonyms it happens to produce on a given turn.
+          </p>`;
+        for (const [name, words] of Object.entries(d.vocabularies)) {
+          railHtml += `<p style="font-size:0.8rem;margin-bottom:0.2rem;"><strong>${escapeHtml(name)}</strong>
+            &mdash; ${words.length} words</p><div class="word-chips">`;
+          railHtml += words.map(w => `<span>${escapeHtml(w)}</span>`).join('');
+          railHtml += '</div>';
+        }
+
+        railHtml += `<div class="prompt-meta">Idiom blacklist &mdash; ${d.blacklist_phrases.length} phrases</div>
+          <p style="font-size:0.8rem;">
+            Stripped before matching, so <em>&ldquo;the race ends in an absolute dead
+            heat&rdquo;</em> no longer costs <em>Cars</em> its place on a
+            &ldquo;nobody dies&rdquo; request. This list only ever recovers false
+            positives; a missing entry leaves the screen conservative, which is the
+            safe failure.
+          </p><div class="word-chips">`;
+        railHtml += d.blacklist_phrases.map(p => `<span>${escapeHtml(p)}</span>`).join('');
+        railHtml += '</div>';
+        rails.innerHTML = railHtml;
       } catch (err) {
         status.innerHTML = `<span class="error-text">Error: ${escapeHtml(err.message)}</span>`;
       }

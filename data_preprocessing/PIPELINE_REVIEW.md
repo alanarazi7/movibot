@@ -3,10 +3,21 @@
 Reviewed 2026-08-14. Every number here was recomputed from the code and the
 files in `data_full/` / `data_ready/`, not copied from any earlier document.
 
-This is now the single rationale doc for the pipeline. `DATA_SOURCES.md` and
-`data cleaning rules.md` both described a superseded design and were deleted on
-2026-08-14; their accurate content is here, and the how-to-run steps are in
-`prepare_movibot_data usage.md`.
+This is the single rationale doc for the **data preparation** pipeline: what
+the sources are, what was filtered out, and why. `DATA_SOURCES.md`,
+`data cleaning rules.md` and `prepare_movibot_data usage.md` all described a
+superseded design and were deleted; their accurate content is here.
+
+Scope, so this doc is not mistaken for more than it is. Everything downstream of
+the prepared CSVs -- chunking parameters, the embedding model, the index format,
+why there is no vector database -- lives in `rag/DECISIONS.md`, which is served
+live in the app's Retrieval tab. The agent's own design lives in the app's
+Architecture tab. Section 5 below is a summary of the chunking decision only;
+`rag/DECISIONS.md` is the authority if the two ever disagree.
+
+The final section, *Findings*, is a **historical record** of a review carried
+out on 2026-08-14. Every bug it lists has since been fixed; it is kept because
+the reasoning is worth having, not because the problems are open.
 
 ---
 
@@ -35,12 +46,14 @@ produces all 43,270 films from the same pipeline.
 | Raw MPST `mpst_full_data.csv` | 14,828 | Kaggle |
 | → exact IMDb-ID matches inside scope | 159 (66.8%) | `prepare_movibot_data.py:638` |
 | **`pinecone_candidates.csv`** — the semantic subset | **159** × 30 cols | `data_ready/` |
-| **`plot_chunks.parquet` + `chunk_embeddings.npy`** | **1,254** passages, 384-dim | `build_chunk_index.py` |
+| **`chunk_index.npz`** — vectors + passage table in one archive | **3,159** passages, 1536-dim | `rag/ingest.py` |
 | **`wikipedia_cache.csv`** | 238 rows (237 articles, 233 with Plot) | `scrape_wikipedia.py` |
 
-79 of the 238 catalog films have no MPST synopsis. They stay in the catalog and
-remain answerable through structured filters and their short overview; they are
-just not semantically searchable.
+79 of the 238 catalog films have no MPST synopsis, but they are no longer cut
+off from semantic search: the index was later widened to four corpora, so
+Wikipedia's Plot section and the catalog overview cover the gap. All 238 films
+are searchable, 234 have plot-bearing text, and 4 have only a one-line overview.
+See `rag/DECISIONS.md` for the corpora and how they are weighted.
 
 ### Who consumes what
 
@@ -49,7 +62,7 @@ just not semantically searchable.
 | `supabase_movies.csv` | `agent/catalog.py:29` → `filter_catalog` tool |
 | `pinecone_candidates.csv` | `agent/catalog.py:30` → `read_synopses`; source for the chunk index |
 | `wikipedia_cache.csv` | `agent/catalog.py:31` → verification context |
-| `plot_chunks.parquet`, `chunk_embeddings.npy` | `agent/embeddings.py:35` → `search_plots` |
+| `chunk_index.npz` | `rag/store.py` → `search_plots`, and `rag/screen.py` → `screen_out` |
 
 ---
 
@@ -252,14 +265,21 @@ Nothing is deleted, so no answer becomes unreachable. `vote_average` and
 
 ## 5. Chunking: why passages, not documents
 
-`agent/chunking.py`, built by `scripts/build_chunk_index.py`.
+`rag/chunking.py`, built by `python -m rag.ingest`. Full rationale in
+`rag/DECISIONS.md`; this is the short version.
 
-**The failure it fixes.** E5-small-v2 accepts 512 tokens. The median synopsis is
-1,143 tokens and the longest is 9,049. Embedding whole documents meant Frozen's
-vector covered roughly the **first 7%** of its story — so Hans, who first
-appears at character 5,353 of 27,969 and betrays Anna at character 22,746, was
-never embedded at all, and no phrasing of "a film about trusting the wrong
-person" could retrieve it.
+**The failure it fixes.** Originally this was a hard limit: E5-small-v2 accepted
+512 tokens against a median synopsis of 1,143 and a longest of 9,049, so Frozen's
+vector covered roughly the **first 7%** of its story and Hans — who first appears
+at character 5,353 of 27,969 and betrays Anna at character 22,746 — was never
+embedded at all.
+
+The project now embeds with `text-embedding-3-small`, which accepts 8,191 tokens
+and removes that truncation. The reason for chunking survives it. One vector for
+a 9,049-token synopsis is dominated by whatever the story is *mostly* about, and
+a single betrayal is one beat among dozens averaged into it. Passage-level search
+is what lets one beat rank on its own merits, which is exactly what a query like
+"a film about trusting the wrong person" needs.
 
 **Why sentences, not paragraphs.** The obvious approach — accumulate paragraphs
 to a token budget, as the sibling `medium-rag-hw` project does — was measured
@@ -274,16 +294,17 @@ would emit exactly one chunk per document and change nothing.
 |---|---:|---|
 | `CHUNK_TOKENS` | 300 | ~13 sentences ≈ one scene, tight enough that a story beat dominates its passage rather than being averaged into a dozen others |
 | `OVERLAP_RATIO` | 0.2 | a beat split across a boundary still appears whole somewhere |
-| `MIN_CHUNK_TOKENS` | 50 | discards a stub tail that would otherwise embed noise — unless it is the whole document, in which case a short synopsis stays searchable |
+| `MIN_CHUNK_TOKENS` | 50 | a **merge** threshold, never a discard threshold: a tail shorter than this is folded back into the previous passage, so no sentence is ever dropped from the index |
 
 The sentence regex also handles this corpus's characteristic scrape defect,
 where the space after a full stop was lost (`"...bot-fights.His older
 brother..."`); without the second alternative in `_SENTENCE_SPLIT`, such a
 synopsis collapses into a handful of enormous "sentences".
 
-**Result:** 1,254 passages from 159 films (7.9 per film, median 285 tokens),
-each prefixed with its film's title so a passage carries some identity — a bare
-passage often names only pronouns.
+**Result:** 3,159 passages from all 238 films across four corpora, each prefixed
+with its film's title so a passage carries some identity — a bare passage often
+names only pronouns. (At the time of this review the index held 1,254 passages
+from the 159 MPST films alone.)
 
 ---
 
@@ -511,8 +532,8 @@ and 3.8%, "9 movies" beside a list of ten titles, "93% of catalog has no
 transcript" (96.2%), "56% coverage" (66.8%), `imdb_id INT UNIQUE` against real
 `tt…` strings, and "median ~693 words" (892 on the matched set). It also
 documented the HuggingFace transcript source at length after that source was
-dropped. **Deleted**; the Kaggle download instructions it held were moved into
-`prepare_movibot_data usage.md` rather than lost.
+dropped. **Deleted**; the Kaggle download instructions it held live in *Regenerating the
+data* below rather than being lost.
 
 **F6 — an empty `data_ready/` directory sat at the repo root**, shadowing the
 real `data_preprocessing/data_ready/`. **Deleted**, along with `NEXT_STEPS.md`
@@ -528,7 +549,63 @@ coverage" on line 111 and 66.8% in §6. 66.8% is correct (159/238); fixed.
 four-tool ReAct loop, six modules marked "Mock (deterministic)", a
 `MockLLMClient` that had been deleted, and the claim that "Wikipedia is fetched
 live per-candidate rather than pre-indexed" when it is cached for 237 films. It
-mentioned none of the three tools that actually exist. Rewritten.
+mentioned none of the tools that actually exist. Rewritten.
+
+## Regenerating the data
+
+The prepared CSVs in `data_ready/` are committed, so the app runs from a fresh
+clone without any of this. These steps exist to rebuild them from the raw
+sources, and are preserved here from the deleted `prepare_movibot_data usage.md`
+(whose remaining sections documented a Pinecone and Supabase upload path that no
+longer exists).
+
+**1. Raw inputs.** Three CSVs go in `data_full/`, which is gitignored and
+treated as immutable. Both datasets are CC0.
+
+| File | Kaggle dataset |
+|---|---|
+| `movies_metadata.csv`, `keywords.csv` | `rounakbanik/the-movies-dataset` |
+| `mpst_full_data.csv` | `cryptexcode/mpst-movie-plot-synopses-with-tags` |
+
+Create a Kaggle API token at <https://www.kaggle.com/settings/account>, save it
+to `~/.kaggle/kaggle.json`, `chmod 600` it, then:
+
+```bash
+pip install kaggle
+cd data_preprocessing/data_full
+kaggle datasets download -d rounakbanik/the-movies-dataset
+kaggle datasets download -d cryptexcode/mpst-movie-plot-synopses-with-tags
+unzip -q "*.zip"
+```
+
+**2. Prepare.** The script needs only pandas.
+
+```bash
+cd data_preprocessing
+python prepare_movibot_data.py                    # -> data_ready/
+python prepare_movibot_data.py --all-studios      # skip the Disney/Pixar scope
+```
+
+`--all-studios` produces the full multi-studio catalog. The default narrows to
+`DEMO_STUDIOS` — Walt Disney Pictures, Walt Disney Animation Studios, Pixar —
+for the reason in §3, and is what ships.
+
+**3. Wikipedia cache**, which the preparation script does not fetch:
+
+```bash
+python scrape_wikipedia.py
+```
+
+**4. Rebuild the passage index** (from the repo root; costs ~$0.0075, and the
+content-addressed cache means unchanged passages are not re-embedded):
+
+```bash
+python -m rag.ingest --dry-run     # free; reports what would be embedded
+python -m rag.ingest
+python scripts/build_data_navigator.py   # refresh the GUI's static JSON
+```
+
+---
 
 ## Appendix — reproducing every number here
 
@@ -546,11 +623,13 @@ print(m.clean_mpst(pathlib.Path('data_full/mpst_full_data.csv'))[1])
 
 # artifact shapes
 python3 -c "
-import pandas as pd, numpy as np
+import json, pandas as pd, numpy as np
 d = 'data_ready/'
+blob = np.load(d+'chunk_index.npz', allow_pickle=False)
 print(pd.read_csv(d+'supabase_movies.csv').shape,
       pd.read_csv(d+'pinecone_candidates.csv').shape,
-      np.load(d+'chunk_embeddings.npy').shape)
+      blob['vectors'].shape,
+      len(json.loads(str(blob['table'].item()))), 'passages')
 "
 ```
 
@@ -560,5 +639,5 @@ Full regeneration (writes to `data_ready/`):
 python prepare_movibot_data.py            # Disney + Pixar (default)
 python prepare_movibot_data.py --all-studios
 python scrape_wikipedia.py                # from inside data_preprocessing/
-python ../scripts/build_chunk_index.py
+python -m rag.ingest        # from the repo root
 ```

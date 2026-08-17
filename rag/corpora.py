@@ -42,6 +42,10 @@ def _from_csv(filename: str, id_col: str, text_col: str) -> Callable[[], pd.Data
     return load
 
 
+# The CSV filenames below are historical: there is no Pinecone and no Supabase in
+# this project, and neither ever ran. See agent/catalog.py for why the names were
+# kept. "pinecone_candidates.csv" holds the MPST synopses; "supabase_movies.csv"
+# is the catalog.
 CORPORA: dict[str, Corpus] = {
     "mpst": Corpus(
         key="mpst",

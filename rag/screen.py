@@ -1,0 +1,188 @@
+"""Exhaustive lexical screening, for conditions phrased as a negation.
+
+"A film where nobody dies" is not a ranking problem, and treating it as one gets
+it backwards: embed "nobody dies" and the top hits are the films where somebody
+does. Similarity finds the films that FAIL the condition.
+
+So negations are screened instead of ranked. Every plot passage of every
+candidate is scanned for a small vocabulary, and the films with no match are the
+answer. Two properties make this the right tool rather than a shortcut:
+
+  exhaustive   a scan touches all 2,080 plot passages, so no film escapes the
+               check by ranking eleventh. Top-k retrieval cannot promise this.
+  one-sided    "dead heat" over-excludes Cars; it never under-excludes. For a
+               negative request that is the harmless direction, which is what
+               lets the result be trusted without a model reading anything.
+
+Free, and fast enough that scope is irrelevant: 66 ms for the full corpus.
+
+WHAT THIS DOES NOT DO
+
+It cannot tell an attempt from an outcome. "Randall attempts to kill Sulley",
+"believing Woody murdered Buzz", "Judy asks if Bellwether is going to kill her"
+all match, and nobody dies in any of them. That is modality, not vocabulary, and
+no word list resolves it -- which is why a match makes a film `flagged`, meaning
+unresolved, and never `rejected`. Resolving a flag is a job for the reader, and
+it is cheap because the matching passages come back with the flag: the model
+judges two sentences instead of a 5,000-word plot.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Any
+
+from rag import store
+from rag.corpora import DEFAULT_SOURCES
+
+# A film is only certified clear if it offered enough text for the absence of a
+# match to mean something. Below this, "no death word" is absence of evidence
+# rather than evidence of absence -- median plot length is 1,207 tokens for
+# clear films against 2,153 for flagged ones, precisely because a short summary
+# has fewer chances to contain any given word. Screening a 200-token synopsis
+# and calling it verified is the one way this tool could actively mislead.
+MIN_SCREEN_TOKENS = 600
+
+# Curated vocabularies for the negations that actually get asked. The caller may
+# always pass its own words; these exist so answer quality does not depend on
+# whatever synonyms the model happens to produce on a given turn.
+VOCABULARIES: dict[str, list[str]] = {
+    "death": [
+        "die", "dies", "died", "dying", "death", "deaths", "dead", "deceased",
+        "kill", "kills", "killed", "killing", "murder", "murders", "murdered",
+        "slain", "slay", "slays", "perish", "perishes", "perished",
+        "corpse", "funeral", "grave", "buried", "burial", "coffin",
+        "sacrifice", "sacrifices", "sacrificed", "drowns", "drowned",
+        "fatally", "fatal", "mortally", "executed", "assassinated",
+    ],
+    "violence": [
+        "fight", "fights", "battle", "war", "gun", "guns", "shot", "shoots",
+        "stab", "stabbed", "blood", "bloody", "wound", "wounded", "attack",
+        "attacks", "attacked", "violent", "violence", "beaten", "torture",
+    ],
+    "scary": [
+        "terrifying", "terror", "horror", "nightmare", "monster", "monsters",
+        "haunted", "ghost", "ghosts", "demon", "evil", "frightening",
+        "frightened", "terrified", "scream", "screams", "screaming",
+    ],
+    "romance": [
+        "kiss", "kisses", "kissed", "romance", "romantic", "love", "loves",
+        "marry", "marries", "married", "wedding", "engaged", "fiance",
+    ],
+}
+
+# Idioms that contain a vocabulary word without carrying its meaning. Stripped
+# before matching, so "the race ends in an absolute dead heat" no longer costs
+# Cars its place. This list only ever recovers false positives; a missing entry
+# leaves the tool conservative, which is the safe failure.
+BLACKLIST_PHRASES = [
+    "dead heat", "dead end", "dead ends", "deadline", "deadlines",
+    "dead weight", "dead of night", "dead center", "dead centre",
+    "dead on arrival", "dead reckoning", "dead battery", "dead silence",
+    "drop dead", "dead serious", "dead wrong", "dead last", "dead ringer",
+    "graveyard shift", "grave danger", "grave mistake", "grave concern",
+    "kill time", "killing time", "kill the mood", "killer app",
+    "love interest", "in love with the idea",
+]
+
+# How many matching passages come back per flagged film. One is usually enough
+# to judge modality; three covers a film whose first match is incidental and
+# whose second is the real death.
+MAX_EVIDENCE_PER_FILM = 3
+MAX_EVIDENCE_CHARS = 400
+
+_BLACKLIST_RE = re.compile(
+    r"\b(?:" + "|".join(re.escape(p) for p in BLACKLIST_PHRASES) + r")\b", re.I
+)
+
+
+def resolve_words(words: list[str] | None, vocabulary: str | None) -> list[str]:
+    """Combine an explicit word list with a named curated vocabulary."""
+    out: list[str] = []
+    if vocabulary:
+        out.extend(VOCABULARIES.get(vocabulary.strip().lower(), []))
+    for w in words or []:
+        w = w.strip().lower()
+        if w and w not in out:
+            out.append(w)
+    return out
+
+
+def _pattern(words: list[str]) -> re.Pattern[str]:
+    # Word boundaries, so "die" does not match "diesel" or "audience". The whole
+    # value of the screen is that a match means something.
+    return re.compile(
+        r"\b(?:" + "|".join(re.escape(w) for w in words) + r")\b", re.I
+    )
+
+
+def screen(
+    words: list[str],
+    candidate_ids: list[int] | None = None,
+    sources: list[str] | None = None,
+) -> dict[str, Any]:
+    """Split candidates into clear / flagged / insufficient_text.
+
+    Returns ids, not labels: the caller decides how films are named, and the
+    working set stays a set of ids in Python either way.
+    """
+    if not words:
+        raise ValueError("screen() needs at least one word to look for.")
+
+    pattern = _pattern(words)
+    passages = store.plot_passages(sources or DEFAULT_SOURCES)
+
+    allowed = set(int(c) for c in candidate_ids) if candidate_ids is not None else None
+
+    tokens: dict[int, int] = {}
+    evidence: dict[int, list[dict[str, Any]]] = {}
+
+    for p in passages:
+        movie_id = int(p["movie_id"])
+        if allowed is not None and movie_id not in allowed:
+            continue
+
+        tokens[movie_id] = tokens.get(movie_id, 0) + int(p.get("tokens", 0))
+
+        # Blank the idioms rather than the whole passage: a passage containing
+        # both "dead heat" and a real death must still flag.
+        text = _BLACKLIST_RE.sub(" ", str(p.get("text", "")))
+        found = pattern.search(text)
+        if found is None:
+            continue
+
+        hits = evidence.setdefault(movie_id, [])
+        if len(hits) < MAX_EVIDENCE_PER_FILM:
+            start = max(0, found.start() - MAX_EVIDENCE_CHARS // 2)
+            hits.append({
+                "word": found.group(0).lower(),
+                "chunk_index": int(p.get("chunk_index", 0)),
+                "quote": text[start:found.end() + MAX_EVIDENCE_CHARS // 2].strip(),
+            })
+
+    # Candidates with no indexed plot text at all never appear in the loop above,
+    # so they have to be added back explicitly. Silently dropping them would be
+    # the worst outcome available: they would vanish from all three buckets and
+    # look like films that were considered.
+    universe = set(allowed) if allowed is not None else set(tokens)
+    for movie_id in universe:
+        tokens.setdefault(movie_id, 0)
+
+    clear, flagged, insufficient = [], [], []
+    for movie_id in sorted(universe):
+        if movie_id in evidence:
+            flagged.append(movie_id)
+        elif tokens[movie_id] < MIN_SCREEN_TOKENS:
+            insufficient.append(movie_id)
+        else:
+            clear.append(movie_id)
+
+    return {
+        "words": words,
+        "clear": clear,
+        "flagged": flagged,
+        "insufficient_text": insufficient,
+        "evidence": evidence,
+        "tokens_scanned": sum(tokens.values()),
+        "min_screen_tokens": MIN_SCREEN_TOKENS,
+    }

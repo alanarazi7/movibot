@@ -3,7 +3,7 @@
 # The CLI uploads this directory, so without this file the deploy would carry
 # 113 MB of raw Kaggle input and the local .env files. Note that
 # data_preprocessing/data_ready/ is deliberately NOT ignored: agent/catalog.py
-# and agent/embeddings.py read those CSVs at runtime.
+# reads those CSVs at runtime and rag/store.py loads chunk_index.npz from there.
 
 # Credentials. .env.example is a placeholder file and not needed at runtime.
 .env

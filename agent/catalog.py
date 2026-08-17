@@ -25,6 +25,15 @@ import pandas as pd
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DATA_READY = os.path.join(_BASE_DIR, "data_preprocessing", "data_ready")
 
+# The first two filenames are historical and do not mean what they say. There is
+# no Supabase and no Pinecone anywhere in this project: both were removed rather
+# than finished, for the reason given above and repeated in rag/store.py. These
+# are plain CSVs, committed to the repo, read from disk.
+#
+# They keep their names because renaming costs 37 references across 19 files and
+# invalidates the provenance notes in the committed index, for no functional
+# gain. Read them as catalog.csv and synopses.csv. The constants below are what
+# the rest of the code refers to, so the misleading names appear only here.
 CATALOG_CSV = os.path.join(_DATA_READY, "supabase_movies.csv")
 SYNOPSES_CSV = os.path.join(_DATA_READY, "pinecone_candidates.csv")
 WIKI_CACHE_CSV = os.path.join(_DATA_READY, "wikipedia_cache.csv")
@@ -109,6 +118,23 @@ def title_of(movie_id: int) -> str | None:
     return None if row.empty else str(row.iloc[0]["title"])
 
 
+@lru_cache(maxsize=1)
+def _by_id() -> dict[int, dict[str, Any]]:
+    """id -> label and rating, built once.
+
+    A dict rather than a DataFrame filter per lookup: the lexical screen labels
+    up to 238 films in a single tool call, and `df[df.id == x]` scans the whole
+    table every time. Same answer, one pass instead of 238.
+    """
+    return {
+        int(r.id): {
+            "label": f"{r.title} ({int(r.release_year)})",
+            "rating": float(r.weighted_rating),
+        }
+        for r in movies().itertuples()
+    }
+
+
 def label_of(movie_id: int) -> str | None:
     """A film's public name: "Title (Year)".
 
@@ -118,12 +144,14 @@ def label_of(movie_id: int) -> str | None:
     it can replace the numeric id in every tool signature. Ids are plumbing;
     nothing is served by spending prompt tokens on them.
     """
-    df = movies()
-    row = df[df["id"] == int(movie_id)]
-    if row.empty:
-        return None
-    r = row.iloc[0]
-    return f"{r['title']} ({int(r['release_year'])})"
+    entry = _by_id().get(int(movie_id))
+    return entry["label"] if entry else None
+
+
+def rating_of(movie_id: int) -> float | None:
+    """The vote-count-adjusted rating, which is the only ordering we ever use."""
+    entry = _by_id().get(int(movie_id))
+    return entry["rating"] if entry else None
 
 
 @lru_cache(maxsize=1)

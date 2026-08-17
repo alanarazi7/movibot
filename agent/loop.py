@@ -47,6 +47,7 @@ def execute(prompt: str) -> dict[str, Any]:
     # read scope themselves to it. It never enters the prompt, and it dies with
     # the request, so there is no cross-request state to reason about.
     ctx = tools.ToolContext()
+    plan: str | None = None
     budget = {"model_calls": 0, "tool_calls": 0, "prompt_tokens": 0, "completion_tokens": 0}
 
     if not prompt or not prompt.strip():
@@ -85,6 +86,14 @@ def execute(prompt: str) -> dict[str, Any]:
 
             tool_calls = getattr(message, "tool_calls", None) or []
 
+            # The condition ledger. The planner writes it as ordinary content
+            # alongside its first tool call, so decomposition is visible in the
+            # trace without costing a turn of its own -- a dedicated `plan` tool
+            # would have doubled the paid turns of every request to produce the
+            # same text.
+            if plan is None and tool_calls and (message.content or "").strip():
+                plan = message.content.strip()
+
             steps.append({
                 "module": "Planner",
                 "round": round_index + 1,
@@ -111,6 +120,7 @@ def execute(prompt: str) -> dict[str, Any]:
                     "status": "ok",
                     "error": None,
                     "response": answer,
+                    "plan": plan,
                     "steps": steps,
                     "narrowing": ["238 (whole catalog)"] + ctx.trace,
                     "budget": _finalise(budget, started),

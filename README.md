@@ -10,15 +10,20 @@ Classic RAG fails on queries like *"bring me a not-too-old Disney movie with no 
 
 ## How it works
 
-MoviBot is a **tool-calling agent**: a planner model with three tools, bounded at `MAX_ROUNDS = 5` model turns per query. Each tool answers a different *kind* of question, so a query uses only the ones its constraints actually need — simple queries finish in one round, hard ones in three.
+MoviBot is a **tool-calling agent**: a planner model with four tools, bounded at `MAX_ROUNDS = 5` model turns per query. The tools are ordered **cheapest and most exhaustive first**, and each hands the next a smaller candidate set, so a query pays for only the layers its constraints actually require — and the token-heavy layer only ever sees what survived the free ones.
 
-| Tool | Answers from | Used for |
-|---|---|---|
-| `filter_catalog` | columns | year, genre, language, studio, runtime |
-| `search_plots` | meaning | theme, character, premise (passage-level semantic search) |
-| `read_synopses` | full text | "does anyone die", "who betrays whom" |
+| Tool | Answers from | Narrows | Cost |
+|---|---|---|---|
+| `filter_catalog` | columns | 238 → N | free, exhaustive |
+| `screen_out` | a word scan | N → clear | free, exhaustive |
+| `search_plots` | meaning | N → ~10 | ~$0.0000002 |
+| `read_synopses` | full text | ≤ 8 films | free, token-heavy |
 
-**Guardrails live in the data and tool code, never in the prompt** — the model cannot forget them and a bad plan cannot bypass them. Results are always ordered by `weighted_rating` rather than raw `vote_average`; `filter_catalog` returns at most 40 rows; `read_synopses` reads at most 8 films, truncated to 6,000 characters each, which is what bounds the cost of a turn.
+The `screen_out` layer is what answers the query in the pitch above. A negation cannot be retrieved for: embed *"no deaths"* and the top hits are the films where somebody dies, because that is what those plots say. So it is screened instead — every plot passage of every candidate scanned in 66 ms, which is exhaustive in a way fixed-K retrieval can never be. Its error is one-sided by design: *"dead heat"* over-excludes, it never under-excludes. A match makes a film **flagged**, not rejected, since a word list cannot tell an attempt from an outcome.
+
+**Guardrails live in the data and tool code, never in the prompt** — the model cannot forget them and a bad plan cannot bypass them. Results are always ordered by `weighted_rating` rather than raw `vote_average`; `read_synopses` reads at most 8 films, truncated to 6,000 characters each, which is what bounds the cost of a turn; and `screen_out` refuses to certify a film with under 600 tokens of plot text, so absence of evidence is never reported as evidence.
+
+`python scripts/check_screen.py` asserts the screen's safety property offline and for free.
 
 See `assets/architecture.png`, served at `GET /api/model_architecture`.
 
@@ -37,7 +42,9 @@ The catalog is deliberately narrowed to Disney and Pixar, which keeps it in fami
 
 Raw Kaggle downloads (`data_preprocessing/data_full/`) are gitignored; everything in `data_ready/` is committed so the repo runs without a rebuild.
 
-**Full rationale — every source, filter, threshold, and a worked example traced end to end — is in [`data_preprocessing/PIPELINE_REVIEW.md`](data_preprocessing/PIPELINE_REVIEW.md).** To regenerate the data, see [`data_preprocessing/prepare_movibot_data usage.md`](data_preprocessing/prepare_movibot_data%20usage.md).
+**Full rationale — every source, filter, threshold, and *Frozen* traced end to end — is in [`data_preprocessing/PIPELINE_REVIEW.md`](data_preprocessing/PIPELINE_REVIEW.md).** Retrieval decisions (chunking, embedding model, why there is no vector database) are in [`rag/DECISIONS.md`](rag/DECISIONS.md), served live in the app's Retrieval tab.
+
+> **The two CSV filenames are historical and now misleading.** `supabase_movies.csv` and `pinecone_candidates.csv` are plain committed CSVs — there is no Supabase and no Pinecone in this project, and neither was ever deployed. Both backends were removed rather than finished (a hosted service for 238 rows and 3,159 vectors buys nothing and costs a credential). The names were kept only because renaming them touches 37 references across 19 files for no functional gain. Read them as `catalog.csv` and `synopses.csv`.
 
 ## Status
 
