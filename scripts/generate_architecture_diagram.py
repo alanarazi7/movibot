@@ -56,13 +56,38 @@ def _font(size: int, bold: bool = False):
     return ImageFont.load_default()
 
 
+_EMOJI_FONT = "/System/Library/Fonts/Apple Color Emoji.ttc"
+
+
+def _emoji(char: str, size: int) -> "Image.Image | None":
+    """An emoji as an RGBA image, at any size.
+
+    Apple Color Emoji is a bitmap font with fixed strikes -- 20, 32 and 64 are
+    valid, 16 raises "invalid pixel size". So it is always rendered at 64 and
+    downsampled, which also anti-aliases better than asking for a small strike.
+    Returns None if the font is missing, so a Linux box still renders the
+    diagram without emoji rather than crashing.
+    """
+    if not os.path.exists(_EMOJI_FONT):
+        return None
+    try:
+        font = ImageFont.truetype(_EMOJI_FONT, 64)
+    except OSError:
+        return None
+    tile = Image.new("RGBA", (76, 76), (0, 0, 0, 0))
+    ImageDraw.Draw(tile).text((4, 4), char, font=font, embedded_color=True)
+    return tile.crop(tile.getbbox() or (0, 0, 76, 76)).resize(
+        (size, size), Image.LANCZOS
+    )
+
+
 def _centre(draw, cx, y, text, font, fill):
     b = draw.textbbox((0, 0), text, font=font)
     draw.text((cx - (b[2] - b[0]) / 2, y), text, fill=fill, font=font)
 
 
 def _box(draw, xy, title, lines=(), fill=PLAIN_FILL, line=PLAIN_LINE,
-         title_size=17):
+         title_size=17, img=None, emoji=None):
     draw.rounded_rectangle(xy, radius=10, fill=fill, outline=line, width=2)
     x0, y0, x1, y1 = xy
     cx = (x0 + x1) / 2
@@ -75,7 +100,18 @@ def _box(draw, xy, title, lines=(), fill=PLAIN_FILL, line=PLAIN_LINE,
     _centre(draw, cx, y, title, tf, INK)
     y += draw.textbbox((0, 0), title, font=tf)[3] + 6
     for text in lines:
-        _centre(draw, cx, y, text, sf, MUTED)
+        # An emoji cannot be drawn in the same call as the text -- it comes
+        # from a different font -- so the pair is centred as one unit and the
+        # two are placed side by side.
+        glyph = _emoji(emoji, 15) if (emoji and text is lines[0]) else None
+        if glyph is not None and img is not None:
+            tw = draw.textbbox((0, 0), text, font=sf)[2]
+            total = glyph.width + 5 + tw
+            gx = int(cx - total / 2)
+            img.paste(glyph, (gx, int(y) - 1), glyph)
+            draw.text((gx + glyph.width + 5, y), text, fill=MUTED, font=sf)
+        else:
+            _centre(draw, cx, y, text, sf, MUTED)
         y += 16
 
 
@@ -141,13 +177,6 @@ def main() -> None:
     draw = ImageDraw.Draw(img)
 
     draw.text((40, 30), "MoviBot Architecture", fill=INK, font=_font(27, bold=True))
-    draw.text(
-        (40, 68),
-        f"A planner with four tools over {n['films']} Disney and Pixar feature films, "
-        f"cheapest first. Only the planner costs anything, and it is capped at "
-        f"{loop.MAX_ROUNDS} turns per request.",
-        fill=MUTED, font=_font(14),
-    )
 
     # ---- request / planner / answer -----------------------------------
     req = (40, 118, 250, 178)
@@ -156,8 +185,9 @@ def main() -> None:
 
     _box(draw, req, "User request")
     _box(draw, plan, tools.TRACE_NAMES.get("planner", "Planner"),
-         ("decides which tools the question needs,", "and when it has enough to answer"),
-         fill=PAID_FILL, line=PAID_LINE, title_size=18)
+         ("Which tool should I use?",),
+         fill=PAID_FILL, line=PAID_LINE, title_size=18,
+         img=img, emoji="\U0001F527")
     _box(draw, ans, "Final answer")
 
     _arrow(draw, (250, 148), (466, 148))
