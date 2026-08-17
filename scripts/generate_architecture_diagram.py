@@ -28,7 +28,7 @@ _ROOT = os.path.join(os.path.dirname(__file__), "..")
 _DATA = os.path.join(_ROOT, "data_preprocessing", "data_ready")
 OUTPUT_PATH = os.path.join(_ROOT, "assets", "architecture.png")
 
-WIDTH, HEIGHT = 1280, 420
+WIDTH, HEIGHT = 1140, 420
 
 BG = (255, 255, 255)
 INK = (24, 28, 34)
@@ -158,9 +158,9 @@ def main() -> None:
     draw.text((40, 28), "MoviBot Architecture", fill=INK, font=_font(34, bold=True))
 
     # ---- request / planner / answer -----------------------------------
-    req = (40, 112, 268, 186)
-    plan = (452, 100, 828, 198)
-    ans = (1052, 112, 1240, 186)
+    req = (36, 112, 236, 186)
+    plan = (400, 100, 740, 198)
+    ans = (924, 112, 1104, 186)
 
     _box(draw, req, "User request")
     _box(draw, plan, tools.TRACE_NAMES.get("planner", "Planner"),
@@ -169,15 +169,15 @@ def main() -> None:
          img=img, emoji="\U0001F527")
     _box(draw, ans, "Final answer")
 
-    _arrow(draw, (268, 149), (448, 149))
-    _arrow(draw, (832, 149), (1048, 149))
-    _label(draw, 940, 149, "no more tools needed")
+    _arrow(draw, (236, 149), (396, 149))
+    _arrow(draw, (744, 149), (920, 149))
+    _label(draw, 832, 149, "no more tools needed")
 
     # Right-aligned to stop short of x=640, where the planner's bus line drops
     # to the tool row -- centred under the box, the line struck through it.
     metered = f"metered · at most {loop.MAX_ROUNDS} model turns"
     mf = _font(14)
-    draw.text((624 - draw.textbbox((0, 0), metered, font=mf)[2], 203), metered,
+    draw.text((554 - draw.textbbox((0, 0), metered, font=mf)[2], 203), metered,
               fill=PAID_LINE, font=mf)
 
     # ---- tools ---------------------------------------------------------
@@ -188,30 +188,32 @@ def main() -> None:
     # One line each, naming the mechanism rather than explaining it. The
     # explanation lives in the tab under the image; the diagram only has to say
     # what each box *is*.
+    # The emoji carry the distinction the words repeat: sorting, excluding,
+    # searching, reading. Deliberately four different actions.
     specs = [
-        ("filter_catalog", ("SQL-like column filter",)),
-        ("screen_out", ("exhaustive regex scan",)),
-        ("search_plots", ("vector similarity search",)),
-        ("read_synopses", ("full plot text",)),
+        ("filter_catalog", ("SQL-like column filter",), "\U0001F5C2"),
+        ("screen_out", ("exhaustive regex scan",), "\U0001F6AB"),
+        ("search_plots", ("vector similarity search",), "\U0001F50E"),
+        ("read_synopses", ("full plot text",), "\U0001F4D6"),
     ]
-    tw, gap = 268, 38
+    tw, gap = 252, 28
     start = (WIDTH - (tw * len(specs) + gap * (len(specs) - 1))) / 2
     ty0, ty1 = 274, 366
 
     tool_boxes = []
-    for i, (key, sub) in enumerate(specs):
+    for i, (key, sub, glyph) in enumerate(specs):
         x0 = start + i * (tw + gap)
         box = (x0, ty0, x0 + tw, ty1)
         tool_boxes.append(box)
         _box(draw, box, tools.TRACE_NAMES[key], sub, fill=FREE_FILL, line=FREE_LINE,
-             title_size=20)
+             title_size=20, img=img, emoji=glyph)
 
     # One bus off the planner, then a two-way link into each tool: the planner
     # calls, the result comes back to the planner. Drawn as double-headed
     # arrows rather than separate call/return lines, which turned into a
     # thicket of overlapping dashes in the previous version.
     bus_y = 256
-    draw.line([(640, 198), (640, bus_y)], fill=ARROW, width=2)
+    draw.line([(570, 198), (570, bus_y)], fill=ARROW, width=2)
     draw.line([((tool_boxes[0][0] + tool_boxes[0][2]) / 2, bus_y),
                ((tool_boxes[-1][0] + tool_boxes[-1][2]) / 2, bus_y)], fill=ARROW, width=2)
     for box in tool_boxes:
@@ -221,7 +223,7 @@ def main() -> None:
     os.makedirs(os.path.dirname(OUTPUT_PATH), exist_ok=True)
     img.save(OUTPUT_PATH)
     print(f"Wrote {OUTPUT_PATH}")
-    print(f"  modules: {', '.join(tools.TRACE_NAMES[k] for k, _ in specs)}")
+    print(f"  modules: {', '.join(tools.TRACE_NAMES[k] for k, _, _ in specs)}")
 
 
 if __name__ == "__main__":
