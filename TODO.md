@@ -134,13 +134,31 @@ Vercel; a push updates GitHub only. Production changes require:
 vercel --prod --yes
 ```
 
-Do not trust the exit code — it returns 0 without necessarily promoting.
-Verify by comparing bytes:
+Two things will bite you here.
+
+**The exit code proves nothing.** `vercel --prod` returns 0 without necessarily
+promoting. Verify by comparing what is actually served:
 
 ```bash
 wc -c < public/index.html
 vercel curl -sI https://movibot-gamma.vercel.app/ | grep -i content-length
 ```
+
+**A change to a non-code file may not deploy at all.** Vercel reuses its build
+cache when it sees no change worth rebuilding for, so editing only `TODO.md`,
+`rag/DECISIONS.md` or another file the app *reads* can leave production serving
+the old copy — with `x-vercel-cache: MISS`, so it does not look like a cache
+problem. Use:
+
+```bash
+vercel --prod --yes --force
+```
+
+This matters more than it sounds: the TODO tab is served from `TODO.md`, so the
+page whose whole purpose is to be current is exactly the one that can silently
+go stale. Verify by content, not bytes, when the change is textual — `wc -c`
+counts bytes and the file has multibyte characters, so the two numbers differ
+legitimately.
 
 `.vercelignore` keeps 113 MB of raw Kaggle input, the course PDFs, and the
 local `.env` files out of the upload. It deliberately does **not** exclude
