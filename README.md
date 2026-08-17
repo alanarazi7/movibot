@@ -102,3 +102,44 @@ Vercel, Python serverless (`vercel.json`, same pattern as the team's prior `medi
 - **Live URL:** https://movibot-gamma.vercel.app
 - **GitHub Repo:** https://github.com/alanarazi7/movibot
 - **Vercel Project Dashboard:** https://vercel.com/alan-agents-course/movibot
+
+**Deploys do not happen on `git push`.** This project is not Git-connected on
+Vercel; a push updates GitHub only. Production changes require:
+
+```bash
+vercel --prod --yes --scope alan-agents-course
+```
+
+`--scope alan-agents-course` is required. Without it the deploy fails with
+`Not authorized` even when `vercel whoami` shows you logged in: the project
+sits under a team, and the error names auth rather than scope.
+
+Two further things will bite you.
+
+**The exit code proves nothing.** `vercel --prod` returns 0 without necessarily
+promoting. Verify against what is actually served:
+
+```bash
+curl -s https://movibot-gamma.vercel.app/ | grep -c "some string you just added"
+```
+
+Check by content, not by byte count — `wc -c` counts bytes and these files
+contain multibyte characters, so local and served lengths differ legitimately.
+
+**A change to a non-code file may not deploy at all.** Vercel reuses its build
+cache when it sees no change worth rebuilding for, so editing only `TODO.md`,
+`rag/DECISIONS.md`, or another file the app *reads* can leave production
+serving the old copy — with `x-vercel-cache: MISS`, so it does not look like a
+cache problem. Use:
+
+```bash
+vercel --prod --yes --force --scope alan-agents-course
+```
+
+This matters more than it sounds: the TODO tab is served from `TODO.md`, so the
+page whose whole purpose is to be current is exactly the one that can silently
+go stale.
+
+`.vercelignore` keeps 113 MB of raw Kaggle input, the course PDFs, and the
+local `.env` files out of the upload. It deliberately does **not** exclude
+`data_preprocessing/data_ready/`, which the agent reads at runtime.

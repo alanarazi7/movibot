@@ -672,6 +672,7 @@
       <span class="tab-group-label" title="Everything beyond the assignment's requirements">Extras</span>
       <button class="tab-button" onclick="switchTab('datanav')">🗃️ Data</button>
       <button class="tab-button" onclick="switchTab('retrieval')">🔎 Retrieval</button>
+      <button class="tab-button" onclick="switchTab('budget-tab')">💰 Budget</button>
       <button class="tab-button" onclick="switchTab('status-tab')">🗒️ TODO</button>
     </div>
 
@@ -1315,16 +1316,63 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
       </details>
     </div>
 
-    <!-- TAB 7: Status -->
+    <!-- TAB 7: Budget -->
+    <div id="budget-tab" class="tab-content">
+      <div class="card">
+        <h2>Budget</h2>
+        <p style="color:#666;font-size:0.9rem;margin-bottom:1rem;">
+          A $13 cap for the whole project. The figure below is read from
+          LLMod.ai's own accounting when this tab opens, not typed into a file
+          where it would go stale the moment anyone ran a query.
+        </p>
+        <div id="budget-body"><p class="pending">Loading&hellip;</p></div>
+      </div>
+
+      <div class="card">
+        <label>What each thing costs</label>
+        <p style="color:#666;font-size:0.85rem;margin-bottom:0.8rem;">
+          Measured, not estimated: every figure below comes from token counts
+          the provider reported on real calls. Three of the four tools are
+          free, so nearly all of it is planner turns.
+        </p>
+        <div class="data-table">
+          <table>
+            <thead><tr><th>Item</th><th>Cost</th></tr></thead>
+            <tbody>
+              <tr><td>Full corpus embedding (3,159 passages) &mdash; already done, once</td><td class="n">$0.0156</td></tr>
+              <tr><td>One query embedding</td><td class="n">~$0.0000002</td></tr>
+              <tr><td>One planner turn</td><td class="n">$0.0011</td></tr>
+              <tr><td>One planner turn, after reading synopses</td><td class="n">$0.0041</td></tr>
+              <tr><td>Worst-case request (5 turns)</td><td class="n">$0.0143</td></tr>
+              <tr><td>The 11 test cases, once</td><td class="n">~$0.09</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p style="color:#8a9099;font-size:0.78rem;margin-top:0.9rem;">
+          At the worst-case rate, roughly <b>900 requests</b> would exhaust the
+          cap. <code>MAX_ROUNDS</code> bounds what any single request can spend;
+          nothing bounds how many requests arrive, which is the honest shape of
+          the exposure on a public endpoint.
+        </p>
+      </div>
+
+      <div class="card">
+        <label>The kill switch</label>
+        <p style="color:#666;font-size:0.88rem;">
+          <code>MOVIBOT_OFFLINE=1</code> blocks all spending outright &mdash;
+          planner calls and embeddings alike &mdash; independently of whether
+          credentials are present. The catalog, the screen and the search still
+          run, because they were built to cost nothing, so the agent can be
+          developed and tested end to end without touching the budget.
+        </p>
+      </div>
+    </div>
+
+    <!-- TAB 8: Status -->
     <div id="status-tab" class="tab-content">
       <div class="card">
         <h2>TODO</h2>
         <div id="status-progress"></div>
-      </div>
-
-      <div class="card">
-        <label>Budget &mdash; live from LLMod.ai</label>
-        <div id="budget-body"><p class="pending">Loading&hellip;</p></div>
       </div>
 
       <div class="card markdown" id="status-body">
@@ -1343,6 +1391,9 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
       // rather than on every page load. navLoad() is idempotent.
       if (tabName === 'datanav') navLoad();
       if (tabName === 'status-tab') loadStatus();
+      // Refetched on every visit, not cached like the others: the whole point
+      // of the number is that it is current.
+      if (tabName === 'budget-tab') loadBudget();
       if (tabName === 'retrieval') loadRag();
       if (tabName === 'arch') { fetchPrompts(); fetchArchitecture(); }
     }
@@ -1592,7 +1643,6 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
 
     let statusLoaded = false;
     async function loadStatus() {
-      loadBudget();
       if (statusLoaded) return;
       statusLoaded = true;
       const body = document.getElementById('status-body');
