@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Checks the lexical screen's safety property. Free, offline, ~2 seconds.
+"""Checks the guardrails that can silently do nothing. Free, offline, ~2 seconds.
 
     python scripts/check_screen.py
 
@@ -12,9 +12,17 @@ So the assertions are asymmetric on purpose. Every film in KNOWN_DEATHS must be
 flagged, and that is a hard failure. Films in KNOWN_CLEAN are checked too, but a
 regression there is reported as a warning: it costs precision, not safety.
 
-Run this after touching VOCABULARIES, BLACKLIST_PHRASES, MIN_SCREEN_TOKENS, or
-the chunking parameters -- rechunking changes what text each passage holds, and
-therefore what the screen can see.
+It also checks title exclusion, for the same reason. That filter reached
+production reporting itself as applied while matching nothing: the planner is
+told films are named "Title (Year)", passed exactly that to `exclude_titles`,
+and the filter compared it against the bare `title` column, where it could never
+match. The answer then avoided the excluded films by the model's own judgement
+rather than by the filter -- indistinguishable from working, until you read the
+counts in the narrowing trace.
+
+Run this after touching VOCABULARIES, BLACKLIST_PHRASES, MIN_SCREEN_TOKENS, the
+chunking parameters, or filter_catalog -- rechunking changes what text each
+passage holds, and therefore what the screen can see.
 """
 
 from __future__ import annotations
@@ -65,6 +73,38 @@ KNOWN_CLEAN = [
 ]
 
 
+def check_exclusions() -> list[str]:
+    """Title exclusion must actually remove rows, in both addressing forms."""
+    def matched(**kwargs) -> int:
+        ctx = tools.ToolContext()
+        return tools.filter_catalog(ctx=ctx, **kwargs)["matched"]
+
+    failures = []
+    pixar = matched(studio="Pixar")
+
+    # A label, which is what the planner naturally passes.
+    if matched(studio="Pixar", exclude_titles=["Toy Story (1995)"]) != pixar - 1:
+        failures.append("excluding by \"Title (Year)\" label removed nothing")
+
+    # A bare title, which is what the schema's examples suggest.
+    if matched(studio="Pixar", exclude_titles=["Toy Story"]) != pixar - 1:
+        failures.append("excluding by bare title removed nothing")
+
+    # A bare title spanning a remake pair drops both; a label drops one.
+    if matched(exclude_titles=["The Jungle Book"]) != 236:
+        failures.append("bare title did not drop both Jungle Books")
+    if matched(exclude_titles=["The Jungle Book (1967)"]) != 237:
+        failures.append("label did not drop exactly one Jungle Book")
+
+    # An exclusion the catalog cannot match must be reported, never swallowed.
+    ctx = tools.ToolContext()
+    out = tools.filter_catalog(ctx=ctx, exclude_titles=["Toy Story 4 (2019)"])
+    if not out["filters_applied"].get("exclude_titles_unmatched"):
+        failures.append("an unmatchable exclusion was silently ignored")
+
+    return failures
+
+
 def main() -> int:
     result = tools.screen_out(vocabulary="death")
     full = screen.screen(
@@ -106,15 +146,18 @@ def main() -> int:
     if result["clear"] != len(clear):
         failures.append(f"tool reports {result['clear']} clear, module says {len(clear)}")
 
+    failures.extend(check_exclusions())
+
     for line in warnings:
         print(f"  warning (precision only): {line}")
     for line in failures:
         print(f"  FAIL: {line}")
 
     if failures:
-        print(f"\n{len(failures)} failure(s). The screen is not safe to trust.")
+        print(f"\n{len(failures)} failure(s). These guardrails are not safe to trust.")
         return 1
-    print(f"\nOK -- no film with a known death was reported clear."
+    print(f"\nOK -- no film with a known death was reported clear, "
+          f"and title exclusion removes rows in both addressing forms."
           f"{f' {len(warnings)} precision warning(s).' if warnings else ''}")
     return 0
 

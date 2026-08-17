@@ -172,12 +172,44 @@ def filter_catalog(
         )]
         applied["exclude_english_only"] = True
 
-    # Case-insensitive exact title match, so excluding "Frozen" does not also
-    # drop "Frozen Fever" -- a substring match here would quietly over-exclude.
+    # Accepts either form a caller might reasonably use: the "Title (Year)"
+    # label that every other tool speaks, or a bare title. Labels are resolved
+    # to ids first, because matching them against the bare `title` column never
+    # succeeds -- "toy story (1995)" is not "toy story". That mismatch made the
+    # exclusion silently do nothing while still reporting itself as applied,
+    # which is worse than failing: the planner believed a constraint had been
+    # enforced and merely avoided naming the films instead.
+    #
+    # Bare titles stay an exact case-insensitive match, so excluding "Frozen"
+    # does not also drop "Frozen Fever"; a substring match would over-exclude.
     if exclude_titles:
-        blocked = {t.strip().lower() for t in exclude_titles}
-        df = df[~df["title"].str.lower().isin(blocked)]
+        blocked_ids, blocked_titles, unmatched = set(), set(), []
+        for raw in exclude_titles:
+            name = str(raw).strip()
+            if not name:
+                continue
+            movie_id = catalog.resolve(name)
+            if movie_id is not None:
+                blocked_ids.add(movie_id)
+                continue
+            # Not a resolvable label. Fall back to a bare-title match, which
+            # also drops every remake sharing that title -- what "besides The
+            # Jungle Book" ought to mean.
+            lowered = name.lower()
+            if (df["title"].str.lower() == lowered).any():
+                blocked_titles.add(lowered)
+            else:
+                unmatched.append(raw)
+
+        if blocked_ids:
+            df = df[~df["id"].isin(blocked_ids)]
+        if blocked_titles:
+            df = df[~df["title"].str.lower().isin(blocked_titles)]
         applied["exclude_titles"] = exclude_titles
+        if unmatched:
+            # Surfaced rather than swallowed: an exclusion the catalog cannot
+            # match is something the planner must know about, not a no-op.
+            applied["exclude_titles_unmatched"] = unmatched
 
     if require_synopsis:
         df = df[df["id"].apply(catalog.has_synopsis)]
