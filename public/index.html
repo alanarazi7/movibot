@@ -690,41 +690,6 @@
         <div id="steps-list"></div>
       </div>
 
-      <details class="panel">
-        <summary><span class="emoji">🧭</span> What is required, and what is extra</summary>
-        <div class="panel-body">
-          <p>
-            The assignment specifies four things. Everything else here we added to make the
-            system inspectable.
-          </p>
-
-          <h4>Required</h4>
-          <div class="data-table">
-            <table>
-              <thead><tr><th>Tab</th><th>What it shows</th></tr></thead>
-              <tbody>
-                <tr><td>🎬 Agent Query</td><td>Ask MoviBot anything; returns the answer and the full traced steps</td></tr>
-                <tr><td>👥 Team Info</td><td>Who built it</td></tr>
-                <tr><td>🤖 Agent Info</td><td>What the agent is, what it can and cannot do, worked examples</td></tr>
-                <tr><td>🏗️ Architecture</td><td>The four layers, why they run in that order, and every prompt verbatim</td></tr>
-              </tbody>
-            </table>
-          </div>
-
-          <h4>Extra</h4>
-          <div class="data-table">
-            <table>
-              <thead><tr><th>Tab</th><th>What it shows</th></tr></thead>
-              <tbody>
-                <tr><td>🗃️ Data</td><td>All 238 films, searchable, with every record the pipeline stores</td></tr>
-                <tr><td>🔎 Retrieval</td><td>Semantic search over the corpora, and how retrieval was built</td></tr>
-                <tr><td>🗒️ TODO</td><td>The team's live checklist, served from the file we edit</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </details>
-
       <div class="card">
         <label>Test bed</label>
         <p style="color:#666;font-size:0.85rem;margin-bottom:0.8rem;">
@@ -799,7 +764,6 @@
         <div class="curl-cmd">curl https://movibot-gamma.vercel.app/api/model_architecture -o architecture.png</div>
         <button class="copy-btn" onclick="copyCurl('curl https://movibot-gamma.vercel.app/api/model_architecture -o architecture.png')">📋 Copy curl</button>
       </div>
-    </div>
 
       <div class="card">
         <h2>How it works</h2>
@@ -951,7 +915,7 @@
           <div id="guardrails-body"><p class="pending">Load the prompts above to see the live values.</p></div>
         </div>
       </details>
-
+    </div>
 
     <!-- TAB 5: Project Decisions -->
     <!-- TAB 6: Data -->
