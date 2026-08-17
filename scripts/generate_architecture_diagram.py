@@ -198,19 +198,18 @@ def main() -> None:
               fill=PAID_LINE, font=_font(11.5))
 
     # ---- tools ---------------------------------------------------------
-    _band(draw, 232, "Tools", "called by the planner, run locally, no model cost")
+    _band(draw, 232, "Tools", "")
 
     # Left to right is cheapest to dearest, which is also the order the planner
     # is told to work in. The ordering is the design, so the diagram encodes it.
+    # One line each, naming the mechanism rather than explaining it. The
+    # explanation lives in the tab under the image; the diagram only has to say
+    # what each box *is*.
     specs = [
-        ("filter_catalog", ("answers from columns",
-                            "year · genre · studio · language")),
-        ("screen_out", ("rules out what must be absent",
-                        "exhaustive scan, every passage")),
-        ("search_plots", ("answers from meaning",
-                          "passage-level semantic search")),
-        ("read_synopses", ("answers from full text",
-                           "who dies, who betrays whom")),
+        ("filter_catalog", ("SQL-like column filter",)),
+        ("screen_out", ("exhaustive regex scan",)),
+        ("search_plots", ("vector similarity search",)),
+        ("read_synopses", ("full plot text",)),
     ]
     tw, gap = 268, 38
     start = (WIDTH - (tw * len(specs) + gap * (len(specs) - 1))) / 2
@@ -242,12 +241,9 @@ def main() -> None:
     _band(draw, 360, "Data", "")
 
     data = [
-        ("Catalog", (f"{n['films']} films × {n['columns']} columns",
-                     "CSV, committed with the repo")),
-        ("Passage index", (f"{n['passages']:,} passages from {n['indexed_films']} films",
-                           "1536-d, scored in memory")),
-        ("Plot texts", (f"{n['readable']} films readable in full",
-                        "MPST synopsis, else Wikipedia plot")),
+        ("Catalog", (f"{n['films']} films × {n['columns']} columns",)),
+        ("Passage index", (f"{n['passages']:,} passages, 1536-d",)),
+        ("Plot texts", (f"{n['readable']} films readable in full",)),
     ]
     # The data row has its own three-column layout rather than sitting under the
     # tool boxes: there are four tools and three stores, and they do not pair off
