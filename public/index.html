@@ -400,7 +400,7 @@
     }
     .panel-body .pending { color: #888; font-style: italic; }
 
-    /* Architecture tab: the layer diagram and the live prompt dumps. */
+    /* Architecture tab: the loop diagram and the live prompt dumps. */
     .arch-diagram {
       background: #fbfbfb; border: 1px solid #eee; border-radius: 6px;
       padding: 1rem; overflow-x: auto; font-size: 0.72rem; line-height: 1.55;
@@ -768,19 +768,90 @@
       <div class="card">
         <h2>How it works</h2>
         <p>
-          One planner, four tools, at most five model turns. <strong>Exactly one step
-          costs money</strong> &mdash; the planner. Three of the four tools are free, and
-          the fourth costs two millionths of a dollar.
+          One ReAct loop: <strong>reason &rarr; act &rarr; observe &rarr; stop?</strong>,
+          for at most five model turns. Every tool is on the table on every turn. The
+          planner chooses which to call, with what arguments, how many at once, and
+          when it has enough to answer. <strong>Exactly one step costs money</strong>
+          &mdash; the planner. Three of the four tools are free, and the fourth costs
+          two millionths of a dollar.
         </p>
         <p>
-          <strong>The ordering above is cheapest-and-most-exhaustive first.</strong>
-          Each layer hands the next a smaller candidate set, so the token-heavy layer
-          only ever sees what survived the free ones, and a request pays for exactly
-          the layers its conditions require. A question answerable by filtering alone
-          costs two model turns and nothing else. The candidate set lives in Python
-          between calls and never enters the prompt.
+          <strong>The cheapest-first ordering is a preference, not a path.</strong>
+          Nothing in <code>agent/loop.py</code> sequences the tools; the order is
+          policy, argued for in the system prompt, and the planner departs from it
+          whenever a request calls for something else. When it does follow the order,
+          each call hands the next a smaller candidate set, so the token-heavy tool
+          only ever sees what survived the free ones. A question answerable by
+          filtering alone costs two model turns and never touches the other three.
+          The candidate set lives in Python between calls and never enters the prompt.
         </p>
       </div>
+
+      <details class="panel" open>
+        <summary><span class="emoji">🔁</span> Why this is an agent, not a pipeline</summary>
+        <div class="panel-body">
+          <p>
+            A fair thing to ask of the diagram above: four tools, a recommended
+            order, a set that shrinks at each step &mdash; is this an agent, or a
+            pipeline with a language model bolted to the front?
+          </p>
+          <p>
+            The distinction is <strong>policy versus mechanism</strong>. A pipeline's
+            order is in its code. MoviBot's is in its prompt. All four tool schemas
+            are offered on every non-final turn (<code>agent/loop.py</code>), the
+            model picks freely among them, and the loop ends when it emits no tool
+            call at all. Nowhere does the code say &ldquo;filter, then screen, then
+            search, then read.&rdquo;
+          </p>
+          <p>
+            Which makes the claim testable, because it predicts something a pipeline
+            cannot do: <strong>the trace should change shape with the request.</strong>
+            Two verified tool paths from <code>/api/agent_info</code>, same agent,
+            same code:
+          </p>
+
+          <div class="data-table">
+            <table>
+              <thead><tr><th>Request</th><th>Trace</th><th>Tools used</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td>&ldquo;Best empowering princess movie besides Frozen and Moana&rdquo;</td>
+                  <td>Planner &rarr; CatalogFilter &rarr; Planner &rarr; answer</td>
+                  <td class="n">1 of 4</td>
+                </tr>
+                <tr>
+                  <td>&ldquo;Something safe for a toddler where nobody dies&rdquo;</td>
+                  <td>Planner &rarr; CatalogFilter &rarr; LexicalScreen &rarr; Planner &rarr; answer</td>
+                  <td class="n">2 of 4</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p>
+            Three of the four tools never ran in the first case. A pipeline runs its
+            stages; an agent skips what the request does not need, and here it decided
+            that for itself from the conditions it had written out one turn earlier.
+          </p>
+          <p>
+            Three further things the loop affords that a fixed sequence does not. The
+            planner is instructed to <strong>re-query after observing</strong> &mdash;
+            a search that comes back unconvincing gets re-phrased as a different
+            concrete event and run again, which is a decision taken from a result
+            rather than from the plan. A single turn may carry
+            <strong>several tool calls</strong>, so independent conditions need not be
+            serialised. And the agent <strong>stops on its own judgement</strong>:
+            <code>MAX_ROUNDS</code> is a spending cap, reached only when something has
+            gone wrong, not the normal way a request ends.
+          </p>
+          <p>
+            What is genuinely fixed is smaller than it looks, and deliberately so: the
+            45-minute runtime floor, the rating adjustment, and the working-set scoping
+            are invariants in Python that no plan can route around. Those are not
+            stages. They are the things an agent is not allowed to decide.
+          </p>
+        </div>
+      </details>
 
 <details class="panel" open>
         <summary><span class="emoji">🧭</span> How a request flows</summary>
@@ -795,8 +866,11 @@
 
           <p>
             The types matter because <strong>each kind of condition is settled by
-            exactly one layer</strong>, and a condition is not satisfied until its own
-            layer has settled it.
+            exactly one tool</strong>, and a condition is not satisfied until its own
+            tool has settled it. That is a rule about <em>evidence</em>, not about
+            order: it says which tool can close a given condition, never which
+            condition to take up first, or how many turns to spend, or whether to go
+            back. Those stay with the planner.
           </p>
 
           <div class="data-table">
@@ -841,12 +915,12 @@
           <p><em>&ldquo;a Pixar film where nobody dies, besides Toy Story&rdquo;</em></p>
           <div class="data-table">
             <table>
-              <thead><tr><th>Condition</th><th>Kind</th><th>Layer</th><th>Working set</th></tr></thead>
+              <thead><tr><th>Condition</th><th>Kind</th><th>Turn</th><th>Tool</th><th>Working set</th></tr></thead>
               <tbody>
-                <tr><td>Pixar</td><td>structured</td><td>CatalogFilter</td><td class="n">238 &rarr; 18</td></tr>
-                <tr><td>besides Toy Story</td><td>structured</td><td>same call</td><td class="n">18 &rarr; 17</td></tr>
-                <tr><td>nobody dies</td><td>negative</td><td>LexicalScreen</td><td class="n">17 &rarr; 7 clear</td></tr>
-                <tr><td>a good one</td><td>ranking</td><td>rating order</td><td class="n">&mdash;</td></tr>
+                <tr><td>Pixar</td><td>structured</td><td class="n">1</td><td>CatalogFilter</td><td class="n">238 &rarr; 18</td></tr>
+                <tr><td>besides Toy Story</td><td>structured</td><td class="n">1</td><td>same call</td><td class="n">18 &rarr; 17</td></tr>
+                <tr><td>nobody dies</td><td>negative</td><td class="n">2</td><td>LexicalScreen</td><td class="n">17 &rarr; 7 clear</td></tr>
+                <tr><td>a good one</td><td>ranking</td><td class="n">&mdash;</td><td>rating order</td><td class="n">&mdash;</td></tr>
               </tbody>
             </table>
           </div>
@@ -857,10 +931,18 @@
             read.</strong> Ranking-then-verifying would have spent a search plus up to
             eight synopsis reads to reach somewhere less certain.
           </p>
+          <p>
+            Note the turn column. Two conditions were settled in one call, because the
+            planner recognised they belonged to the same tool and packed them together;
+            the fourth needed no tool at all, and it worked that out rather than
+            spending a turn to discover it. Then it stopped &mdash; with
+            <code>PlotSearch</code> and <code>SynopsisReader</code> still available and
+            three turns of budget unspent.
+          </p>
 
           <h4>What the answer may claim</h4>
           <p>
-            Two layers are exhaustive and two are not, and the difference decides what
+            Two tools are exhaustive and two are not, and the difference decides what
             the agent is entitled to say. <code>filter_catalog</code> and
             <code>screen_out</code> check every candidate, so their findings are
             complete: 76 films clear on the death screen means all of them, not a
