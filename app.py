@@ -124,6 +124,21 @@ def data_files(filename):
     return send_from_directory(os.path.join(BASE_DIR, "public", "data"), filename)
 
 
+@app.route("/<path:filename>", methods=["GET"])
+def public_files(filename):
+    """Everything else in public/ -- the hero image, and anything added later.
+
+    Local dev parity only. In production Vercel's static routing already maps
+    /(.*) to public/$1 and never reaches Python, so without this the image
+    would work on Vercel and 404 locally, which is the wrong way round: it
+    would mean shipping an asset that could not be checked before deploying.
+
+    Werkzeug ranks routes with no arguments above routes with them, so this
+    cannot shadow the /api/* endpoints defined above.
+    """
+    return send_from_directory(os.path.join(BASE_DIR, "public"), filename)
+
+
 @app.route("/api/team_info", methods=["GET"])
 def team_info():
     return _cors(jsonify(_load_json(TEAM_INFO_PATH)))

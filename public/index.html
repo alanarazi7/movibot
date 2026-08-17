@@ -14,6 +14,14 @@
       padding: 2rem 1rem;
     }
     .container { max-width: 900px; margin: 0 auto; }
+
+    /* Landing hero: the closing illustration from the deck. It already carries
+       the project name and all three authors, so it doubles as the masthead. */
+    .hero {
+      display: block; width: 100%; height: auto;
+      border-radius: 10px; border: 1px solid #eee;
+      margin-bottom: 1.4rem;
+    }
     h1 { font-size: 1.6rem; font-weight: 700; margin-bottom: 0.3rem; }
     .subtitle { color: #666; font-size: 0.9rem; margin-bottom: 2rem; }
 
@@ -643,6 +651,12 @@
 
     <!-- TAB 1: Agent Query -->
     <div id="agent" class="tab-content active">
+      <img class="hero" src="/movibot-scout.jpg" width="1024" height="396"
+           alt="MoviBot: The Cute, Smart Movie Scout, by Yair Zack, Alan Arazi and
+                Andrei Nekliudov. An illustrated robot holding a shortlist of films
+                — The Lion King, Mulan, Tarzan — while thinking &ldquo;no deaths,
+                animals, not-too-old&rdquo;, surrounded by film reels." />
+
       <div class="card">
         <h2>Run MoviBot Agent</h2>
         <p style="color: #666; font-size: 0.9rem; margin-bottom: 1rem;">Movie discovery for mixed constraints — structured facts (year, studio, runtime) plus fuzzy, subjective ones (mood, tone, "no deaths") verified per-title, not guessed.</p>
