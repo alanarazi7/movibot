@@ -54,14 +54,10 @@ def execute(prompt: str) -> dict[str, Any]:
         return _error("The 'prompt' field is required.", steps, budget, started)
 
     if not llm_client.is_configured():
-        reason = (
-            "MOVIBOT_OFFLINE is set, so model calls are disabled."
-            if llm_client.offline()
-            else "OPENAI_API_KEY is unset or still a placeholder value."
-        )
         return _error(
-            f"MoviBot cannot compose an answer: {reason} The catalog and "
-            "search tools run locally and are unaffected.",
+            "MoviBot cannot compose an answer: OPENAI_API_KEY is unset or "
+            "still a placeholder value. The catalog and search tools run "
+            "locally and are unaffected.",
             steps, budget, started,
         )
 

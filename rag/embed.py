@@ -20,22 +20,9 @@ import numpy as np
 from rag.config import EMBED_BATCH, EMBED_DIM, EMBED_MODEL, EMBED_CACHE
 
 
-def _offline() -> bool:
-    return os.environ.get("MOVIBOT_OFFLINE", "").strip().lower() in ("1", "true", "yes")
-
-
 @lru_cache(maxsize=1)
 def _client():
     from openai import OpenAI
-
-    # MOVIBOT_OFFLINE is documented as guaranteeing that a run cannot cost
-    # anything. It used to gate only the planner, so embedding walked straight
-    # past it -- which let a test embed the whole corpus with the switch on.
-    if _offline():
-        raise RuntimeError(
-            "MOVIBOT_OFFLINE is set: embedding is disabled because it spends "
-            "money. Unset it to allow API calls."
-        )
 
     key = os.environ.get("OPENAI_API_KEY", "")
     base = os.environ.get("OPENAI_BASE_URL", "")

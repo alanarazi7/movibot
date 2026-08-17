@@ -55,7 +55,7 @@ Retrieval, tools, and the agent loop are complete and exercised end to end at ze
 - ✅ Catalog reads from committed CSVs; the passage index is a committed matrix, so retrieval needs no vector database
 - ⏳ Running the 11 test cases
 
-There is **no mock model by design**: a broken config fails loudly rather than masquerading as a working agent. `MOVIBOT_OFFLINE=1` hard-disables all spending.
+There is **no mock model by design**: a broken config fails loudly rather than masquerading as a working agent.
 
 See **[`TODO.md`](TODO.md)** for the current checklist.
 
@@ -77,8 +77,6 @@ The catalog reads from committed CSVs and needs no credentials. Planner turns an
 
 | Variable | Default | Purpose |
 |---|---|---|
-
-| `MOVIBOT_OFFLINE` | unset | `1` disables every paid call |
 
 ## Retrieval
 

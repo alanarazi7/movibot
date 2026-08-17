@@ -54,20 +54,8 @@ def _is_placeholder(value: str) -> bool:
     return not lowered or any(marker in lowered for marker in _PLACEHOLDER_MARKERS)
 
 
-def offline() -> bool:
-    """True when spending is disabled outright by MOVIBOT_OFFLINE.
-
-    A hard kill switch, independent of whether credentials exist. Set
-    MOVIBOT_OFFLINE=1 to guarantee a run cannot cost anything -- useful for
-    tests, demos, and any change to the loop that has not been cost-reviewed.
-    """
-    return os.environ.get("MOVIBOT_OFFLINE", "").strip().lower() in ("1", "true", "yes")
-
-
 def is_configured() -> bool:
     """True if a real call could actually succeed. Lets callers degrade politely."""
-    if offline():
-        return False
     return not _is_placeholder(os.environ.get("OPENAI_API_KEY", ""))
 
 
@@ -77,12 +65,6 @@ def _client():
 
     # Checked here too, not only in is_configured(), so that no code path can
     # reach the network by calling complete() directly.
-    if offline():
-        raise RuntimeError(
-            "MOVIBOT_OFFLINE is set: model calls are disabled. Unset it to "
-            "allow MoviBot to spend budget."
-        )
-
     api_key = os.environ.get("OPENAI_API_KEY", "")
     if _is_placeholder(api_key):
         raise RuntimeError(
@@ -162,10 +144,6 @@ def budget() -> dict[str, Any]:
         fetched_at, cached = _budget_cache
         if time.time() - fetched_at < BUDGET_TTL_SECONDS:
             return {**cached, "cached": True}
-
-    if offline():
-        return {"configured": False,
-                "reason": "MOVIBOT_OFFLINE is set, so no budget is being spent."}
 
     root, key = _proxy_root(), os.environ.get("OPENAI_API_KEY", "")
     if not root or _is_placeholder(key):

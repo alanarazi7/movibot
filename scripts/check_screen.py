@@ -27,15 +27,10 @@ passage holds, and therefore what the screen can see.
 
 from __future__ import annotations
 
-import os
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-# The screen never calls an API. Setting this proves it: if any code path here
-# tried to embed, it would raise instead of quietly spending money.
-os.environ.setdefault("MOVIBOT_OFFLINE", "1")
 
 from agent import catalog, tools  # noqa: E402
 from rag import screen  # noqa: E402

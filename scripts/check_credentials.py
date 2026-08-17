@@ -151,17 +151,11 @@ def main() -> None:
         index_ok = False
         print(f"  {BAD} {'passage index':22} {exc}".replace("\n", " "))
 
-    offline = os.environ.get("MOVIBOT_OFFLINE", "").strip().lower() in ("1", "true", "yes")
-    if offline:
-        print(f"  {WARN} {'MOVIBOT_OFFLINE':22} set -- all spending is blocked at the client")
-
     print("\nWhat this configuration can do")
-    if llm_ok and index_ok and not offline:
+    if llm_ok and index_ok:
         print(f"  {OK} run the 11 test cases locally")
         print("    catalog from committed CSVs, passages from the committed matrix;")
         print("    no vector database and no Supabase involved")
-    elif llm_ok and offline:
-        print(f"  {WARN} credentials look usable, but MOVIBOT_OFFLINE blocks every model call")
     elif llm_ok and not index_ok:
         print(f"  {WARN} the planner can run, but semantic search cannot until the")
         print("    passage index is rebuilt:  python -m rag.ingest   # ~$0.007")
