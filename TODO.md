@@ -120,6 +120,17 @@ working set. Stale in several ways, and none has ever been run.
 - [ ] Add a negation case that exercises all three screen buckets, and one
       where the right answer is a *flagged* film (an attempted killing, not a
       death) so `flagged` is not treated as `rejected`
+- [ ] **`MAX_RECOMMENDATIONS = 3` is not being honoured.** A live production
+      run on "a Pixar film where nobody dies, besides Toy Story" listed all
+      **7** clear films. The screen returns a complete set and the model
+      presented the set, which reads as reasonable but contradicts the cap.
+      Decide which wins — the cap, or completeness when a layer is exhaustive
+      — and say so in one place rather than two
+- [ ] **"besides Toy Story" is ambiguous** and the model resolved it
+      differently across two runs: once as the franchise (four labels, one of
+      them the non-existent *Toy Story 4*), once as the single 1995 film. The
+      second answer then recommended Toy Story 2 and 3. Both readings are
+      defensible; pick one and make the tool description say it
 - [ ] Run all 11 and compare against what each says should happen
 - [ ] The three traps: "starring Tom Hanks" must refuse rather than answer Toy
       Story from pretraining; "besides Frozen and Moana" must become a filter;
