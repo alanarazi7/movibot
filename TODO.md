@@ -2,8 +2,10 @@
 
 Open items only. Due **2026-08-23**.
 
-Spending needs explicit go-ahead. **Spent so far: ~$0.018 of $13** — the corpus
-embedded once (~$0.0156), plus a handful of planner calls.
+Spending needs explicit go-ahead. **The live figure is on the TODO tab**, read
+from LLMod.ai's own accounting via `/api/budget` rather than typed here, where
+it went stale the moment anyone ran a query. The bulk of it is the corpus,
+embedded once (~$0.0156); the rest is planner calls.
 
 The app is live at [movibot-gamma.vercel.app](https://movibot-gamma.vercel.app)
 and answers real queries in production. Nothing is blocked on a credential:

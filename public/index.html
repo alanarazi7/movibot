@@ -290,6 +290,23 @@
     }
     .open-chips b { color: #c26a00; font-variant-numeric: tabular-nums; }
 
+    /* Budget card: read live from LLMod.ai, so the number cannot go stale. */
+    .budget-headline { display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap; }
+    .budget-spend {
+      font-size: 1.9rem; font-weight: 700; color: #111;
+      font-variant-numeric: tabular-nums; line-height: 1.1;
+    }
+    .budget-cap { color: #777; font-size: 0.9rem; }
+    .budget-stats {
+      display: flex; flex-wrap: wrap; gap: 1.5rem; margin-top: 1rem;
+      font-size: 0.78rem; color: #777;
+    }
+    .budget-stats b {
+      display: block; font-size: 0.95rem; color: #222; font-weight: 600;
+      font-variant-numeric: tabular-nums; margin-bottom: 0.1rem;
+    }
+    .budget-note { color: #8a9099; font-size: 0.76rem; margin-top: 1rem; }
+
     .rag-sources { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.8rem 0; }
     .rag-src {
       display: inline-flex; align-items: center; gap: 0.4rem;
@@ -1305,6 +1322,11 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
         <div id="status-progress"></div>
       </div>
 
+      <div class="card">
+        <label>Budget &mdash; live from LLMod.ai</label>
+        <div id="budget-body"><p class="pending">Loading&hellip;</p></div>
+      </div>
+
       <div class="card markdown" id="status-body">
         <p style="color:#888;font-size:0.88rem;">Loading…</p>
       </div>
@@ -1570,6 +1592,7 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
 
     let statusLoaded = false;
     async function loadStatus() {
+      loadBudget();
       if (statusLoaded) return;
       statusLoaded = true;
       const body = document.getElementById('status-body');
@@ -1582,6 +1605,75 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
       } catch (err) {
         statusLoaded = false;
         body.innerHTML = '<p class="error-text">Could not load TODO.md: ' + escapeHtml(err.message) + '</p>';
+      }
+    }
+
+    // --- Budget ---------------------------------------------------------
+    // The spend figure used to be typed into TODO.md, where it was stale the
+    // moment anyone ran a query. This reads LLMod.ai's own accounting instead.
+    // Refetched on every visit to the tab, since the whole point is freshness.
+
+    function usd(v) {
+      if (v == null) return '—';
+      // Spend here is fractions of a cent, so two decimals would round the
+      // interesting part away; the cap is a round number and never needs four.
+      return '$' + v.toFixed(Math.abs(v) < 1 ? 4 : 2);
+    }
+
+    function budgetHtml(b) {
+      if (!b.configured) {
+        return '<p class="pending">' + escapeHtml(b.reason || 'Not configured.') +
+               '</p>';
+      }
+      if (b.error) {
+        return '<p class="error-text">Could not read the budget: ' +
+               escapeHtml(b.error) + '</p>';
+      }
+
+      const frac = b.used_fraction == null ? 0 : b.used_fraction;
+      const pct = frac * 100;
+      // Amber and red are for a budget actually under pressure, not decoration.
+      const colour = pct >= 90 ? '#c62828' : pct >= 70 ? '#c26a00' : '#2e7d32';
+      const pctText = pct > 0 && pct < 1 ? pct.toFixed(2) + '%' : pct.toFixed(1) + '%';
+
+      let expiry = '';
+      if (b.key_expires) {
+        const d = new Date(b.key_expires);
+        if (!isNaN(d)) {
+          const days = Math.round((d - Date.now()) / 86400000);
+          expiry = '<div><b>' + d.toISOString().slice(0, 10) + '</b>key expires' +
+                   (days >= 0 ? ' · ' + days + 'd left' : ' · expired') + '</div>';
+        }
+      }
+
+      return `
+        <div class="budget-headline">
+          <span class="budget-spend">${usd(b.spend_usd)}</span>
+          <span class="budget-cap">spent of ${usd(b.max_budget_usd)}</span>
+        </div>
+        <div class="progress-row">
+          <div class="progress-bar"><span style="width:${Math.max(Math.min(pct, 100), frac > 0 ? 1 : 0)}%;background:${colour};"></span></div>
+          <span class="progress-num">${pctText}</span>
+        </div>
+        <div class="budget-stats">
+          <div><b>${usd(b.remaining_usd)}</b>remaining</div>
+          ${expiry}
+        </div>
+        <p class="budget-note">
+          Read from ${escapeHtml(b.source || 'the provider')} when this tab opens${b.cached ? ', cached up to 60s' : ''}.
+          The call is the proxy's accounting endpoint, not a model call, so checking costs nothing.
+        </p>`;
+    }
+
+    async function loadBudget() {
+      const body = document.getElementById('budget-body');
+      try {
+        const res = await fetch('/api/budget');
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        body.innerHTML = budgetHtml(await res.json());
+      } catch (err) {
+        body.innerHTML = '<p class="error-text">Could not reach /api/budget: ' +
+                         escapeHtml(err.message) + '</p>';
       }
     }
 

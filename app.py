@@ -56,6 +56,19 @@ def status():
         return _cors(jsonify({"markdown": None, "error": "TODO.md not bundled."})), 404
 
 
+@app.route("/api/budget", methods=["GET"])
+def budget():
+    """What the project has spent on LLMod.ai, and what it is allowed to spend.
+
+    Read live from the provider rather than typed into TODO.md, where it went
+    stale the moment anyone ran a query. Free: it is the proxy's accounting
+    endpoint, not a model call.
+    """
+    from agent import llm_client
+
+    return _cors(jsonify(llm_client.budget()))
+
+
 @app.route("/api/rag/decisions", methods=["GET"])
 def rag_decisions():
     with open(RAG_DECISIONS_PATH, "r", encoding="utf-8") as f:

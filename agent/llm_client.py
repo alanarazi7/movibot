@@ -123,6 +123,93 @@ def complete(
     return response.choices[0].message, usage_of(response)
 
 
+# How long a budget reading is reused. The figure moves only when this agent
+# spends, and a request costs a fraction of a cent, so a minute-old number is
+# never misleading -- it just stops a page refresh from hammering the provider.
+BUDGET_TTL_SECONDS = 60
+
+_budget_cache: tuple[float, dict[str, Any]] | None = None
+
+
+def _proxy_root() -> str:
+    """LLMod.ai's root, with the OpenAI-compatible /v1 suffix removed.
+
+    The admin routes below (/user/info, /key/info) sit beside /v1 rather than
+    under it, so OPENAI_BASE_URL cannot be used as-is.
+    """
+    base = os.environ.get("OPENAI_BASE_URL", "").rstrip("/")
+    return base[:-3].rstrip("/") if base.endswith("/v1") else base
+
+
+def budget() -> dict[str, Any]:
+    """This key's spend against its cap, read live from LLMod.ai.
+
+    Note this does not contradict the module docstring: it is a plain GET
+    against the proxy's own accounting, consumes no tokens, and costs nothing.
+    LLMod.ai runs LiteLLM, whose /user/info reports `spend` and `max_budget`
+    for the calling key, and /key/info adds the key's expiry.
+
+    Returns a dict that is always safe to serialise to the public API: the
+    provider's replies also carry the hashed key, the key name, and course and
+    group identifiers, none of which are copied out. `configured` is False
+    rather than raising when credentials are absent, so the caller can degrade.
+    """
+    global _budget_cache
+
+    import time
+
+    if _budget_cache is not None:
+        fetched_at, cached = _budget_cache
+        if time.time() - fetched_at < BUDGET_TTL_SECONDS:
+            return {**cached, "cached": True}
+
+    if offline():
+        return {"configured": False,
+                "reason": "MOVIBOT_OFFLINE is set, so no budget is being spent."}
+
+    root, key = _proxy_root(), os.environ.get("OPENAI_API_KEY", "")
+    if not root or _is_placeholder(key):
+        return {"configured": False,
+                "reason": "OPENAI_API_KEY or OPENAI_BASE_URL is unset."}
+
+    import requests
+
+    headers = {"Authorization": f"Bearer {key}"}
+
+    def get(path: str) -> dict[str, Any]:
+        resp = requests.get(root + path, headers=headers, timeout=15)
+        resp.raise_for_status()
+        return resp.json()
+
+    try:
+        info = get("/user/info").get("user_info") or {}
+        spend = float(info.get("spend") or 0.0)
+        cap = info.get("max_budget")
+        cap = float(cap) if cap is not None else None
+
+        # Best-effort: the expiry is a nice-to-have, and a failure here should
+        # not cost the caller the spend figure, which is the point of the call.
+        try:
+            expires = (get("/key/info").get("info") or {}).get("expires")
+        except Exception:  # noqa: BLE001
+            expires = None
+
+        result = {
+            "configured": True,
+            "spend_usd": round(spend, 6),
+            "max_budget_usd": cap,
+            "remaining_usd": round(cap - spend, 6) if cap is not None else None,
+            "used_fraction": round(spend / cap, 6) if cap else None,
+            "key_expires": expires,
+            "source": "LLMod.ai /user/info (LiteLLM)",
+        }
+    except Exception as exc:  # noqa: BLE001 - surfaced to the caller as JSON
+        return {"configured": True, "error": f"{type(exc).__name__}: {exc}"}
+
+    _budget_cache = (time.time(), result)
+    return {**result, "cached": False}
+
+
 def usage_of(response: Any) -> dict[str, int]:
     """Token counts if the provider reported them, else zeros."""
     usage = getattr(response, "usage", None)
