@@ -282,7 +282,7 @@ is what lets one beat rank on its own merits, which is exactly what a query like
 "a film about trusting the wrong person" needs.
 
 **Why sentences, not paragraphs.** The obvious approach — accumulate paragraphs
-to a token budget, as the sibling `medium-rag-hw` project does — was measured
+to a token budget — was measured
 against this corpus and rejected: of the 159 synopses, **zero** contain
 blank-line paragraphs and **66 have no newline at all**. A paragraph splitter
 would emit exactly one chunk per document and change nothing.

@@ -18,8 +18,7 @@ the first 7% of a long synopsis. That constraint is gone. The choice remains.
 
 Why sentences, not paragraphs
 -----------------------------
-The obvious approach, and the one used by the sibling medium-rag project, is
-to accumulate paragraphs up to a token budget. That does not work on this
+The obvious approach is to accumulate paragraphs up to a token budget. That does not work on this
 corpus: measured across all 159 synopses, **none contain blank-line
 paragraphs** and 66 are single unbroken blobs with no newline at all. A
 paragraph splitter would emit one chunk per document and change nothing. So

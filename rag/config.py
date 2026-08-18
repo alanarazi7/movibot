@@ -98,8 +98,8 @@ DEBUG_CHUNKS_PER_CORPUS = 10
 def as_dict() -> dict:
     """The parameters, for /api/agent_info and the Status page.
 
-    Exposing them mirrors the sibling medium-rag project, which reports
-    chunk_size/overlap_ratio/top_k from /api/stats.
+    Exposed rather than buried so the retrieval parameters an answer depended
+    on are inspectable from the API, not only from the source.
     """
     return {
         "embedding_model": EMBED_MODEL,

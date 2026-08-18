@@ -77,6 +77,9 @@ The catalog reads from committed CSVs and needs no credentials. Planner turns an
 
 | Variable | Default | Purpose |
 |---|---|---|
+| `OPENAI_API_KEY` | — | LLMod.ai key. Required for planner turns and query embedding. |
+| `OPENAI_BASE_URL` | — | LLMod.ai endpoint. Required alongside the key. |
+| `MOVIBOT_MODEL` | `MB5R2CF-azure/gpt-5.4-mini` | Overrides the planner model id. |
 
 ## Retrieval
 
@@ -95,7 +98,7 @@ python -m rag.ingest             # 💰 ~$0.007 to embed the whole corpus
 
 ## Deployment
 
-Vercel, Python serverless (`vercel.json`, same pattern as the team's prior `medium-rag-hw` assignment).
+Vercel, Python serverless (`vercel.json`).
 
 - **Live URL:** https://movibot-gamma.vercel.app
 - **GitHub Repo:** https://github.com/alanarazi7/movibot

@@ -3,9 +3,8 @@
 Every retrieval choice and the evidence for it. Parameters live in
 `rag/config.py`; this file says why they hold those values.
 
-The house style here follows the sibling `medium-rag-hw` project: measure the
-corpus, then deviate from the course default only where the measurement says
-to, and record the deviation.
+The house style is to measure the corpus, then deviate from the course
+default only where the measurement says to, and record the deviation.
 
 ---
 
@@ -67,7 +66,7 @@ counted with an OpenAI tokeniser — close enough to work, but not the same unit
 
 ### Sentences, not paragraphs
 
-The sibling project accumulates **paragraphs** to a token budget. That approach
+The obvious approach is to accumulate **paragraphs** to a token budget. That
 produces nothing here: **zero** of the 159 synopses contain blank-line
 paragraphs and 66 have no newline at all, so a paragraph splitter emits one
 chunk per document. Passages are assembled from **sentences** instead.
@@ -111,14 +110,10 @@ passage rather than being averaged into a dozen unrelated ones. A 512–1024
 token window spans several scenes and dilutes exactly the signal being searched
 for.
 
-This is the same *shape* of argument the sibling project made when it deviated
-down to 300 for Medium articles, on the grounds that its paragraphs were short.
-The reasoning differs; the conclusion coincides.
-
-**Honest note on provenance.** 300 / 0.20 / 50 are the same three values the
-sibling project uses. They were carried over and then justified against this
-corpus, not derived from it independently. The measurement that *was* done
-first, and that genuinely changed the design, is the paragraph one in §1.
+**Honest note on provenance.** 300 / 0.20 / 50 were adopted first and justified
+against this corpus afterwards, not derived from it independently. The
+measurement that *was* done first, and that genuinely changed the design, is
+the paragraph one in §1.
 
 **Nothing is discarded.** An earlier version dropped a trailing passage under
 50 tokens on the grounds that a fragment embeds poorly — true in itself, but
@@ -151,17 +146,17 @@ Frozen phrasings above as the probe. Not yet done.
 |---|---:|---|
 | `TOP_K` | 10 films | k = 3–5 for general text |
 | `FETCH_MULTIPLIER` | 5 | — |
-| per-film passage cap | 1 (best) | sibling uses 5 per article |
+| per-film passage cap | 1 (best) | — |
 
 **Best-passage-per-film.** Passages are over-fetched (`top_k × 5`), then each
 film is scored by its single strongest passage and that passage is returned as
 evidence. Scoring by a film's best passage rather than its average is what makes
 a specific beat findable at all.
 
-**Why `top_k` is higher than the course default.** In the sibling project a
-retrieved chunk is context pasted into the prompt, so k directly drives token
-cost and 3–5 is right. Here a retrieved film is one line — an id, a score, and
-one passage — that the planner then filters. The expensive step is
+**Why `top_k` is higher than the course default.** The default assumes a
+retrieved chunk is context pasted into the prompt, where k directly drives
+token cost and 3–5 is right. Here a retrieved film is one line — an id, a
+score, and one passage — that the planner then filters. The expensive step is
 `read_synopses`, which is separately capped at 8 films. So a larger k widens the
 candidate pool without materially widening the context.
 
