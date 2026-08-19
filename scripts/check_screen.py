@@ -148,6 +148,60 @@ def check_keep_flagged() -> list[str]:
     return failures
 
 
+def check_languages() -> list[str]:
+    """An English language name must reach the films, not zero.
+
+    The catalog spells spoken languages the way TMDB ships them -- "Français",
+    "हिन्दी", "普通话" -- so a filter on "Hindi" matched nothing while still
+    reporting itself as applied. Three Hindi films sat in the catalog and the
+    agent answered "no Disney feature films in this catalog are marked as
+    Hindi-language", which is the failure this file exists to catch: the filter
+    looked applied and selected nothing.
+    """
+    def matched(**kwargs) -> tuple[int, dict]:
+        ctx = tools.ToolContext()
+        out = tools.filter_catalog(ctx=ctx, **kwargs)
+        return out["matched"], out["filters_applied"]
+
+    failures = []
+
+    # Every language in the catalog must be reachable by its English name.
+    # English is 235 rather than the 233 with English in `spoken_languages`:
+    # Homeward Bound II and Frank and Ollie carry an empty language list and an
+    # `original_language` of "en", so matching both columns recovers them.
+    for name, count in [("Hindi", 3), ("French", 16), ("Spanish", 12),
+                        ("Mandarin", 4), ("Japanese", 3), ("Korean", 2),
+                        ("Russian", 2), ("Swahili", 1), ("English", 235)]:
+        n, _ = matched(languages=[name])
+        if n != count:
+            failures.append(f"languages=['{name}'] matched {n}, expected {count}")
+
+    # The endonym and the ISO code must agree with the English name.
+    for name, endonym, iso in [("Hindi", "हिन्दी", "hi"), ("French", "Français", "fr")]:
+        counts = {matched(languages=[x])[0] for x in (name, endonym, iso, name.lower())}
+        if len(counts) != 1:
+            failures.append(f"{name} spellings disagree: {sorted(counts)}")
+
+    # The test-bed case, end to end: Dangal must lead on rating.
+    ctx = tools.ToolContext()
+    out = tools.filter_catalog(ctx=ctx, languages=["Hindi"], studio="Disney")
+    films = [f["film"] for f in out.get("films", out.get("best_rated", []))]
+    if not films or films[0] != "Dangal (2016)":
+        failures.append(f"a Disney movie in Hindi led with {films[:1] or 'nothing'}, "
+                        f"expected Dangal (2016)")
+
+    # An unmatchable language must be reported, never swallowed -- otherwise an
+    # empty result reads as a fact about the films rather than about the query.
+    n, applied = matched(languages=["Klingon"])
+    if not applied.get("languages_unmatched"):
+        failures.append("an unmatchable language was silently ignored")
+    n, applied = matched(languages=["Hindi", "Klingon"])
+    if n != 3 or not applied.get("languages_unmatched"):
+        failures.append("a mixed valid/invalid language list was not handled")
+
+    return failures
+
+
 def main() -> int:
     result = tools.screen_out(vocabulary="death")
     full = screen.screen(
@@ -191,6 +245,7 @@ def main() -> int:
 
     failures.extend(check_exclusions())
     failures.extend(check_keep_flagged())
+    failures.extend(check_languages())
 
     for line in warnings:
         print(f"  warning (precision only): {line}")
@@ -201,8 +256,8 @@ def main() -> int:
         print(f"\n{len(failures)} failure(s). These guardrails are not safe to trust.")
         return 1
     print(f"\nOK -- no film with a known death was reported clear, title exclusion "
-          f"removes rows in both addressing forms, and the forward scan returns "
-          f"quoted matches."
+          f"removes rows in both addressing forms, the forward scan returns "
+          f"quoted matches, and every language is reachable by its English name."
           f"{f' {len(warnings)} precision warning(s).' if warnings else ''}")
     return 0
 

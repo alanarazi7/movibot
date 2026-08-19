@@ -179,6 +179,72 @@ def resolve(label: str) -> int | None:
     return ids[0] if ids and len(ids) == 1 else None
 
 
+# The catalog stores spoken languages under their endonym -- "Français",
+# "हिन्दी", "普通话" -- because that is what TMDB ships. A model asked for a
+# Hindi film passes "Hindi", which matches none of them, and the filter then
+# reports itself as applied while selecting nothing: the query looks answered
+# and comes back empty. Only "English" and "Latin" happen to survive that
+# mismatch, so 19 of the 21 languages in the catalog were unreachable.
+#
+# The ISO codes come from `original_language`, which distinguishes a film made
+# in Hindi from one that merely has Hindi dialogue, so both columns are matched.
+LANGUAGE_ALIASES: dict[str, tuple[str, str]] = {
+    # english name        (endonym in spoken_languages, ISO 639-1)
+    "english":            ("English", "en"),
+    "french":             ("Français", "fr"),
+    "spanish":            ("Español", "es"),
+    "italian":            ("Italiano", "it"),
+    "german":             ("Deutsch", "de"),
+    "mandarin":           ("普通话", "zh"),
+    "chinese":            ("普通话", "zh"),
+    "norwegian":          ("Norsk", "no"),
+    "japanese":           ("日本語", "ja"),
+    "latin":              ("Latin", "la"),
+    "hindi":              ("हिन्दी", "hi"),
+    "greek":              ("ελληνικά", "el"),
+    "portuguese":         ("Português", "pt"),
+    "korean":             ("한국어/조선말", "ko"),
+    "swedish":            ("svenska", "sv"),
+    "russian":            ("Pусский", "ru"),
+    "dutch":              ("Nederlands", "nl"),
+    "turkish":            ("Türkçe", "tr"),
+    "swahili":            ("Kiswahili", "sw"),
+    "danish":             ("Dansk", "da"),
+    "ukrainian":          ("Український", "uk"),
+    "vietnamese":         ("Tiếng Việt", "vi"),
+}
+
+
+@lru_cache(maxsize=1)
+def _language_lookup() -> dict[str, tuple[str, str]]:
+    """Every spelling a caller might use -> (endonym, ISO code).
+
+    Built from the alias table and from the catalog itself, so a language
+    present in the data is reachable by its endonym even if no alias was
+    written for it.
+    """
+    out: dict[str, tuple[str, str]] = {}
+    for name, pair in LANGUAGE_ALIASES.items():
+        endonym, iso = pair
+        out[name] = pair
+        out[endonym.lower()] = pair
+        out[iso] = pair
+    for values in movies()["spoken_languages"]:
+        for endonym in values:
+            out.setdefault(endonym.lower(), (endonym, ""))
+    return out
+
+
+def resolve_language(name: str) -> tuple[str, str] | None:
+    """An English name, endonym or ISO code -> the pair to match on, or None.
+
+    None means the catalog has no such language, which the caller must report
+    rather than silently returning an empty result -- an unmatched argument
+    that looks applied is indistinguishable from a genuine absence.
+    """
+    return _language_lookup().get((name or "").strip().lower())
+
+
 def stats() -> dict[str, Any]:
     """Small summary used by tests and the /api/agent_info payload."""
     df = movies()

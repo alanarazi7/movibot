@@ -160,11 +160,40 @@ def filter_catalog(
         applied["studio"] = studio
 
     if languages:
-        wanted = [l.lower() for l in languages]
-        df = df[df["spoken_languages"].apply(
-            lambda ls: any(w in l.lower() for w in wanted for l in ls)
-        )]
+        # "Hindi" has to reach हिन्दी, and "Mandarin" 普通话, or the filter
+        # selects nothing while reporting itself as applied -- which is how a
+        # catalog holding three Hindi films answered "a Disney movie in Hindi"
+        # with "none are marked as Hindi-language".
+        endonyms, isos, unmatched = [], [], []
+        for name in languages:
+            pair = catalog.resolve_language(name)
+            if pair is None:
+                unmatched.append(name)
+                continue
+            endonyms.append(pair[0].lower())
+            if pair[1]:
+                isos.append(pair[1])
+
+        if endonyms or isos:
+            spoken = df["spoken_languages"].apply(
+                lambda ls: any(e == l.lower() for e in endonyms for l in ls)
+            )
+            # `original_language` separates a film made in Hindi from one that
+            # merely has Hindi dialogue. Both answer "a movie in Hindi", and
+            # the rating order decides which leads.
+            original = df["original_language"].astype(str).str.lower().isin(isos)
+            df = df[spoken | original]
+        elif unmatched:
+            df = df.iloc[0:0]
+
         applied["languages"] = languages
+        if unmatched:
+            # Never swallowed: an argument the catalog cannot match must be
+            # reported, or an empty result reads as a fact about the films.
+            applied["languages_unmatched"] = unmatched
+            applied["languages_available"] = sorted(
+                {v[0] for v in catalog.LANGUAGE_ALIASES.values()}
+            )
 
     # "has non-English dialogue" is not a column; it is a property of the
     # language list. Encoding it here keeps the model from having to know the
@@ -614,7 +643,17 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                     "studio": {"type": "string", "description": "Production company substring, e.g. 'Pixar'."},
                     "languages": {
                         "type": "array", "items": {"type": "string"},
-                        "description": "Spoken languages, ANY may match, e.g. ['Français'].",
+                        "description": (
+                            "Languages, ANY may match. Pass the ordinary "
+                            "English name -- ['Hindi'], ['French'], "
+                            "['Mandarin'] -- and it is resolved to however the "
+                            "catalog spells it; an endonym or ISO code works "
+                            "too. Matches a film made in that language or one "
+                            "with dialogue in it. A language the catalog does "
+                            "not have comes back as languages_unmatched rather "
+                            "than as an empty result, so an empty result here "
+                            "is a real absence you may report."
+                        ),
                     },
                     "exclude_english_only": {
                         "type": "boolean",
