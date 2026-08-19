@@ -183,4 +183,40 @@ Three rewrites changed behaviour and have never met a live model:
 - [ ] **C08 ceiling** — a request for everything must return at most
       `MAX_RECOMMENDATIONS` films and say it is not the complete list
 
+## Release gates
+
+From the same QA review. Not defects; verification that would violate the course
+contract if it failed. The free ones can run before any spending.
+
+### G01 — `/api/execute` disagrees with itself  ← free, decision needed
+
+The spec wants `status`, `error`, `response`, `steps`. The error paths in
+`app.py` return exactly those four. The success path returns `loop.execute()`
+straight through, which is **seven**: it adds `plan`, `narrowing` and `budget`.
+Those three drive the ledger, narrowing and budget panels in the GUI, so they
+earn their place — but a strict reading of the contract fails on them.
+
+- [ ] Decide: nest the extras (under `steps`, or a `meta` key) for a strict
+      reading, or keep them flat and accept a lenient one
+- [ ] Whichever is chosen, make the success and error paths agree
+
+### Free to run now
+
+- [ ] **G03** — module names identical across `/api/model_architecture`,
+      `/api/agent_info` and `/api/execute` `steps[].module`, by exact string
+- [ ] **G04** — deployed text and embedding model ids are the course-provided
+      deployments; record them in a non-secret diagnostic view
+- [ ] **G09** — every displayed count derives from the current build
+
+### Needs the paid round
+
+- [ ] **G02** — every model call appears in `steps`, in order, with module,
+      prompt and response. No unlogged final synthesis call
+- [ ] **G05** — a high-complexity bounded request finishes well under 300 s
+
+### At handover
+
+- [ ] **G10** — record the commit SHA and confirm the live GUI and API match the
+      reviewed source
+
 Deployment steps live in the README. Costs live on the Budget tab.
