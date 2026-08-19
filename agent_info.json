@@ -36,7 +36,7 @@
       "status": "Tool path verified locally at zero cost. The final natural-language response will be captured from the first real planner run once the LLM endpoint is enabled."
     },
     {
-      "prompt": "Something safe for a toddler where nobody dies.",
+      "prompt": "An animated film where nobody dies.",
       "expected_tool_path": "Planner (writes the condition ledger in the same message) -> CatalogFilter(genres=['Animation']) -> LexicalScreen(vocabulary='death') -> Planner -> Final Answer",
       "verified_tool_output": "CatalogFilter matched 90 animated films. LexicalScreen then scanned every plot passage of all 90 for a 37-word death vocabulary and split them: 27 clear, 61 flagged, 2 with too little plot text to screen. The best-rated clear films are Inside Out (7.83), WALL-E (7.73), Toy Story 3 (7.52). The Lion King and Up are flagged, which is correct -- Mufasa and Ellie die, and neither fact appears in any genre, keyword or overview field. Note that flagged means unresolved rather than rejected: a match is often an attempt or a false belief (\"believing Woody murdered Buzz\"), which is modality rather than vocabulary, so the matching quote comes back with the flag. Two model turns, no embedding call and no synopsis read.",
       "status": "Tool path and every figure above verified locally at zero cost, and asserted by scripts/check_screen.py. The final natural-language response will be captured from a real planner run."

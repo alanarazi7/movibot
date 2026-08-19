@@ -857,7 +857,7 @@
                   <td class="n">1 of 4</td>
                 </tr>
                 <tr>
-                  <td>&ldquo;Something safe for a toddler where nobody dies&rdquo;</td>
+                  <td>&ldquo;An animated film where nobody dies&rdquo;</td>
                   <td>Planner &rarr; CatalogFilter &rarr; LexicalScreen &rarr; Planner &rarr; answer</td>
                   <td class="n">2 of 4</td>
                 </tr>
@@ -1804,8 +1804,8 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
       },
       {
         kind: 'answer',
-        q: 'Something safe for a toddler where nobody dies',
-        expect: 'Must call SynopsisReader and cite what it read. Genre and keywords cannot establish that nobody dies; if it did not read a plot, it must say the check was not performed.'
+        q: 'An animated film where nobody dies',
+        expect: 'CatalogFilter(genres=[Animation]) then LexicalScreen(death) — 90 animated films split 27 clear / 61 flagged / 2 insufficient_text. The claim test: a clear film may be described as having no death-related terms in its plot text, never as one where nobody dies. Upgrading the screen’s finding to the user’s phrasing is the failure.'
       },
       {
         kind: 'list',

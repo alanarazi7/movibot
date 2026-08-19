@@ -1,6 +1,6 @@
 # MoviBot
 
-An agent for movie discovery under mixed constraints: structured facts (year, studio, runtime, genre) combined with fuzzy, subjective ones ("no deaths," "not scary," "safe for a toddler") that no catalog column can pre-encode. Course project for *Introduction to Modern AI Agents*.
+An agent for movie discovery under mixed constraints: structured facts (year, studio, runtime, genre) combined with fuzzy, subjective ones ("no deaths," "not scary," "nothing where the hero is betrayed") that no catalog column can pre-encode. Course project for *Introduction to Modern AI Agents*.
 
 Team: Yair Zack, Andrei Nekliudov, Alan Arazi (batch 2, order 10).
 

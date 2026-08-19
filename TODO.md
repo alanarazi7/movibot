@@ -197,21 +197,34 @@ support the adjective.
 - [ ] The final rationale must cite that evidence rather than inferring
       empowerment from princess/royalty metadata
 
-### C04 — "safe for a toddler" is not established
+### C04 — the toddler example is gone  ✅ closed 2026-08-20
 
-`prompt_examples[1]` checks `genres=['Animation']` and a death screen. Animation
-plus the absence of a death-vocabulary hit is not toddler suitability: peril,
-frightening imagery, intensity and emotional weight are independent conditions.
-The catalog stores no age rating, and the studio filter is membership rather
-than content rating, so a Disney label can carry a PG-13 title.
+`prompt_examples[1]` asked for "something safe for a toddler where nobody dies"
+and answered it with `genres=['Animation']` plus a death screen. That does not
+establish toddler suitability, and no amount of prompt work could make it:
 
-**Decision needed before spending.** Either verify what can be verified and
-qualify the rest, or decline the broader claim outright and say why. Whichever
-is chosen has to hold in the prompt, the example and the answer text alike.
+- **The catalog carries no age rating of any kind.** The only candidate column
+  is `adult`, which is `False` for all 238 films — TMDB's pornography flag, not
+  a content rating. Peril, frightening imagery and emotional weight are not
+  encoded anywhere.
+- Measured: of the **27** animated films the old path called clear on death,
+  **14 are flagged on the `scary` vocabulary** — including the two it led with,
+  Inside Out (`frightening`) and Toy Story 3 (`horror`, the incinerator).
+  Over half of what it would have called toddler-safe.
 
-- [ ] Decide, then make the ledger carry both conditions separately
-- [ ] The answer must never assert general toddler safety on the strength of the
-      death screen alone
+Decision: **drop the claim rather than qualify it**, since a child-safety
+judgement the data cannot support is the worst possible place to hedge. The
+example is now "An animated film where nobody dies" — same tool path, same
+verified figures (90 animated → 27 clear / 61 flagged / 2 insufficient_text),
+and every condition in it is one the tools actually settle.
+
+Removed from `agent_info.json`, the test bed, the Architecture tab's tool-path
+table and the README. Kept: "for my 3-year-old" in the pitch deck, the input
+placeholder and the motivating query — those ask for *no deaths*, which is
+settled exhaustively, and claim nothing about age-suitability.
+
+- [ ] The replacement example still needs its `full_response` and `steps`
+      captured from a live run, along with the other one — see C01
 
 ### Also waiting on this round
 
