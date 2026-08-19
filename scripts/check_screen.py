@@ -100,6 +100,54 @@ def check_exclusions() -> list[str]:
     return failures
 
 
+def check_keep_flagged() -> list[str]:
+    """The forward direction must return matches, quoted, and narrow to them.
+
+    The scan engine was always general -- it takes any word list -- but every
+    affordance pointed backwards: the tool excluded, narrowed to `clear`, and
+    told the caller to "recommend from the clear set" when too many films
+    matched. So a request to *find* something got answered by ranking instead,
+    which is the one thing a single incidental word cannot survive.
+    """
+    failures = []
+    words = ["hat", "hats", "fez", "bonnet"]
+
+    fwd = tools.screen_out(words=words, keep="flagged")
+    back = tools.screen_out(words=words, keep="clear")
+
+    if fwd["flagged"] != back["flagged"] or fwd["clear"] != back["clear"]:
+        failures.append("the two directions disagree on the same word list")
+    if not fwd.get("matching_films"):
+        failures.append("keep='flagged' returned no matching films")
+
+    # Every match must arrive with the passage that produced it: a presence
+    # claim the model cannot cite is exactly the kind it should not make.
+    for m in fwd.get("matching_films", []):
+        if not m.get("quote"):
+            failures.append(f"{m['film']} matched but came back without a quote")
+            break
+
+    # The two films where the wearer really is an animal. Both are invisible to
+    # ranking on this request; both are trivially found by the scan.
+    found = {m["film"] for m in fwd.get("matching_films", [])}
+    for film in ["Zootopia (2016)", "Aladdin (1992)"]:
+        if film not in found:
+            failures.append(f"{film} names a hat in its plot text but did not match")
+
+    if fwd.get("flagged_note"):
+        failures.append("keep='flagged' told the caller to use the clear set instead")
+
+    # Narrowing must follow the direction, or the next tool searches the films
+    # that failed the condition.
+    ctx = tools.ToolContext()
+    tools.screen_out(words=words, keep="flagged", ctx=ctx)
+    if set(ctx.candidates() or []) != set(
+            screen.screen(words, candidate_ids=[int(i) for i in catalog.movies()["id"]])["flagged"]):
+        failures.append("keep='flagged' did not narrow the working set to the matches")
+
+    return failures
+
+
 def main() -> int:
     result = tools.screen_out(vocabulary="death")
     full = screen.screen(
@@ -142,6 +190,7 @@ def main() -> int:
         failures.append(f"tool reports {result['clear']} clear, module says {len(clear)}")
 
     failures.extend(check_exclusions())
+    failures.extend(check_keep_flagged())
 
     for line in warnings:
         print(f"  warning (precision only): {line}")
@@ -151,8 +200,9 @@ def main() -> int:
     if failures:
         print(f"\n{len(failures)} failure(s). These guardrails are not safe to trust.")
         return 1
-    print(f"\nOK -- no film with a known death was reported clear, "
-          f"and title exclusion removes rows in both addressing forms."
+    print(f"\nOK -- no film with a known death was reported clear, title exclusion "
+          f"removes rows in both addressing forms, and the forward scan returns "
+          f"quoted matches."
           f"{f' {len(warnings)} precision warning(s).' if warnings else ''}")
     return 0
 

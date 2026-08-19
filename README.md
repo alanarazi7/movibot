@@ -15,11 +15,13 @@ MoviBot is a **ReAct agent**: a planner model reasons, calls tools, observes wha
 | Tool | Answers from | Narrows | Cost |
 |---|---|---|---|
 | `filter_catalog` | catalog columns | all → N | free, exhaustive |
-| `screen_out` | a word scan | N → clear | free, exhaustive |
+| `screen_out` | a word scan | N → the half you keep | free, exhaustive |
 | `search_plots` | meaning | N → a top handful | ~$0.0000002 |
 | `read_synopses` | full text | ≤ 8 films | free, token-heavy |
 
 `screen_out` is what answers the query in the pitch above. A negation cannot be retrieved for: embed *"no deaths"* and the top hits are the films where somebody dies, because that is what those plots say. So it is screened instead — every plot passage of every candidate is scanned, which is exhaustive over the word list in a way fixed-K retrieval cannot be. Its error is one-sided by design: *"dead heat"* over-excludes, it never under-excludes. A match makes a film **flagged**, not rejected, since a word list cannot tell an attempt from an outcome.
+
+The same scan runs forwards. *"An animal that wears a hat"* is one small detail inside a 300-token passage, so ranking it returns films *about* animals while the film whose plot says the hat *"lands on Tod"* places nowhere — scanning for the word finds it, and keeping the matched half returns each film with the passage that proves it. When nothing matches, that is the answer: plot text records what happens rather than what things look like.
 
 **Guardrails live in the data and tool code, never in the prompt** — the model cannot forget them and a bad plan cannot bypass them. Results are always ordered by `weighted_rating` rather than raw `vote_average`; `read_synopses` reads at most 8 films, truncated to 6,000 characters each, which is what bounds the cost of a turn; and `screen_out` refuses to certify a film with under 600 tokens of plot text, so absence of evidence is never reported as evidence.
 

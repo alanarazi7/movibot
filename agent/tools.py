@@ -260,22 +260,42 @@ def _describe(applied: dict[str, Any]) -> str:
 def screen_out(
     words: list[str] | None = None,
     vocabulary: str | None = None,
+    keep: str = "clear",
     ctx: "ToolContext | None" = None,
 ) -> dict[str, Any]:
-    """Exclude every candidate whose plot mentions any of `words`. Free.
+    """Scan every plot passage of every candidate for `words`. Free, both ways.
 
-    This is how a negation gets answered: exhaustively and in one pass, rather
-    than by ranking (which surfaces the films that fail the condition) or by
-    reading (which is bounded at eight films and cannot cover a set of 200).
+    One pass over the corpus splits the candidates into those where a listed
+    word appears and those where none does; `keep` decides which half survives.
+    Either way the scan is exhaustive over the word list, which is the property
+    neither ranking nor reading can offer: no film escapes it by placing
+    eleventh, and none is missed because the budget ran out at eight synopses.
 
-    The working set narrows to the `clear` films, so whatever follows is already
-    restricted to candidates that passed. Flagged films are NOT rejected -- a
-    match may be an attempt or a rumour -- and can still be read by name.
+      keep="clear"    (default) the negation case. "nobody dies", "nothing
+                      scary". Searching for these returns the films that fail
+                      them, because that is what those plots say, so they are
+                      screened instead.
+      keep="flagged"  the presence case. "an animal that wears a hat", "a film
+                      with a train". A concrete noun that would literally be
+                      written down in a plot description is found by scanning
+                      for the word, not by ranking whole passages on overall
+                      similarity -- ranking "an animal that wears a hat"
+                      retrieves animal films, since one incidental word barely
+                      moves a 300-token passage vector.
+
+    The working set narrows to whichever half was kept. In the default
+    direction a flagged film is NOT rejected -- the match may be an attempt or
+    a rumour -- and can still be read by name.
     """
     resolved = screening.resolve_words(words, vocabulary)
     if not resolved:
         return {"error": "Pass `words`, or a `vocabulary` from: "
                          + ", ".join(screening.VOCABULARIES)}
+
+    keep = (keep or "clear").strip().lower()
+    if keep not in ("clear", "flagged"):
+        return {"error": "`keep` must be 'clear' (films where no listed word "
+                         "appears) or 'flagged' (films where one does)."}
 
     # Always hand the screen an explicit candidate list. Left to infer its own
     # universe it can only see films that have plot passages, so the four films
@@ -292,8 +312,12 @@ def screen_out(
     thin = result["insufficient_text"]
 
     if ctx is not None:
-        ctx.narrow(set(clear), f"screened out {len(resolved)} words, "
-                               f"{len(flagged)} flagged")
+        if keep == "clear":
+            ctx.narrow(set(clear), f"screened out {len(resolved)} words, "
+                                   f"{len(flagged)} flagged")
+        else:
+            ctx.narrow(set(flagged), f"kept the {len(flagged)} films mentioning "
+                                     f"any of {len(resolved)} words")
 
     def labels(ids: list[int]) -> list[dict[str, Any]]:
         rows = [(catalog.label_of(i), catalog.rating_of(i)) for i in ids]
@@ -301,48 +325,87 @@ def screen_out(
         rows.sort(key=lambda fr: -(fr[1] or 0))
         return [{"film": f, "rating": round(r, 2) if r else None} for f, r in rows]
 
-    clear_labels = labels(clear)
+    def with_evidence(ids: list[int]) -> list[dict[str, Any]]:
+        """Films best-rated first, each carrying the passage that matched."""
+        rows = [(i, catalog.label_of(i), catalog.rating_of(i)) for i in ids]
+        rows = [r for r in rows if r[1]]
+        rows.sort(key=lambda r: -(r[2] or 0))
+        return [
+            {
+                "film": lab,
+                "matched": [h["word"] for h in result["evidence"].get(i, [])],
+                "quote": (result["evidence"].get(i) or [{}])[0].get("quote"),
+            }
+            for i, lab, _ in rows
+        ]
+
     out: dict[str, Any] = {
         "screened_for": resolved if len(resolved) <= 12 else
                         resolved[:12] + [f"... and {len(resolved) - 12} more"],
+        "kept": keep,
         "clear": len(clear),
         "flagged": len(flagged),
         "insufficient_text": len(thin),
-        "scope": "search and reading now cover only the clear films",
         "meaning": (
             "clear = no listed word appears anywhere in the film's plot text, "
             f"and it has at least {result['min_screen_tokens']} tokens of plot "
             "for that absence to be meaningful. flagged = a word appears, which "
             "may be an attempt, threat or rumour rather than an outcome; read "
-            "the quote before rejecting. insufficient_text = too little plot "
-            "text to screen; these were NOT verified either way."
+            "the quote before deciding what it shows. insufficient_text = too "
+            "little plot text to screen; these were NOT verified either way."
         ),
     }
 
-    out["clear_films"] = clear_labels[:PREVIEW_FILMS]
-    if len(clear_labels) > PREVIEW_FILMS:
-        out["clear_note"] = (
-            f"Showing the {PREVIEW_FILMS} best rated of {len(clear_labels)} "
-            "clear films; all of them are in scope."
-        )
+    if keep == "clear":
+        clear_labels = labels(clear)
+        out["scope"] = "search and reading now cover only the clear films"
+        out["clear_films"] = clear_labels[:PREVIEW_FILMS]
+        if len(clear_labels) > PREVIEW_FILMS:
+            out["clear_note"] = (
+                f"Showing the {PREVIEW_FILMS} best rated of {len(clear_labels)} "
+                "clear films; all of them are in scope."
+            )
 
-    # Evidence only when the flagged set is small enough to be worth quoting.
-    # Beyond that the model should not be resolving flags one by one anyway --
-    # it should recommend from the clear set.
-    if flagged and len(flagged) <= MAX_FLAGGED_EVIDENCE:
-        out["flagged_films"] = [
-            {
-                "film": catalog.label_of(i),
-                "matched": [h["word"] for h in result["evidence"].get(i, [])],
-                "quote": (result["evidence"].get(i) or [{}])[0].get("quote"),
-            }
-            for i in flagged
-        ]
-    elif flagged:
-        out["flagged_note"] = (
-            f"{len(flagged)} films flagged -- too many to quote. Recommend from "
-            "the clear set, or narrow further before screening."
+        # Evidence only when the flagged set is small enough to be worth
+        # quoting. Beyond that the model should not be resolving flags one by
+        # one anyway -- it should recommend from the clear set.
+        if flagged and len(flagged) <= MAX_FLAGGED_EVIDENCE:
+            out["flagged_films"] = with_evidence(flagged)
+        elif flagged:
+            out["flagged_note"] = (
+                f"{len(flagged)} films flagged -- too many to quote. Recommend "
+                "from the clear set, or narrow further before screening."
+            )
+    else:
+        # The matches ARE the answer here, so they always come back quoted --
+        # a presence claim the model cannot cite is exactly the kind it should
+        # not be making. The quote also carries the part a word list cannot
+        # judge: "the hat lands on Tod" and "Bowler Hat Guy" both match `hat`,
+        # and only the passage says which one involves an animal.
+        matches = with_evidence(flagged)
+        out["scope"] = "search and reading now cover only the matching films"
+        out["matching_films"] = matches[:PREVIEW_FILMS]
+        out["meaning"] = (
+            "Every plot passage of every candidate was scanned, so this is "
+            "every film in scope whose plot text uses one of these words -- "
+            "exhaustive over the word list, not over the idea: a film can show "
+            "the thing without naming it, and a match may not mean what you "
+            f"want. Read the quote. {len(thin)} film(s) had under "
+            f"{result['min_screen_tokens']} tokens of plot text and were not "
+            "searched either way."
         )
+        if not matches:
+            out["no_matches"] = (
+                "No film in scope uses any of these words. Plot text records "
+                "events rather than appearance, so a visual detail may simply "
+                "not be written down anywhere -- say that is what happened "
+                "rather than recommending a film you could not verify."
+            )
+        elif len(matches) > PREVIEW_FILMS:
+            out["matching_note"] = (
+                f"Showing the {PREVIEW_FILMS} best rated of {len(matches)} "
+                "matching films; all of them are in scope."
+            )
 
     if thin:
         out["insufficient_films"] = [catalog.label_of(i) for i in thin][:PREVIEW_FILMS]
@@ -583,20 +646,27 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
         "function": {
             "name": "screen_out",
             "description": (
-                "Exclude every film whose plot mentions any of the given words. "
-                "Start here for an absence a word list can test -- 'nobody "
-                "dies', 'nothing scary' -- rather than search_plots, because "
-                "searching for 'nobody dies' returns the films where somebody "
-                "does. Do NOT use it for a negation the catalog stores ('not "
-                "Pixar', 'no musicals'): those are filter_catalog arguments. "
-                "Free, and it checks every plot passage of every candidate "
-                "rather than a top-ranked few, so it is exhaustive over the "
-                "word list -- which is not the same as proving the event never "
-                "happens, since it can be narrated in other words or left out. "
-                "Films that match are flagged, not rejected: the match may be "
-                "an attempt or a rumour, and a quote comes back so you can "
-                "judge. Escalate to read_synopses when a condition matters and "
-                "the screen left it unresolved. Run it AFTER filter_catalog."
+                "Scan every plot passage of every candidate for a word list, "
+                "and keep either the films where none of them appears "
+                "(keep='clear', the default) or the films where one does "
+                "(keep='flagged'). Free, and exhaustive over the word list in "
+                "a way ranking cannot be -- no film escapes by placing "
+                "eleventh. Use keep='clear' for an absence: 'nobody dies', "
+                "'nothing scary'. Searching for those returns the films where "
+                "somebody does, because that is what their plots say. Use "
+                "keep='flagged' for the presence of something concrete enough "
+                "to be written down in a plot description -- 'an animal that "
+                "wears a hat', 'a film with a train' -- because ranking that "
+                "request scores whole passages on overall similarity and "
+                "returns animal films, one incidental word being far too small "
+                "to move the vector. Do NOT use either direction for something "
+                "the catalog stores ('not Pixar', 'no musicals'): those are "
+                "filter_catalog arguments. Exhaustive over the word list is "
+                "not the same as settled either way -- a film can narrate the "
+                "event in other words or show the thing without naming it -- "
+                "so quotes come back and you should read them before deciding "
+                "what a match shows. Escalate to read_synopses when it matters "
+                "and the scan left it unresolved. Run it AFTER filter_catalog."
             ),
             "parameters": {
                 "type": "object",
@@ -613,9 +683,20 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                     "words": {
                         "type": "array", "items": {"type": "string"},
                         "description": (
-                            "Extra words to exclude on, added to `vocabulary` "
-                            "if both are given. Matched on word boundaries, so "
-                            "pass each inflection you care about."
+                            "Words to scan for, added to `vocabulary` if both "
+                            "are given. Matched on word boundaries, so pass "
+                            "each inflection and synonym you care about: "
+                            "['hat', 'hats', 'fez', 'bonnet', 'cap']."
+                        ),
+                    },
+                    "keep": {
+                        "type": "string",
+                        "enum": ["clear", "flagged"],
+                        "description": (
+                            "Which half survives. 'clear' (default) keeps the "
+                            "films where no listed word appears -- use for an "
+                            "absence. 'flagged' keeps the films where one "
+                            "does, each quoted -- use to find something."
                         ),
                     },
                 },

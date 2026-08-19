@@ -907,14 +907,15 @@
               <thead><tr><th>Condition kind</th><th>Example</th><th>Settled by</th></tr></thead>
               <tbody>
                 <tr><td>structured</td><td>&ldquo;a Pixar film&rdquo;, &ldquo;in French&rdquo;, and negatives the catalog stores &mdash; &ldquo;not Pixar&rdquo;, &ldquo;no musicals&rdquo;, &ldquo;besides Frozen&rdquo;</td><td><code>filter_catalog</code></td></tr>
-                <tr><td>lexical negative</td><td>&ldquo;nobody dies&rdquo;, &ldquo;nothing scary&rdquo;</td><td><code>screen_out</code> first</td></tr>
+                <tr><td>lexical &mdash; absence</td><td>&ldquo;nobody dies&rdquo;, &ldquo;nothing scary&rdquo;</td><td><code>screen_out</code> <code>keep='clear'</code></td></tr>
+                <tr><td>lexical &mdash; presence</td><td>&ldquo;an animal that wears a hat&rdquo;, &ldquo;a film with a train&rdquo;</td><td><code>screen_out</code> <code>keep='flagged'</code></td></tr>
                 <tr><td>semantic</td><td>&ldquo;a rat who wants to cook&rdquo;</td><td><code>search_plots</code></td></tr>
                 <tr><td>narrative</td><td>&ldquo;who betrays whom&rdquo;, &ldquo;is the ending sad&rdquo;</td><td><code>read_synopses</code></td></tr>
               </tbody>
             </table>
           </div>
 
-          <h4>Why a lexical negation is screened, not searched</h4>
+          <h4>Why a lexical condition is scanned, not searched</h4>
           <p>
             This is the one counter-intuitive piece. Embed &ldquo;nobody dies&rdquo; and
             the top results are the films where somebody <em>does</em> &mdash; because
@@ -928,6 +929,20 @@
             eleventh, which top-k retrieval can never promise. And its error is
             <strong>one-sided</strong>: &ldquo;dead heat&rdquo; over-excludes, it never
             under-excludes, which for a negative request is the harmless direction.
+          </p>
+          <p>
+            <strong>The same scan runs forwards.</strong> A concrete presence fails
+            ranking for a different reason: &ldquo;an animal that wears a hat&rdquo; is
+            one small detail inside a 300-token passage, and similarity scores the
+            whole passage &mdash; so you get films <em>about</em> animals whose plots
+            never mention a hat, while the film whose plot says the hat
+            &ldquo;lands on Tod&rdquo; places nowhere. Scanning for the word finds it:
+            <code>keep=&rsquo;flagged&rsquo;</code> returns every film in scope whose plot
+            text uses one, each with the passage that matched, because a word list
+            cannot tell you that <em>Bowler Hat Guy</em> is a man and Judy Hopps is a
+            rabbit. And when the scan comes back empty, that is the answer: plot text
+            records what happens rather than what things look like, so the agent
+            reports the gap in its sources instead of naming films it could not verify.
           </p>
           <p>
             <strong>What a screen proves, and what it does not.</strong> It is
