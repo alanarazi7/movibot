@@ -87,6 +87,18 @@ MAX_SYNOPSIS_CHARS = 6000
 
 MAX_SEARCH_RESULTS = 25
 
+# Below this, the top hit is usually a sign the query was phrased as a theme
+# rather than as an event. Measured on this corpus: three abstract queries
+# ("a film about the dangers of vanity", "a story exploring themes of identity
+# and belonging", "someone pretends to love another to seize power") topped out
+# at 0.3423, 0.3492 and 0.3528; three concrete ones ("a rat cooks in a Paris
+# restaurant kitchen", "toys come alive when their owner leaves the room", "he
+# says he never loved her and leaves her to die so he can take the throne")
+# scored 0.6635, 0.4767 and 0.4380. The gap is clean, and it is the difference
+# between finding Frozen for the Hans betrayal and never seeing it at all.
+# Advisory only: a real answer can score below this, so it warns, never filters.
+WEAK_MATCH_SIMILARITY = 0.40
+
 # Each search hit carries the passage that matched, as evidence. Long enough
 # to judge a story beat, short enough that 25 of them stay affordable.
 MAX_PASSAGE_CHARS = 1200
@@ -484,7 +496,7 @@ def search_plots(
             "passages_matched": hit["passage_count"],
         })
 
-    return {
+    out: dict[str, Any] = {
         "query": query,
         "searched_within": "whole catalog" if scoped is None else f"{len(scoped)} films in scope",
         "returned": len(results),
@@ -498,6 +510,24 @@ def search_plots(
             if not results else None
         ),
     }
+
+    # The score the planner already has, read back to it as a verdict. Asked
+    # "a film where someone pretends to love another to seize power", the
+    # abstract phrasing returned five films in a 0.29-0.35 band and the answer
+    # named three of them while explaining that none actually fit. The number
+    # saying so was in the result all along.
+    if results and results[0]["similarity"] < WEAK_MATCH_SIMILARITY:
+        out["weak_match"] = (
+            f"Top similarity {results[0]['similarity']:.2f}, below "
+            f"{WEAK_MATCH_SIMILARITY}. On this corpus that band means the query "
+            "was probably phrased as a theme rather than as an event, and these "
+            "films are unlikely to fit. Re-run it as something a plot summary "
+            "would literally narrate -- name the action, who does it and what "
+            "happens -- before answering from these results. Do not recommend a "
+            "film here while explaining that it does not match."
+        )
+
+    return out
 
 
 def _trim(text: str, limit: int) -> str:
@@ -760,7 +790,17 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                 "properties": {
                     "query": {
                         "type": "string",
-                        "description": "The story in plain language. Describe the plot, not the metadata.",
+                        "description": (
+                            "The EVENT a plot summary would literally narrate, "
+                            "not the theme the user named. This is the single "
+                            "highest-leverage choice you make here. Do not pass "
+                            "the request through unchanged: translate it. "
+                            "'Someone pretends to love another to seize power' "
+                            "scores 0.35 and misses the film entirely; 'he says "
+                            "he never loved her and leaves her to die so he can "
+                            "take the throne' scores 0.44 and returns it first. "
+                            "Name who does what, and what happens as a result."
+                        ),
                     },
                     "ignore_scope": {
                         "type": "boolean",

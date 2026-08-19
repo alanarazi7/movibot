@@ -219,7 +219,7 @@ def main() -> None:
     _text(draw, (36, 26), "MoviBot Architecture", INK, 32, bold=True)
     _text(draw, (36, 72),
           "One ReAct loop. The planner chooses the tools, their arguments, "
-          "and when to stop.", MUTED, 16)
+          "and when to stop \u2014 by not asking for one.", MUTED, 16)
 
     # ---- the loop ------------------------------------------------------
     # The frame carries the turn bound, because "bounded" is the honest
@@ -227,7 +227,8 @@ def main() -> None:
     frame = (210, 130, 680, 555)
     _dashed_rect(draw, frame)
     _label(draw, 445, 130,
-           f"REACT LOOP  ·  at most {loop.MAX_ROUNDS} model turns",
+           f"REACT LOOP  ·  the model repeats this until it stops, "
+           f"or {loop.MAX_ROUNDS} times",
            colour=MUTED, size=15, bold=True)
 
     reason = (235, 175, 425, 300)
@@ -235,14 +236,18 @@ def main() -> None:
     observe = (490, 385, 655, 510)
     stop = (235, 385, 425, 510)
 
-    _box(draw, reason, "Reason", ("Planner", "the only metered step"),
+    _box(draw, reason, "Reason", ("Planner \u00b7 the only", "model call"),
          fill=PAID_FILL, line=PAID_LINE, title_size=27, sub_size=15)
-    _box(draw, act, "Act", ("call one or", "more tools"),
+    _box(draw, act, "Act", ("run the tools", "it asked for"),
          title_size=27, sub_size=15)
-    _box(draw, observe, "Observe", ("read results,", "update working set"),
+    _box(draw, observe, "Observe", ("results appended", "to the context"),
          title_size=27, sub_size=15)
-    _box(draw, stop, "Stop?", ("enough evidence", "to answer?"),
+    _box(draw, stop, "Stop?", ("did this turn ask", "for a tool?"),
          title_size=27, sub_size=15)
+    # The exit condition is the model's own output, not a scripted check: a
+    # turn that requests a tool continues the loop, and a turn that requests
+    # none IS the answer. That is what "the model decides when to stop" means
+    # mechanically, so the two edges have to say which way round it is.
 
     # Clockwise, with the return edge closing it. Without that edge the same
     # four boxes read as four stages.
@@ -250,7 +255,7 @@ def main() -> None:
     _arrow(draw, (572, 302), (572, 381), fill=CYCLE, width=3)
     _arrow(draw, (488, 447), (429, 447), fill=CYCLE, width=3)
     _arrow(draw, (320, 383), (320, 304), fill=CYCLE, width=3)
-    _label(draw, 390, 343, "No  →  loop", colour=CYCLE, size=16, bold=True)
+    _label(draw, 390, 343, "Yes  →  loop again", colour=CYCLE, size=16, bold=True)
 
     # ---- request in, answer out ----------------------------------------
     request = (20, 187, 185, 287)
@@ -269,7 +274,8 @@ def main() -> None:
     # nothing to cross.
     _elbow(draw, [(390, 512), (390, 590), (791, 590), (791, 514)],
            fill=CYCLE, width=3)
-    _label(draw, 600, 590, "Yes  →  answer", colour=CYCLE, size=16, bold=True)
+    _label(draw, 600, 590, "No  →  this turn is the answer",
+           colour=CYCLE, size=16, bold=True)
 
     # ---- tools ---------------------------------------------------------
     # An inventory, not a chain: every tool is available on every turn. Left to
