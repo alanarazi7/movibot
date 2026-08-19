@@ -120,6 +120,11 @@
     .card-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
     .card-head label { margin-bottom: 0; }
     .card-head .copy-btn { margin-top: 0; flex-shrink: 0; }
+    #run-cost { margin-top: 1rem; padding-top: 0.8rem; border-top: 1px solid #eee;
+                font-size: 0.82rem; color: #666; font-family: monospace; }
+    #run-cost b { color: #333; }
+    #run-cost .cost-note { display: block; margin-top: 0.4rem; font-family: inherit;
+                           font-style: italic; color: #888; }
 
     #status { font-size: 0.85rem; color: #666; margin-top: 0.5rem; min-height: 1.2em; }
     #response-card { display: none; }
@@ -715,6 +720,7 @@
           <button class="copy-btn" id="copy-trace">&#128203; Copy trace JSON</button>
         </div>
         <div id="steps-list"></div>
+        <div id="run-cost" style="display:none;"></div>
       </div>
 
       <div class="card">
@@ -2159,6 +2165,7 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
 
         renderPlan(data);
         renderSteps(data.steps);
+        renderCost(data);
         if ((data.steps || []).length) stepsCard.style.display = 'block';
       } catch (err) {
         status.textContent = '';
@@ -2250,6 +2257,33 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
       } else {
         narrowBlock.style.display = 'none';
       }
+    }
+
+    function renderCost(data) {
+      const el = document.getElementById('run-cost');
+      const b = data.budget;
+      if (!b || !b.model_calls) { el.style.display = 'none'; return; }
+
+      const cached = b.cached_prompt_tokens || 0;
+      const share = b.prompt_tokens ? Math.round(100 * cached / b.prompt_tokens) : 0;
+      let note;
+      if (cached > 0) {
+        note = `The system prompt and tool schemas are identical on every turn and sit at the
+                front of the request, so the provider served ${share}% of the input from its
+                prefix cache rather than charging full price for it again.`;
+      } else {
+        note = `No cached input reported. Either the prefix cache did not hit, or this
+                provider does not report the split \u2014 the two are indistinguishable from here.`;
+      }
+
+      el.innerHTML =
+        `<b>${b.model_calls}</b> model turn${b.model_calls === 1 ? '' : 's'} &middot; ` +
+        `<b>${b.tool_calls}</b> tool call${b.tool_calls === 1 ? '' : 's'} &middot; ` +
+        `<b>${b.prompt_tokens.toLocaleString()}</b> prompt tokens ` +
+        `(<b>${cached.toLocaleString()}</b> cached) &middot; ` +
+        `<b>${b.completion_tokens.toLocaleString()}</b> generated` +
+        `<span class="cost-note">${note}</span>`;
+      el.style.display = 'block';
     }
 
     // Rough token count, only to show the prompt's size honestly. Real counting

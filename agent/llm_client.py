@@ -189,12 +189,28 @@ def budget() -> dict[str, Any]:
 
 
 def usage_of(response: Any) -> dict[str, int]:
-    """Token counts if the provider reported them, else zeros."""
+    """Token counts if the provider reported them, else zeros.
+
+    `cached_tokens` is the one that decides whether this loop is expensive.
+    The system prompt and tool schemas are byte-identical on every turn and sit
+    at the front of the request, which is exactly the shape automatic prefix
+    caching rewards -- so the same 5,000 tokens either cost full price four
+    times or nearly nothing after the first. Providers report the split under
+    `prompt_tokens_details.cached_tokens`; not every proxy passes it through,
+    and a zero here means either no cache hit or no reporting, which are worth
+    telling apart before optimising anything.
+    """
     usage = getattr(response, "usage", None)
     if usage is None:
-        return {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        return {"prompt_tokens": 0, "completion_tokens": 0,
+                "total_tokens": 0, "cached_tokens": 0}
+    details = getattr(usage, "prompt_tokens_details", None)
+    cached = getattr(details, "cached_tokens", None) if details else None
+    if cached is None and isinstance(details, dict):
+        cached = details.get("cached_tokens")
     return {
         "prompt_tokens": getattr(usage, "prompt_tokens", 0) or 0,
         "completion_tokens": getattr(usage, "completion_tokens", 0) or 0,
         "total_tokens": getattr(usage, "total_tokens", 0) or 0,
+        "cached_tokens": cached or 0,
     }

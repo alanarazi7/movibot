@@ -48,7 +48,12 @@ def execute(prompt: str) -> dict[str, Any]:
     # the request, so there is no cross-request state to reason about.
     ctx = tools.ToolContext()
     plan: str | None = None
-    budget = {"model_calls": 0, "tool_calls": 0, "prompt_tokens": 0, "completion_tokens": 0}
+    # cached_tokens is tracked because the loop's whole cost profile turns on
+    # it: the system prompt and schemas repeat identically every turn, so
+    # whether the provider caches that prefix is the difference between paying
+    # for it once and paying for it MAX_ROUNDS times.
+    budget = {"model_calls": 0, "tool_calls": 0, "prompt_tokens": 0,
+              "completion_tokens": 0, "cached_prompt_tokens": 0}
 
     if not prompt or not prompt.strip():
         return _error("The 'prompt' field is required.", steps, budget, started)
@@ -79,6 +84,7 @@ def execute(prompt: str) -> dict[str, Any]:
             budget["model_calls"] += 1
             budget["prompt_tokens"] += usage["prompt_tokens"]
             budget["completion_tokens"] += usage["completion_tokens"]
+            budget["cached_prompt_tokens"] += usage.get("cached_tokens", 0)
 
             tool_calls = getattr(message, "tool_calls", None) or []
 
