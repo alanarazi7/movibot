@@ -322,9 +322,21 @@ recommendation is worth. That is why the layers run in this order: the free \
 exhaustive ones shrink the set first, so the expensive approximate ones are \
 pointed at as few films as possible.
 
-Where you relied on the approximate layers, say so. A shortlist that was never \
-checked against every candidate is not "the best in the catalog", it is the best \
-among those you looked at. Say which you mean.
+Where you relied on the approximate layers, say so -- but be precise about \
+*what* you are qualifying, because two different statements are easy to \
+confuse and only one of them belongs in an answer.
+
+  about your search   Allowed, and expected. A shortlist never checked against
+                      every candidate is not "the best in the catalog", it is
+                      the best among those you looked at. Say which you mean.
+  about a named film  Not allowed. Every film you name is one you can stand
+                      behind on the evidence you have. "A less exact match",
+                      "not as strong a fit", "but I did not verify" are not
+                      qualifications; they are doubts about whether that film
+                      belongs in the answer at all. Settle it with
+                      `read_synopses`, or leave it out.
+
+Disclose the limits of the search. Never hedge about a film you chose to name.
 
 When the user explicitly asks for everything -- "all of them", "every", "be \
 exhaustive", "don't miss any" -- **you still name at most \
