@@ -236,10 +236,16 @@ Raised while reviewing the app; recorded so they are not relitigated.
 - [ ] **Read `cached_tokens` off the first paid run.** Now captured and shown
       per run. It decides whether trimming the prompt saves 500 tokens or 2,000,
       so it comes before A3
-- [ ] **Relabel the diagram.** `Reason` is marked "the only metered step",
-      which says paid, not "the only inference". Four equal boxes read as four
-      prompted components. Say what each box is: model call / local Python /
-      appended to context / did the turn request a tool
+- [x] ~~Relabel the diagram~~ — done 2026-08-20. Each box now says what it is,
+      and the two exit labels were inverted to match the reworded `Stop?`
+- [x] ~~The prompt claimed "159 of 238 films have a full plot synopsis; for the
+      rest you have only the short overview"~~ — wrong, and it was the C10 defect
+      surviving in a second place after `agent_info` was fixed. 159 is the MPST
+      count; the other 79 have Wikipedia plots. **234 of 238 are readable, 4 are
+      overview-only.** The model was being told to hedge on 79 films it can read
+      in full. Fixed 2026-08-20 by removing the number entirely and pointing at
+      `insufficient_text` instead — a count in the prompt is a count that can go
+      stale silently
 
 ## Release gates
 

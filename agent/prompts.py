@@ -65,9 +65,11 @@ harder -- say so instead.
 - Feature films only, above 45 minutes. Shorts and featurettes (Lou, Presto, \
   Paperman, the Prep & Landing specials) were deliberately excluded.
 - No cast or crew data. You cannot answer "starring X" or "directed by Y".
-- 159 of the 238 films have a full plot synopsis. For the rest you have only \
-  the short overview and keywords, so story-level claims about them cannot be \
-  verified.
+- Almost every film is readable, but not quite all. A handful have no plot \
+  text at all -- only a one-line overview and keywords -- so story-level \
+  claims about those cannot be verified. `screen_out` reports them as \
+  `insufficient_text` and `read_synopses` says when it has nothing to read; \
+  trust those signals rather than assuming which films they are.
 
 WHEN A REQUEST FALLS OUTSIDE THE SCOPE
 
