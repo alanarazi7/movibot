@@ -88,6 +88,12 @@ working set. Stale in several ways, and none has ever been run.
       count where the exhaustive tools settled the set. Decided; the production
       run that listed all 7 clear films predates it. Verify against the ceiling
       test in the test bed
+- [ ] **The Hindi case expectation is now wrong.** It says "only 2 Hindi films
+      exist". Three do: Dangal, Khoobsurat and Million Dollar Arm, the last
+      English-language with Hindi dialogue. The filter used to match zero of
+      them because the catalog stores endonyms; fixed 2026-08-20, and Dangal
+      leads on rating as the case expects. Update the count and decide whether
+      Million Dollar Arm belongs in the answer
 - [ ] **"besides Toy Story" is ambiguous** and the model resolved it
       differently across two runs: once as the franchise (four labels, one of
       them the non-existent *Toy Story 4*), once as the single 1995 film. The
@@ -182,6 +188,41 @@ Three rewrites changed behaviour and have never met a live model:
       search or reading rather than dead-ending
 - [ ] **C08 ceiling** — a request for everything must return at most
       `MAX_RECOMMENDATIONS` films and say it is not the complete list
+
+## Architecture questions settled 2026-08-20
+
+Raised while reviewing the app; recorded so they are not relitigated.
+
+- **A cheap router in front of the planner** -- rejected on arithmetic. The
+  tenant offers one chat model and one embedding model, so a "cheaper subagent"
+  can only mean fewer tokens to the same model. A router saves 4,608 tokens per
+  refusal and costs 425 on everything else: +4.4% at the test bed's 27% refusal
+  rate, +0.3% at a plausible 10%. Prefix caching would erode it further.
+- **A separate Observer prompt** -- rejected. `Observe` is
+  `messages.append({"role": "tool", ...})` and `Stop?` is `if not tool_calls`;
+  neither is inference, so neither can have a prompt. Native tool calling puts
+  observation in the next Reason turn. A dedicated observer call would double
+  the paid turns to restate what that turn already derives.
+- **Plan-and-execute instead of ReAct** -- rejected for this deadline, not on
+  principle. The critique is fair: the ledger is written and then not executed.
+  But the death screen returns 149 flagged against a `MAX_SYNOPSES = 8` cap, so
+  which films to read is a function of what the screen returned, not of the
+  query. A static plan needs branches, and then it is the loop again. A rewrite
+  also moves every module name, which G03 checks across three graded endpoints.
+
+- [ ] **Instrument the ledger against the trace.** `plan` holds the typed
+      conditions and `steps` holds the tools that actually ran; nothing compares
+      them. If the model always follows its own ledger, a static executor would
+      do, and that is a finding. If it deviates usefully -- escalating on a
+      flag, widening an empty filter -- each deviation is evidence the loop
+      earns its keep. Free to build, answered by the round already planned
+- [ ] **Read `cached_tokens` off the first paid run.** Now captured and shown
+      per run. It decides whether trimming the prompt saves 500 tokens or 2,000,
+      so it comes before A3
+- [ ] **Relabel the diagram.** `Reason` is marked "the only metered step",
+      which says paid, not "the only inference". Four equal boxes read as four
+      prompted components. Say what each box is: model call / local Python /
+      appended to context / did the turn request a tool
 
 ## Release gates
 
