@@ -106,41 +106,35 @@ untested rule, and there are three days left.
 
 ## Validation
 
-### V1. Revise the 11 cases, then run them  💰 ~$0.09
+### V1. The cases are revised; they still have to be run  💰 ~$0.10
 
-Written before the corpora, the model change, `MAX_RECOMMENDATIONS`, and the
-working set. Stale in several ways, and none has ever been run.
+Rewritten 2026-08-20 from 11 stale cases to **13**, every figure re-derived
+from the current build. What changed:
 
-- [ ] Update the expectations: films are named not numbered, chunk ids are now
-      `mpst_<id>_<n>`, answers may name up to 3 films, results carry a corpus
-- [ ] Add a case for the corpus defect — a story question where a cast list
-      could plausibly win — so it cannot silently return
-- [ ] Add a negation case that exercises all three screen buckets, and one
-      where the right answer is a *flagged* film (an attempted killing, not a
-      death) so `flagged` is not treated as `rejected`
-- [ ] **Confirm the ceiling holds.** `MAX_RECOMMENDATIONS = 3` is now a hard
-      ceiling that no request raises, including one asking for everything; such
-      a request is told the answer is not complete and given the true match
-      count where the exhaustive tools settled the set. Decided; the production
-      run that listed all 7 clear films predates it. Verify against the ceiling
-      test in the test bed
-- [ ] **The Hindi case expectation is now wrong.** It says "only 2 Hindi films
-      exist". Three do: Dangal, Khoobsurat and Million Dollar Arm, the last
-      English-language with Hindi dialogue. The filter used to match zero of
-      them because the catalog stores endonyms; fixed 2026-08-20, and Dangal
-      leads on rating as the case expects. Update the count and decide whether
-      Million Dollar Arm belongs in the answer
-- [ ] **"besides Toy Story" is ambiguous** and the model resolved it
-      differently across two runs: once as the franchise (four labels, one of
-      them the non-existent *Toy Story 4*), once as the single 1995 film. The
-      second answer then recommended Toy Story 2 and 3. Both readings are
-      defensible; pick one and make the tool description say it
-- [ ] Run all 11 and compare against what each says should happen
+- **Expectations were written before the corpora, the model change, the
+  working set and `MAX_RECOMMENDATIONS`.** Chunk ids are `mpst_109445_21`, not
+  `109445_21`. Films are named, never numbered. Answers may name up to 3.
+- **The Hindi case said "only 2 Hindi films exist".** Three do. Until the
+  endonym fix on 2026-08-20 the query returned zero while the filter reported
+  itself as applied, so the case would have failed for a reason no expectation
+  described.
+- **Three cases added** for behaviour that had no coverage at all: the forward
+  scan (`keep='flagged'`, the hat query), the escalation case (a negative no
+  word list settles), and the phrasing test now states the 0.40 `weak_match`
+  threshold and both similarity bands.
+- The toddler case became "An animated film where nobody dies" — see C04.
+
+- [ ] **Run all 13.** Nothing here has ever met a live model, and the last two
+      queries tried by hand both found real bugs that no expectation predicted
 - [ ] The three traps: "starring Tom Hanks" must refuse rather than answer Toy
       Story from pretraining; "besides Frozen and Moana" must become a filter;
       "a Disney movie in Hindi" must still surface Dangal at 140 votes
 - [ ] Watch for over-refusal on "a nice comedy" and invented post-2017 titles
-- [ ] Capture a real response into `agent_info.json` `prompt_examples`
+- [ ] **"besides Toy Story" is ambiguous** and the model resolved it
+      differently across two runs: once as the franchise (four labels, one of
+      them the non-existent *Toy Story 4*), once as the single 1995 film. Both
+      readings are defensible; pick one and make the tool description say it
+- [ ] Capture a real response into `agent_info.json` `prompt_examples` — see C01
 
 ---
 
