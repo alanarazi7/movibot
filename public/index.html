@@ -1896,9 +1896,13 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
 
         document.getElementById('nav-stats').innerHTML = [
           ['films', 'films in catalog'],
-          ['with_synopsis', 'with a plot synopsis'],
-          ['passages', 'searchable passages'],
-          ['with_wiki_plot', 'with a Wikipedia plot']
+          // Naming the source matters here: an unqualified "synopsis" label on
+          // the MPST count reads as though the remaining films had no plot text
+          // at all, when they have Wikipedia plots. scripts/check_gates.py
+          // asserts the label stays qualified.
+          ['with_synopsis', 'with an MPST synopsis'],
+          ['with_wiki_plot', 'with a Wikipedia plot'],
+          ['passages', 'searchable passages']
         ].map(([k, label]) =>
           `<div class="nav-stat"><b>${navNum(nav.summary[k])}</b><span>${label}</span></div>`
         ).join('');
