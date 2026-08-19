@@ -20,7 +20,6 @@ model turns, which is exactly what this loop bounds.
 from __future__ import annotations
 
 import json
-import time
 from typing import Any
 
 from agent import llm_client, prompts, tools
@@ -34,36 +33,35 @@ MAX_ROUNDS = 5
 def execute(prompt: str) -> dict[str, Any]:
     """Answer one user request.
 
-    Returns the /api/execute contract:
+    Returns the /api/execute contract, which fixes the top-level fields
+    exactly -- four, no more:
         {"status": "ok"|"error", "error": str|None,
          "response": str|None, "steps": [...]}
+
+    Everything diagnostic therefore lives inside a step, where the spec only
+    requires that module, prompt and response be present. Token usage rides on
+    the Planner step that spent it; the working set after each tool call rides
+    on that tool's step as `scope`. The condition ledger needs no field of its
+    own: it is the content of the first Planner step's response.
 
     `steps` traces every model turn and tool call in order, so the whole
     decision path is inspectable from the API response alone.
     """
-    started = time.time()
     steps: list[dict[str, Any]] = []
     # The candidate set for this request. filter_catalog fills it; search and
     # read scope themselves to it. It never enters the prompt, and it dies with
     # the request, so there is no cross-request state to reason about.
     ctx = tools.ToolContext()
-    plan: str | None = None
-    # cached_tokens is tracked because the loop's whole cost profile turns on
-    # it: the system prompt and schemas repeat identically every turn, so
-    # whether the provider caches that prefix is the difference between paying
-    # for it once and paying for it MAX_ROUNDS times.
-    budget = {"model_calls": 0, "tool_calls": 0, "prompt_tokens": 0,
-              "completion_tokens": 0, "cached_prompt_tokens": 0}
 
     if not prompt or not prompt.strip():
-        return _error("The 'prompt' field is required.", steps, budget, started)
+        return _error("The 'prompt' field is required.", steps)
 
     if not llm_client.is_configured():
         return _error(
             "MoviBot cannot compose an answer: OPENAI_API_KEY is unset or "
             "still a placeholder value. The catalog and search tools run "
             "locally and are unaffected.",
-            steps, budget, started,
+            steps,
         )
 
     messages: list[dict[str, Any]] = [
@@ -81,24 +79,12 @@ def execute(prompt: str) -> dict[str, Any]:
             message, usage = llm_client.complete(
                 messages, tools=None if final_round else tools.TOOL_SCHEMAS
             )
-            budget["model_calls"] += 1
-            budget["prompt_tokens"] += usage["prompt_tokens"]
-            budget["completion_tokens"] += usage["completion_tokens"]
-            budget["cached_prompt_tokens"] += usage.get("cached_tokens", 0)
-
             tool_calls = getattr(message, "tool_calls", None) or []
-
-            # The condition ledger. The planner writes it as ordinary content
-            # alongside its first tool call, so decomposition is visible in the
-            # trace without costing a turn of its own -- a dedicated `plan` tool
-            # would have doubled the paid turns of every request to produce the
-            # same text.
-            if plan is None and tool_calls and (message.content or "").strip():
-                plan = message.content.strip()
 
             steps.append({
                 "module": "Planner",
                 "round": round_index + 1,
+                "usage": usage,
                 "prompt": {
                     "system_prompt": prompts.SYSTEM_PROMPT,
                     "user_prompt": prompt.strip() if round_index == 0 else "(continued)",
@@ -116,16 +102,13 @@ def execute(prompt: str) -> dict[str, Any]:
                 answer = (message.content or "").strip()
                 if not answer:
                     return _error(
-                        "The model returned an empty answer.", steps, budget, started
+                        "The model returned an empty answer.", steps
                     )
                 return {
                     "status": "ok",
                     "error": None,
                     "response": answer,
-                    "plan": plan,
                     "steps": steps,
-                    "narrowing": ["238 (whole catalog)"] + ctx.trace,
-                    "budget": _finalise(budget, started),
                 }
 
             # The assistant message carrying the tool calls must be replayed
@@ -143,8 +126,6 @@ def execute(prompt: str) -> dict[str, Any]:
                     }
                 else:
                     result = tools.dispatch(name, arguments, ctx)
-
-                budget["tool_calls"] += 1
 
                 steps.append({
                     "module": tools.TRACE_NAMES.get(name, name),
@@ -164,19 +145,15 @@ def execute(prompt: str) -> dict[str, Any]:
         return _error(
             f"Stopped after {MAX_ROUNDS} rounds without a final answer. "
             "The query may be too open-ended for the catalog.",
-            steps, budget, started,
+            steps,
         )
 
     except Exception as exc:  # noqa: BLE001 - surfaced to the caller as JSON
-        return _error(f"{type(exc).__name__}: {exc}", steps, budget, started)
-
-
-def _finalise(budget: dict[str, Any], started: float) -> dict[str, Any]:
-    return {**budget, "elapsed_seconds": round(time.time() - started, 2)}
+        return _error(f"{type(exc).__name__}: {exc}", steps)
 
 
 def _error(
-    message: str, steps: list[dict[str, Any]], budget: dict[str, Any], started: float
+    message: str, steps: list[dict[str, Any]]
 ) -> dict[str, Any]:
     """Errors still return the steps gathered so far -- a failed run is often
     only diagnosable from how far it got."""
@@ -185,5 +162,4 @@ def _error(
         "error": message,
         "response": None,
         "steps": steps,
-        "budget": _finalise(budget, started),
     }

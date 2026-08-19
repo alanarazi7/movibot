@@ -2142,6 +2142,7 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
       responseCard.style.display = 'none';
       stepsCard.style.display = 'none';
       status.textContent = '🎬 Running MoviBot...';
+      const startedAt = Date.now();
 
       try {
         const res = await fetch('/api/execute', {
@@ -2167,7 +2168,7 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
 
         renderPlan(data);
         renderSteps(data.steps);
-        renderCost(data);
+        renderCost(data, Date.now() - startedAt);
         if ((data.steps || []).length) stepsCard.style.display = 'block';
       } catch (err) {
         status.textContent = '';
@@ -2243,28 +2244,52 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
     function renderPlan(data) {
       const planBlock = document.getElementById('plan-block');
       const narrowBlock = document.getElementById('narrowing-block');
+      const steps = data.steps || [];
 
-      if (data.plan) {
-        document.getElementById('plan-text').textContent = data.plan;
+      // The ledger is the content of the first Planner turn -- it was never a
+      // separate field, only a copy of one.
+      const first = steps.find(s => s.module === 'Planner' && (s.response || {}).content);
+      const plan = first ? String(first.response.content).trim() : '';
+      if (plan) {
+        document.getElementById('plan-text').textContent = plan;
         planBlock.style.display = 'block';
       } else {
         planBlock.style.display = 'none';
       }
 
-      const steps = data.narrowing || [];
-      if (steps.length > 1) {
+      // Narrowing is the sequence of working-set sizes each tool left behind,
+      // which every tool step already carries as `scope`.
+      const scopes = [];
+      for (const s of steps) {
+        if (s.scope && s.scope !== scopes[scopes.length - 1]) scopes.push(s.scope);
+      }
+      if (scopes.length > 1) {
         document.getElementById('narrowing-text').textContent =
-          steps.map((s, i) => (i ? '  ↓  ' : '     ') + s).join('\n');
+          scopes.map((s, i) => (i ? '  ↓  ' : '     ') + s).join('\n');
         narrowBlock.style.display = 'block';
       } else {
         narrowBlock.style.display = 'none';
       }
     }
 
-    function renderCost(data) {
+    function renderCost(data, elapsedMs) {
       const el = document.getElementById('run-cost');
-      const b = data.budget;
-      if (!b || !b.model_calls) { el.style.display = 'none'; return; }
+      const steps = data.steps || [];
+      // Summed from the per-step usage rather than read off a top-level field.
+      const b = {model_calls: 0, tool_calls: 0, prompt_tokens: 0,
+                 completion_tokens: 0, cached_prompt_tokens: 0};
+      for (const s of steps) {
+        if (s.module === 'Planner') {
+          b.model_calls++;
+          const u = s.usage || {};
+          b.prompt_tokens += u.prompt_tokens || 0;
+          b.completion_tokens += u.completion_tokens || 0;
+          b.cached_prompt_tokens += u.cached_tokens || 0;
+        } else {
+          b.tool_calls++;
+        }
+      }
+      if (!b.model_calls) { el.style.display = 'none'; return; }
 
       const cached = b.cached_prompt_tokens || 0;
       const share = b.prompt_tokens ? Math.round(100 * cached / b.prompt_tokens) : 0;
@@ -2284,6 +2309,7 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
         `<b>${b.prompt_tokens.toLocaleString()}</b> prompt tokens ` +
         `(<b>${cached.toLocaleString()}</b> cached) &middot; ` +
         `<b>${b.completion_tokens.toLocaleString()}</b> generated` +
+        (elapsedMs ? ` &middot; <b>${(elapsedMs / 1000).toFixed(1)}s</b>` : '') +
         `<span class="cost-note">${note}</span>`;
       el.style.display = 'block';
     }

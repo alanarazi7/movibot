@@ -252,17 +252,24 @@ Raised while reviewing the app; recorded so they are not relitigated.
 From the same QA review. Not defects; verification that would violate the course
 contract if it failed. The free ones can run before any spending.
 
-### G01 — `/api/execute` disagrees with itself  ← free, decision needed
+### G01 — `/api/execute` top-level fields  ✅ closed 2026-08-20
 
-The spec wants `status`, `error`, `response`, `steps`. The error paths in
-`app.py` return exactly those four. The success path returns `loop.execute()`
-straight through, which is **seven**: it adds `plan`, `narrowing` and `budget`.
-Those three drive the ledger, narrowing and budget panels in the GUI, so they
-earn their place — but a strict reading of the contract fails on them.
+The instructions say **"Response format (JSON) — must match exactly these
+top-level fields"**, so `status`, `error`, `response`, `steps` and nothing else.
+Not "must include": a `meta` wrapper would have been just as non-conformant as
+the three extra keys we had. The contrast is deliberate — for a step object the
+same document says only "You must include: module, prompt, response", which is
+where extra diagnostics legitimately live.
 
-- [ ] Decide: nest the extras (under `steps`, or a `meta` key) for a strict
-      reading, or keep them flat and accept a lenient one
-- [ ] Whichever is chosen, make the success and error paths agree
+Two of the three extras turned out to be duplicates, so nothing was lost:
+
+- `plan` was byte-identical to `steps[0].response.content`
+- `narrowing` was the accumulation of the `scope` already on every tool step
+- `budget` moved onto the Planner step that spent it, as `usage`
+
+The GUI derives all three panels from `steps` and times the request itself.
+Both paths now return exactly four fields, and `loop.py` no longer accumulates
+per-request state nobody reads.
 
 ### Free to run now
 
