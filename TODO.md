@@ -49,22 +49,58 @@ In place:
   `PREVIEW_FILMS = 15`, `MAX_SEARCH_RESULTS = 25`, `MAX_SYNOPSES = 8`,
   `MIN_SCREEN_TOKENS = 600`.
 
-### A3. Prompt review  ← the remaining architecture item
+### A3. The prompt is the weakest part of the project  ← was deferred, now the top item
 
-Never reviewed whole; it grew one section per problem we hit. Now **3,150
-tokens** on every turn plus 1,344 of tool schemas — 4,494 in all — against a
-brief that asks to minimise context. The QA-workbook rewrites (routing by
-evidence, the claim rules, the output ceiling) added roughly 600 of that, and
-were correctness fixes rather than padding, but the section has never been read
-end to end for redundancy.
+**It is bad, and it is bad in a way the brief specifically marks down.**
+Requirement 1 of the assignment is *"Build the agent in an optimized way: avoid
+unnecessary LLM calls, **minimize prompt/context size (only what's needed)**."*
+That is a graded requirement, not a nicety, and the prompt has moved in exactly
+the wrong direction all week:
 
-The growth is arguably paid for: one avoided wrong-tool call (searching for a
-negation) costs a full round at ~3,800 tokens, so preventing one covers the
-increase seven times over. That is an argument, not a measurement.
+| | system prompt | + schemas | per turn |
+|---|---|---|---|
+| start of review, 2026-08-19 | 3,150 | 1,344 | 4,494 |
+| now, 2026-08-20 | **4,197** | **1,670** | **5,867** |
 
-- [ ] Read it end to end against each component — the Architecture tab now puts
-      the prompt and every tool description side by side, served live
-- [ ] Trim, then confirm the 11 cases do not regress
+**+33% in two days.** Every addition had a reproduction behind it, which is the
+defence, and it is not a good enough one: the same lessons are now taught over
+and over in different words, and that is a cause of failures rather than a cure.
+
+Counted by hand across the current text:
+
+- **"do not claim what you did not verify" — 6 separate places**
+  (chars 4661, 11836, 11995, 13352, 14476, 14864)
+- **"screen_out tests words, not events" — 4 places**
+- **"cheapest and most exhaustive first" — 4 places**
+- **the 3-film ceiling — 4 places**
+
+And redundancy is not the worst of it. Two of those restatements were in direct
+**contradiction** until 2026-08-20: "where you relied on the approximate layers,
+say so" told the model to qualify, while "if you are writing *but I did not
+verify*, cut it" told it not to. The model resolved that conflict by satisfying
+one and breaking the other, which is exactly the class of failure that kept
+turning up in review — a rejected film under an "Also possible" heading, an
+apologetic second recommendation. One prompt saying the same thing six ways is
+not emphasis; it is six chances to disagree with itself.
+
+`HOW TO WORK` alone is **1,336 tokens, a third of the whole prompt**, and it
+contains two overlapping structures: the condition-type table and the numbered
+layer order, which encode much the same routing knowledge twice.
+
+**Sequence matters, and it is not "trim first".** Six behaviour changes are
+currently unverified against any live model (C05, C06, C08, the weak-search
+rule, the answer-shape rule, the evidence rule). Trimming before they are
+tested makes any regression unattributable — it could be the trim or the
+untested rule, and there are three days left.
+
+- [ ] Run the paid round first, to get a baseline with the prompt as it stands
+- [ ] Then merge the four repeated lessons into one statement each, target
+      ~3,400 tokens, and collapse the two structures in `HOW TO WORK` into one
+- [ ] Re-run the same cases against the baseline so any regression is
+      attributable to the trim
+- [ ] Then say the measured before/after in the write-up. "We cut the prompt
+      33% with no regression on 11 cases" is a requirement-1 answer; "it grew
+      because every addition was justified" is not
 
 ---
 
