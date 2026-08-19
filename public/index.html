@@ -895,15 +895,15 @@
             <table>
               <thead><tr><th>Condition kind</th><th>Example</th><th>Settled by</th></tr></thead>
               <tbody>
-                <tr><td>structured</td><td>&ldquo;a Pixar film&rdquo;, &ldquo;before 2000&rdquo;, &ldquo;in French&rdquo;</td><td><code>filter_catalog</code></td></tr>
-                <tr><td>negative</td><td>&ldquo;nobody dies&rdquo;, &ldquo;nothing scary&rdquo;</td><td><code>screen_out</code></td></tr>
+                <tr><td>structured</td><td>&ldquo;a Pixar film&rdquo;, &ldquo;in French&rdquo;, and negatives the catalog stores &mdash; &ldquo;not Pixar&rdquo;, &ldquo;no musicals&rdquo;, &ldquo;besides Frozen&rdquo;</td><td><code>filter_catalog</code></td></tr>
+                <tr><td>lexical negative</td><td>&ldquo;nobody dies&rdquo;, &ldquo;nothing scary&rdquo;</td><td><code>screen_out</code> first</td></tr>
                 <tr><td>semantic</td><td>&ldquo;a rat who wants to cook&rdquo;</td><td><code>search_plots</code></td></tr>
                 <tr><td>narrative</td><td>&ldquo;who betrays whom&rdquo;, &ldquo;is the ending sad&rdquo;</td><td><code>read_synopses</code></td></tr>
               </tbody>
             </table>
           </div>
 
-          <h4>Why a negation is screened, not searched</h4>
+          <h4>Why a lexical negation is screened, not searched</h4>
           <p>
             This is the one counter-intuitive piece. Embed &ldquo;nobody dies&rdquo; and
             the top results are the films where somebody <em>does</em> &mdash; because
@@ -911,13 +911,31 @@
             <strong>fail</strong> the condition.
           </p>
           <p>
-            So negations are screened instead: every plot passage of every candidate is
-            scanned for a word list. Two properties make this the right tool rather
-            than a shortcut. It is <strong>exhaustive</strong> &mdash; a scan touches
-            all 2,080 plot passages in 66&nbsp;ms, so no film escapes the check by
-            ranking eleventh, which top-k retrieval can never promise. And its error is
+            So this kind of negation is screened instead: every plot passage of every
+            candidate is scanned for a word list. Two properties make this the right
+            tool rather than a shortcut. No film escapes the check by ranking
+            eleventh, which top-k retrieval can never promise. And its error is
             <strong>one-sided</strong>: &ldquo;dead heat&rdquo; over-excludes, it never
             under-excludes, which for a negative request is the harmless direction.
+          </p>
+          <p>
+            <strong>What a screen proves, and what it does not.</strong> It is
+            exhaustive over its <em>word list</em>, not over the event. A
+            <code>clear</code> result means no listed word appears in the film's stored
+            plot text &mdash; which an event can evade by being narrated in other words,
+            or by not being written down at all. So the agent is required to report it
+            as what it is (&ldquo;no death-related terms appear in its plot text&rdquo;)
+            rather than upgrading it to &ldquo;nobody dies&rdquo;, and to read the
+            synopsis when the stronger claim is what the request actually needs.
+          </p>
+          <p>
+            <strong>Screening is where a negation starts, not where it must end.</strong>
+            Negations the catalog stores &mdash; &ldquo;not Pixar&rdquo;, &ldquo;no
+            musicals&rdquo; &mdash; never reach the screen at all; they are column
+            lookups. And negations that are concepts rather than vocabularies &mdash;
+            &ldquo;not depressing&rdquo;, &ldquo;doesn't focus on romance&rdquo; &mdash;
+            cannot be settled by any word list, so they escalate to search and reading
+            instead, with whatever uncertainty remains stated in the answer.
           </p>
           <p>
             What it cannot do is tell an attempt from an outcome. <em>&ldquo;Randall

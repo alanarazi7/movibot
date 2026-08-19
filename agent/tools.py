@@ -8,15 +8,18 @@ cheapest-and-most-exhaustive first, and each one hands the next a smaller
 candidate set:
 
     filter_catalog   columns      238 -> N     free, exact, exhaustive
-    screen_out       regex        N -> clear   free, exhaustive, one-sided
+    screen_out       regex        N -> clear   free, one-sided, word-list only
     search_plots     vectors      N -> ~10     one embedding, ~$0.0000002
     read_synopses    full text    <= 8 films   free, but token-heavy
 
-Each answers something the others cannot. Columns settle era, studio and
-language. A lexical screen settles negations ("nobody dies") exhaustively, which
-ranking cannot: embed "nobody dies" and the top hits are the films where
-somebody does. Vectors settle positive story questions. Full text settles what
-actually happens.
+Each answers something the others cannot. Columns settle era, studio, language
+and their negative forms -- "not Pixar" and "no musicals" are column lookups,
+not screens. A lexical screen tests an absence the way ranking cannot: embed
+"nobody dies" and the top hits are the films where somebody does. It is
+exhaustive over its word list, not over the event, so what it certifies is that
+no listed word appears in the stored text. Vectors settle positive story
+questions, and full text settles what actually happens -- including whatever a
+screen left unresolved.
 
 The consequence is that the token-heavy tool only ever sees what survived the
 free ones, and a query pays for exactly the layers its conditions require.
@@ -581,14 +584,19 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
             "name": "screen_out",
             "description": (
                 "Exclude every film whose plot mentions any of the given words. "
-                "This is the RIGHT tool for a negative condition -- 'nobody "
-                "dies', 'nothing scary', 'no romance' -- and search_plots is "
-                "the wrong one, because searching for 'nobody dies' returns the "
-                "films where somebody does. Free, and it checks every plot "
-                "passage of every candidate rather than a top-ranked few, so "
-                "the result is exhaustive. Films that match are flagged, not "
-                "rejected: the match may be an attempt or a rumour, and a quote "
-                "comes back so you can judge. Run it AFTER filter_catalog."
+                "Start here for an absence a word list can test -- 'nobody "
+                "dies', 'nothing scary' -- rather than search_plots, because "
+                "searching for 'nobody dies' returns the films where somebody "
+                "does. Do NOT use it for a negation the catalog stores ('not "
+                "Pixar', 'no musicals'): those are filter_catalog arguments. "
+                "Free, and it checks every plot passage of every candidate "
+                "rather than a top-ranked few, so it is exhaustive over the "
+                "word list -- which is not the same as proving the event never "
+                "happens, since it can be narrated in other words or left out. "
+                "Films that match are flagged, not rejected: the match may be "
+                "an attempt or a rumour, and a quote comes back so you can "
+                "judge. Escalate to read_synopses when a condition matters and "
+                "the screen left it unresolved. Run it AFTER filter_catalog."
             ),
             "parameters": {
                 "type": "object",
