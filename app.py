@@ -167,6 +167,26 @@ def model_architecture():
     return send_file(ARCHITECTURE_PNG_PATH, mimetype="image/png")
 
 
+def _prompt_token_cost(system_prompt: str, schemas: list) -> dict:
+    """Exact cl100k_base counts, or None if the tokenizer is unavailable.
+
+    None rather than an estimate: a wrong number here would be quoted as if
+    it were measured.
+    """
+    try:
+        import json as _json
+
+        import tiktoken
+
+        enc = tiktoken.get_encoding("cl100k_base")
+        system = len(enc.encode(system_prompt))
+        tools_ = len(enc.encode(_json.dumps(schemas)))
+    except Exception:
+        return {"system_prompt": None, "tool_schemas": None, "per_turn": None}
+    return {"system_prompt": system, "tool_schemas": tools_,
+            "per_turn": system + tools_, "encoding": "cl100k_base"}
+
+
 @app.route("/api/prompts", methods=["GET"])
 def prompts_endpoint():
     """Every prompt and guardrail the agent actually runs on.
@@ -188,12 +208,26 @@ def prompts_endpoint():
                 "name": schema["function"]["name"],
                 "trace_name": agent_tools.TRACE_NAMES.get(schema["function"]["name"]),
                 "description": schema["function"]["description"],
-                "parameters": sorted(
-                    schema["function"]["parameters"].get("properties", {})
-                ),
+                # Descriptions, not just names. A parameter description is
+                # part of the prompt the model actually reads, and real
+                # behaviour lives in them -- which negations screen_out
+                # refuses, how a search query must be phrased -- so serving
+                # names alone made this endpoint claim more coverage than it
+                # gave.
+                "parameters": {
+                    name: spec.get("description", "")
+                    for name, spec in sorted(
+                        schema["function"]["parameters"].get("properties", {}).items()
+                    )
+                },
             }
             for schema in agent_tools.TOOL_SCHEMAS
         ],
+        # Counted with the real tokenizer rather than estimated at ~4 chars,
+        # because this is the number the prompt-size argument rests on: the
+        # system prompt and the schemas are re-sent on every turn.
+        "token_cost": _prompt_token_cost(agent_prompts.SYSTEM_PROMPT,
+                                         agent_tools.TOOL_SCHEMAS),
         "guardrails": {
             "MAX_ROUNDS": agent_loop.MAX_ROUNDS,
             "MAX_RECOMMENDATIONS": agent_prompts.MAX_RECOMMENDATIONS,

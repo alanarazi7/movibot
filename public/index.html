@@ -120,6 +120,8 @@
     .card-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
     .card-head label { margin-bottom: 0; }
     .card-head .copy-btn { margin-top: 0; flex-shrink: 0; }
+    .tool-param { margin-top: 0.35rem; line-height: 1.45; }
+    .tool-param code { background: #eef1f5; padding: 0.05rem 0.3rem; border-radius: 3px; }
     #run-cost { margin-top: 1rem; padding-top: 0.8rem; border-top: 1px solid #eee;
                 font-size: 0.82rem; color: #666; font-family: monospace; }
     #run-cost b { color: #333; }
@@ -2327,6 +2329,15 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
             it already has instead of requesting a call that would be discarded.
           </p>`;
 
+        const paramsHtml = (params) => {
+          const names = Object.keys(params || {});
+          if (!names.length) return '<div class="tool-params">parameters: none</div>';
+          return '<div class="tool-params">' + names.map(n =>
+            `<div class="tool-param"><code>${escapeHtml(n)}</code>` +
+            (params[n] ? ` &mdash; ${escapeHtml(params[n])}` : '') + '</div>'
+          ).join('') + '</div>';
+        };
+
         for (const t of d.tools) {
           html += `
             <div class="tool-card">
@@ -2334,17 +2345,24 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
               <span class="tool-name">${escapeHtml(t.name)}</span>
               ${t.trace_name ? ` <span style="font-size:0.7rem;color:#999;">shown in the trace as ${escapeHtml(t.trace_name)}</span>` : ''}
               <p>${escapeHtml(t.description)}</p>
-              <div class="tool-params">parameters: ${t.parameters.length ? escapeHtml(t.parameters.join(', ')) : 'none'}</div>
+              ${paramsHtml(t.parameters)}
             </div>`;
         }
 
-        const schemaChars = d.tools.reduce((n, t) => n + t.description.length, 0);
+        const tc = d.token_cost || {};
+        const counted = tc.per_turn
+          ? `<b>${tc.per_turn.toLocaleString()}</b> tokens &mdash;
+             ${tc.system_prompt.toLocaleString()} of system prompt plus
+             ${tc.tool_schemas.toLocaleString()} of schemas, counted with
+             ${escapeHtml(tc.encoding)}`
+          : `roughly ${approxTokens(d.system_prompt).toLocaleString()} tokens (estimated)`;
         html += `
           <p style="font-size:0.78rem;color:#888;margin-top:1rem;">
-            Fixed overhead per model turn: the system prompt plus these four schemas,
-            roughly ${(approxTokens(d.system_prompt) + approxTokens(String(schemaChars * 1.6))).toLocaleString()}&ndash;3,900
-            tokens. Everything else in the context is tool results, which is why those
-            are capped rather than the prompt being trimmed to the bone.
+            Re-sent on every model turn: ${counted}. It is the same bytes at the front of
+            every request, so whether it is charged once or five times depends on the
+            provider's prefix cache &mdash; the per-run panel under a trace reports how
+            much came back cached. Everything else in the context is tool results, which
+            is why those are capped rather than the prompt trimmed to the bone.
           </p>`;
         body.innerHTML = html;
         promptsLoaded = true;
