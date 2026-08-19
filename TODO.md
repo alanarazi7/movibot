@@ -210,6 +210,14 @@ Raised while reviewing the app; recorded so they are not relitigated.
   query. A static plan needs branches, and then it is the loop again. A rewrite
   also moves every module name, which G03 checks across three graded endpoints.
 
+- [ ] **Verify the weak-search rule against a live model.** `search_plots` now
+      returns `weak_match` under 0.40 similarity, and the prompt says a weak
+      search must be re-run rather than narrated. Confirm on "a film where
+      someone pretends to love another to seize power" that it re-queries and
+      reaches Frozen (2013). Add it to the test bed as a case in its own right
+- [ ] **Sweep for other queries the abstract phrasing loses.** This was found by
+      hand. The same failure is invisible on any request whose weak answer
+      happens to look plausible
 - [ ] **Instrument the ledger against the trace.** `plan` holds the typed
       conditions and `steps` holds the tools that actually ran; nothing compares
       them. If the model always follows its own ledger, a static executor would
