@@ -215,6 +215,15 @@ Raised while reviewing the app; recorded so they are not relitigated.
       search must be re-run rather than narrated. Confirm on "a film where
       someone pretends to love another to seize power" that it re-queries and
       reaches Frozen (2013). Add it to the test bed as a case in its own right
+- [ ] **Re-run the power/deception query.** The concrete phrasing now happens on
+      round 1 and Frozen leads, verified 2026-08-20. Still to confirm: no
+      rejected film gets a heading, and no plot event is described that was not
+      in a passage the model was shown
+- [ ] **A3 is now urgent, not deferred.** The prompt has gone 3,150 -> 4,008
+      tokens across this review, +27%, and 5,678 per turn with schemas. Every
+      addition had a reproduction behind it, but several are near-duplicates:
+      three separate passages now say some version of "do not claim what you did
+      not verify". Read it end to end and merge them
 - [ ] **Sweep for other queries the abstract phrasing loses.** This was found by
       hand. The same failure is invisible on any request whose weak answer
       happens to look plausible
