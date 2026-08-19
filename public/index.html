@@ -117,6 +117,9 @@
       margin-top: 0.5rem;
     }
     .copy-btn:hover { background: #333; }
+    .card-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+    .card-head label { margin-bottom: 0; }
+    .card-head .copy-btn { margin-top: 0; flex-shrink: 0; }
 
     #status { font-size: 0.85rem; color: #666; margin-top: 0.5rem; min-height: 1.2em; }
     #response-card { display: none; }
@@ -691,7 +694,10 @@
       <div id="expected-box"></div>
 
       <div class="card" id="response-card">
-        <label>Response</label>
+        <div class="card-head">
+          <label>Response</label>
+          <button class="copy-btn" id="copy-response">&#128203; Copy response</button>
+        </div>
         <div class="response-text" id="response-text"></div>
       </div>
 
@@ -704,7 +710,10 @@
           <label style="margin-top:1rem;">Narrowing &mdash; how the working set shrank</label>
           <div class="arch-diagram" id="narrowing-text" style="margin-top:0.5rem;"></div>
         </div>
-        <label style="margin-top:1rem;">Steps trace (Reason → Act → Observe)</label>
+        <div class="card-head" style="margin-top:1rem;">
+          <label>Steps trace (Reason → Act → Observe)</label>
+          <button class="copy-btn" id="copy-trace">&#128203; Copy trace JSON</button>
+        </div>
         <div id="steps-list"></div>
       </div>
 
@@ -1408,14 +1417,19 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
       if (tabName === 'arch') { fetchPrompts(); fetchArchitecture(); }
     }
 
-    function copyCurl(cmd) {
-      navigator.clipboard.writeText(cmd).then(() => {
-        const btn = event.target;
+    function copyToClipboard(btn, text) {
+      navigator.clipboard.writeText(text).then(() => {
         const orig = btn.textContent;
         btn.textContent = '✓ Copied!';
         setTimeout(() => { btn.textContent = orig; }, 2000);
+      }, () => {
+        const orig = btn.textContent;
+        btn.textContent = '✗ Copy failed';
+        setTimeout(() => { btn.textContent = orig; }, 2000);
       });
     }
+
+    function copyCurl(cmd) { copyToClipboard(event.target, cmd); }
 
     function escapeHtml(str) {
       return String(str)
@@ -2077,6 +2091,19 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
       });
     }
 
+    let lastRun = null;
+
+    document.addEventListener('DOMContentLoaded', function () {
+      document.getElementById('copy-response')?.addEventListener('click', function () {
+        copyToClipboard(this, lastRun?.response ?? '');
+      });
+      // The steps exactly as /api/execute returned them: one JSON object per
+      // model turn, in order.
+      document.getElementById('copy-trace')?.addEventListener('click', function () {
+        copyToClipboard(this, JSON.stringify(lastRun?.steps ?? [], null, 2));
+      });
+    });
+
     async function runAgent() {
       const prompt = document.getElementById('prompt').value.trim();
       if (!prompt) return;
@@ -2088,6 +2115,7 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
       const stepsCard = document.getElementById('steps-card');
 
       btn.disabled = true;
+      lastRun = null;
       responseCard.style.display = 'none';
       stepsCard.style.display = 'none';
       status.textContent = '🎬 Running MoviBot...';
@@ -2099,6 +2127,7 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
           body: JSON.stringify({ prompt }),
         });
         const data = await res.json();
+        lastRun = data;
 
         status.textContent = '';
 
