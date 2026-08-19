@@ -102,4 +102,85 @@ working set. Stale in several ways, and none has ever been run.
 
 ---
 
+## QA workbook — the four remaining
+
+A pre-submission review (14 confirmed defects) was worked through on 2026-08-19.
+Ten are closed: C05–C07 route negations by evidence rather than grammar and stop
+the screen overclaiming, C08–C09 made `MAX_RECOMMENDATIONS` a hard ceiling with
+no listing mode, C10–C13 corrected coverage, cast/crew, `keywords` and
+`tool_order` in `agent_info`, and C14 removed the reference-project mentions and
+the superseded pipeline doc.
+
+The four below all live in `agent_info.json` → `prompt_examples`, which is a
+**graded** endpoint. None can be finished without live runs, so this is the
+budgeted round. Costs live on the Budget tab.
+
+### C01 — examples miss `full_response` and `steps`  💰
+
+The course spec requires both on every prompt example. Ours carry `prompt`,
+`expected_tool_path`, `status`, `verified_tool_output`. Trivially checkable by a
+grader, and a format defect rather than a documentation preference.
+
+- [ ] Run the representative prompts and store each exact final `response` as
+      `full_response`, plus the full returned `steps`
+- [ ] Keep the diagnostic fields only if they still earn their place; do not let
+      them stand in for the required ones
+- [ ] `steps[].module` must match `/api/model_architecture` and a real
+      `/api/execute` trace exactly
+
+### C02 — examples advertise unfinished work
+
+Both `status` fields say the response "will be captured ... once the LLM
+endpoint is enabled". It has been enabled for weeks; the app answers production
+queries and reports its own spend. A graded endpoint currently tells a reviewer
+the project is half-built.
+
+- [ ] Replace with a factual note (captured from build `<sha>` on `<date>`) or
+      drop the field once `full_response` carries the evidence
+- [ ] Sweep every user-visible surface for "will be", "once enabled", "stub",
+      "TODO" and similar future-work language
+
+### C03 — "empowering" has no evidence step
+
+`prompt_examples[0]` asks for the *best empowering princess movie besides Frozen
+and Moana*, and the path is `CatalogFilter(keywords=['princess','royalty'],
+exclude_titles=[...], require_synopsis=true)`. Princess and the exclusions are
+settled; **empowering is not**. `require_synopsis=true` only guarantees text
+exists, and `agent_info` now documents `keywords` as a broad topical filter and
+explicitly not proof of a theme — so by our own description this path cannot
+support the adjective.
+
+- [ ] Give "empowering" its own line in the condition ledger and a tool that can
+      settle it (`search_plots`, or `read_synopses` on the shortlist)
+- [ ] The final rationale must cite that evidence rather than inferring
+      empowerment from princess/royalty metadata
+
+### C04 — "safe for a toddler" is not established
+
+`prompt_examples[1]` checks `genres=['Animation']` and a death screen. Animation
+plus the absence of a death-vocabulary hit is not toddler suitability: peril,
+frightening imagery, intensity and emotional weight are independent conditions.
+The catalog stores no age rating, and the studio filter is membership rather
+than content rating, so a Disney label can carry a PG-13 title.
+
+**Decision needed before spending.** Either verify what can be verified and
+qualify the rest, or decline the broader claim outright and say why. Whichever
+is chosen has to hold in the prompt, the example and the answer text alike.
+
+- [ ] Decide, then make the ledger carry both conditions separately
+- [ ] The answer must never assert general toddler safety on the strength of the
+      death screen alone
+
+### Also waiting on this round
+
+Three rewrites changed behaviour and have never met a live model:
+
+- [ ] **C05 routing** — "not Pixar", "no musicals", "nothing scary",
+      "doesn't centre on romance" should reach *different* tools, chosen by
+      evidence rather than by the word "no"
+- [ ] **C06 escalation** — a negative that no word list can settle should reach
+      search or reading rather than dead-ending
+- [ ] **C08 ceiling** — a request for everything must return at most
+      `MAX_RECOMMENDATIONS` films and say it is not the complete list
+
 Deployment steps live in the README. Costs live on the Budget tab.
