@@ -7,10 +7,10 @@ bulk read plus Python-side filtering is simpler and faster than round-tripping
 a query per request, and it needs no credentials -- so the whole agent is
 runnable from a fresh clone.
 
-A Supabase backend existed here behind MOVIBOT_BACKEND=cloud. It was removed
-rather than finished: it never ran, it duplicated a table small enough to hold
-in memory, and keeping an unexercised second path is how the two quietly stop
-agreeing. rag/store.py records the same argument for vectors.
+A hosted-database backend existed here behind MOVIBOT_BACKEND=cloud. It was
+removed rather than finished: it never ran, it duplicated a table small enough
+to hold in memory, and keeping an unexercised second path is how the two
+quietly stop agreeing. rag/store.py records the same argument for vectors.
 """
 
 from __future__ import annotations
@@ -25,17 +25,14 @@ import pandas as pd
 _BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _DATA_READY = os.path.join(_BASE_DIR, "data_preprocessing", "data_ready")
 
-# The first two filenames are historical and do not mean what they say. There is
-# no Supabase and no Pinecone anywhere in this project: both were removed rather
-# than finished, for the reason given above and repeated in rag/store.py. These
-# are plain CSVs, committed to the repo, read from disk.
+# Plain CSVs, committed to the repo, read from disk.
 #
 # They keep their names because renaming costs 37 references across 19 files and
 # invalidates the provenance notes in the committed index, for no functional
 # gain. Read them as catalog.csv and synopses.csv. The constants below are what
 # the rest of the code refers to, so the misleading names appear only here.
-CATALOG_CSV = os.path.join(_DATA_READY, "supabase_movies.csv")
-SYNOPSES_CSV = os.path.join(_DATA_READY, "pinecone_candidates.csv")
+CATALOG_CSV = os.path.join(_DATA_READY, "catalog.csv")
+SYNOPSES_CSV = os.path.join(_DATA_READY, "synopses.csv")
 WIKI_CACHE_CSV = os.path.join(_DATA_READY, "wikipedia_cache.csv")
 
 # JSON-encoded list columns in the CSV that callers want as real lists.

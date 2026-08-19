@@ -42,10 +42,7 @@ def _from_csv(filename: str, id_col: str, text_col: str) -> Callable[[], pd.Data
     return load
 
 
-# The CSV filenames below are historical: there is no Pinecone and no Supabase in
-# this project, and neither ever ran. See agent/catalog.py for why the names were
-# kept. "pinecone_candidates.csv" holds the MPST synopses; "supabase_movies.csv"
-# is the catalog.
+# "synopses.csv" holds the MPST plot synopses; "catalog.csv" is the catalog.
 CORPORA: dict[str, Corpus] = {
     "mpst": Corpus(
         key="mpst",
@@ -54,7 +51,7 @@ CORPORA: dict[str, Corpus] = {
             "Full plot synopses, median 892 words. The richest source and the "
             "only one that narrates a whole story start to finish."
         ),
-        load=_from_csv("pinecone_candidates.csv", "movie_id", "plot_synopsis"),
+        load=_from_csv("synopses.csv", "movie_id", "plot_synopsis"),
     ),
     "wiki_plot": Corpus(
         key="wiki_plot",
@@ -81,7 +78,7 @@ CORPORA: dict[str, Corpus] = {
             "The one-paragraph blurb from the catalog, median 53 words. Thin, "
             "but it is the only text that exists for every one of the 238 films."
         ),
-        load=_from_csv("supabase_movies.csv", "id", "overview"),
+        load=_from_csv("catalog.csv", "id", "overview"),
     ),
 }
 

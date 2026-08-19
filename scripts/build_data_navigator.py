@@ -70,8 +70,8 @@ def clean(value):
 
 
 def main() -> None:
-    catalog = pd.read_csv(_DATA_READY / "supabase_movies.csv")
-    synopses = pd.read_csv(_DATA_READY / "pinecone_candidates.csv")
+    catalog = pd.read_csv(_DATA_READY / "catalog.csv")
+    synopses = pd.read_csv(_DATA_READY / "synopses.csv")
     wiki = pd.read_csv(_DATA_READY / "wikipedia_cache.csv")
     chunks = _load_chunks()
 

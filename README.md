@@ -10,54 +10,51 @@ Classic RAG fails on queries like *"bring me a not-too-old Disney movie with no 
 
 ## How it works
 
-MoviBot is a **tool-calling agent**: a planner model with four tools, bounded at `MAX_ROUNDS = 5` model turns per query. The tools are ordered **cheapest and most exhaustive first**, and each hands the next a smaller candidate set, so a query pays for only the layers its constraints actually require — and the token-heavy layer only ever sees what survived the free ones.
+MoviBot is a **ReAct agent**: a planner model reasons, calls tools, observes what came back, and decides whether to go again or answer, bounded at `MAX_ROUNDS = 5` model turns per query. All four tools are available on every turn and none is mandatory. The system prompt encourages **cheapest and most exhaustive first**, so that each call hands the next a smaller candidate set and the token-heavy tool only ever sees what survived the free ones — but that is a preference, not a path: nothing in the code enforces an order, and the planner skips whatever a request does not need.
 
 | Tool | Answers from | Narrows | Cost |
 |---|---|---|---|
-| `filter_catalog` | columns | 238 → N | free, exhaustive |
+| `filter_catalog` | catalog columns | all → N | free, exhaustive |
 | `screen_out` | a word scan | N → clear | free, exhaustive |
-| `search_plots` | meaning | N → ~10 | ~$0.0000002 |
+| `search_plots` | meaning | N → a top handful | ~$0.0000002 |
 | `read_synopses` | full text | ≤ 8 films | free, token-heavy |
 
-The `screen_out` layer is what answers the query in the pitch above. A negation cannot be retrieved for: embed *"no deaths"* and the top hits are the films where somebody dies, because that is what those plots say. So it is screened instead — every plot passage of every candidate scanned in 66 ms, which is exhaustive in a way fixed-K retrieval can never be. Its error is one-sided by design: *"dead heat"* over-excludes, it never under-excludes. A match makes a film **flagged**, not rejected, since a word list cannot tell an attempt from an outcome.
+`screen_out` is what answers the query in the pitch above. A negation cannot be retrieved for: embed *"no deaths"* and the top hits are the films where somebody dies, because that is what those plots say. So it is screened instead — every plot passage of every candidate is scanned, which is exhaustive over the word list in a way fixed-K retrieval cannot be. Its error is one-sided by design: *"dead heat"* over-excludes, it never under-excludes. A match makes a film **flagged**, not rejected, since a word list cannot tell an attempt from an outcome.
 
 **Guardrails live in the data and tool code, never in the prompt** — the model cannot forget them and a bad plan cannot bypass them. Results are always ordered by `weighted_rating` rather than raw `vote_average`; `read_synopses` reads at most 8 films, truncated to 6,000 characters each, which is what bounds the cost of a turn; and `screen_out` refuses to certify a film with under 600 tokens of plot text, so absence of evidence is never reported as evidence.
 
 `python scripts/check_screen.py` asserts the screen's safety property offline and for free.
 
-See `assets/architecture.png`, served at `GET /api/model_architecture`.
+**The app's [Architecture tab](https://movibot-gamma.vercel.app) is the full account** — the loop, every tool description, and every prompt verbatim, served live from the source. The diagram alone is at `GET /api/model_architecture`.
 
 ## Data
 
 Three sources, prepared offline into `data_preprocessing/data_ready/`:
+a Disney/Pixar catalog from Kaggle, MPST plot synopses, and a Wikipedia cache
+scraped once. Raw Kaggle downloads (`data_preprocessing/data_full/`) are
+gitignored; everything in `data_ready/` is committed, so the repo runs without
+a rebuild.
 
-| Artifact | Contents |
-|---|---|
-| `supabase_movies.csv` | **238** Disney + Pixar feature films, 26 columns — the movie universe (the name is a leftover; there is no database) |
-| `pinecone_candidates.csv` | the **159** with a full MPST plot synopsis (66.8%) — the name is a leftover; no vector database is used |
-| `chunk_index.npz` | **3,159** passages and their 1536-dim vectors, scored in memory |
-| `wikipedia_cache.csv` | **237** films' Wikipedia articles, plot and non-plot text, scraped once offline |
+The catalog is deliberately narrowed to Disney and Pixar, which keeps it in
+family territory and makes the demo coherent. That is a demo constraint rather
+than a product decision — the assignment caps stored data at 50 MB and the full
+multi-studio catalog does not fit. `prepare_movibot_data.py --all-studios`
+produces the full catalog from the same pipeline.
 
-The catalog is deliberately narrowed to Disney and Pixar, which keeps it in family territory and makes the demo coherent. That's a demo constraint rather than a product decision — the assignment caps stored data at 50 MB and the full multi-studio catalog doesn't fit. `prepare_movibot_data.py --all-studios` produces all 43,270 films from the same pipeline.
-
-Raw Kaggle downloads (`data_preprocessing/data_full/`) are gitignored; everything in `data_ready/` is committed so the repo runs without a rebuild.
-
-Retrieval decisions (chunking, embedding model, why there is no vector database) are in [`rag/DECISIONS.md`](rag/DECISIONS.md), served live in the app's Retrieval tab.
-
-> **The two CSV filenames are historical and now misleading.** `supabase_movies.csv` and `pinecone_candidates.csv` are plain committed CSVs — there is no Supabase and no Pinecone in this project, and neither was ever deployed. Both backends were removed rather than finished (a hosted service for 238 rows and 3,159 vectors buys nothing and costs a credential). The names were kept only because renaming them touches 37 references across 19 files for no functional gain. Read them as `catalog.csv` and `synopses.csv`.
+**Every current figure — counts, coverage, per-film records, the passage index —
+is in the app's [Data](https://movibot-gamma.vercel.app) and Retrieval tabs, generated from the shipped
+artifacts.** They are not repeated here, so there is one source of truth rather
+than two that can drift apart. Retrieval parameters and their rationale live in
+[`rag/DECISIONS.md`](rag/DECISIONS.md), also served live on the Retrieval tab.
 
 ## Status
 
-Retrieval, tools, and the agent loop are complete and exercised end to end at zero cost. What remains needs credentials and a small budget.
+Live and answering real queries at **[movibot-gamma.vercel.app](https://movibot-gamma.vercel.app)**.
 
-- ✅ Data pipeline, chunked passage index, Wikipedia cache
-- ✅ Three tools + bounded tool-calling loop (`agent/loop.py`)
-- ✅ Catalog reads from committed CSVs; the passage index is a committed matrix, so retrieval needs no vector database
-- ⏳ Running the 11 test cases
-
-There is **no mock model by design**: a broken config fails loudly rather than masquerading as a working agent.
-
-See **[`TODO.md`](TODO.md)** for the current checklist.
+The app is the current record of what works and what is open: the
+**Architecture** tab documents the loop and every prompt verbatim, **Budget**
+reports live spend against the cap, and **TODO** serves
+[`TODO.md`](TODO.md) directly.
 
 ## API
 

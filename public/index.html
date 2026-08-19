@@ -1273,7 +1273,7 @@ C = 6.199 catalog mean    m = 300 vote prior</pre>
           <h4>No vector database</h4>
           <p>
             The vectors live in memory, in a committed file scored with numpy. There is no
-            Pinecone and no switch to enable one, which is a decision rather than a shortcut:
+            vector database and no switch to enable one, which is a decision rather than a shortcut:
             <strong>3,159 vectors is not a search problem</strong>. Scanning all of them takes
             about <strong>0.5 ms</strong>, against 50&ndash;200 ms for a round trip to a
             hosted index &mdash; and the query has to be embedded through the API either way,

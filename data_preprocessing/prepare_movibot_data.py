@@ -8,8 +8,8 @@ INPUTS (default: data_full/)
     mpst_full_data.csv
 
 OUTPUTS (default: data_ready/)
-    supabase_movies.csv
-    pinecone_candidates.csv
+    catalog.csv
+    synopses.csv
 
 The script:
 1. Narrows to the demo studio scope FIRST (DEMO_STUDIOS below, default Disney +
@@ -22,8 +22,8 @@ The script:
 3. Cleans/merges Kaggle keywords.
 4. Cleans MPST without loading its irrelevant `review` column.
 5. Matches Kaggle <-> MPST by exact normalized IMDb ID.
-6. Builds one Supabase-ready catalog containing ALL usable movies in scope.
-7. Builds one Pinecone-ingestion candidate file containing the exact MPST matches
+6. Builds one catalog file containing ALL usable movies in scope.
+7. Builds one synopses file containing the exact MPST matches
    within scope, sorted by descending Kaggle popularity. At demo scope this is
    small enough to embed in full -- no further ranking/cutoff is applied.
 
@@ -74,7 +74,7 @@ VOTE_PRIOR = 300
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Prepare final MoviBot Supabase and Pinecone CSVs from raw datasets."
+        description="Prepare the final MoviBot catalog and synopses CSVs from raw datasets."
     )
     parser.add_argument(
         "--data-full",
@@ -573,7 +573,7 @@ def build_embedding_text(row: pd.Series) -> str:
     """
     Local text to send to text-embedding-3-small later.
 
-    The long synopsis is NOT intended to be stored as Pinecone metadata.
+    The long synopsis is the local input to embedding, not stored metadata.
     """
     parts = [
         f"Title: {row['title']}",
@@ -645,23 +645,23 @@ def main() -> None:
     matched_ids = set(matched["id"].astype(int))
 
     # -------------------------------------------------------------
-    # SUPABASE OUTPUT: ALL usable movies in scope, ALL columns kept.
+    # CATALOG OUTPUT: ALL usable movies in scope, ALL columns kept.
     # -------------------------------------------------------------
-    supabase = movies.copy()
-    supabase["has_mpst_synopsis"] = supabase["id"].isin(matched_ids)
-    supabase = supabase.sort_values("id").reset_index(drop=True)
+    catalog = movies.copy()
+    catalog["has_mpst_synopsis"] = catalog["id"].isin(matched_ids)
+    catalog = catalog.sort_values("id").reset_index(drop=True)
 
-    supabase_out = out_dir / "supabase_movies.csv"
-    supabase.to_csv(supabase_out, index=False)
+    catalog_out = out_dir / "catalog.csv"
+    catalog.to_csv(catalog_out, index=False)
 
     # -------------------------------------------------------------
-    # PINECONE OUTPUT: every exact MPST match within the demo scope.
+    # SYNOPSES OUTPUT: every exact MPST match within the demo scope.
     # At this scope the pool is small enough to embed in full, so there's
     # no ranking/cutoff column -- every row here gets embedded.
     # -------------------------------------------------------------
-    print("5/5 Building Pinecone candidate file...")
+    print("5/5 Building synopses file...")
 
-    pinecone = (
+    synopses = (
         matched.sort_values(
             ["popularity", "release_year", "id"],
             ascending=[False, False, True],
@@ -670,17 +670,16 @@ def main() -> None:
         .copy()
     )
 
-    pinecone["embedding_text"] = pinecone.apply(build_embedding_text, axis=1)
-    pinecone = pinecone.rename(columns={"id": "movie_id"})
+    synopses["embedding_text"] = synopses.apply(build_embedding_text, axis=1)
+    synopses = synopses.rename(columns={"id": "movie_id"})
 
     # This is a local INGESTION CANDIDATE file, so it keeps every movie/MPST
     # column for reference. That's separate from what actually gets stored as
-    # Pinecone metadata once embedded -- keep that to movie_id/title/release_year
-    # (see "Persistent Pinecone metadata recommendation" below); embedding_text
-    # in particular should never be persisted as Pinecone metadata.
+    # embedding_text is the local input used to build each vector; it is not
+    # persisted alongside the vectors.
 
-    pinecone_out = out_dir / "pinecone_candidates.csv"
-    pinecone.to_csv(pinecone_out, index=False)
+    synopses_out = out_dir / "synopses.csv"
+    synopses.to_csv(synopses_out, index=False)
 
     # -------------------------------------------------------------
     # Console report
@@ -705,23 +704,19 @@ def main() -> None:
     for k, v in mpst_stats.items():
         print(f"  {k}: {v:,}")
 
-    coverage = len(pinecone) / len(supabase) * 100 if len(supabase) else 0.0
+    coverage = len(synopses) / len(catalog) * 100 if len(catalog) else 0.0
 
     print("\nFinal outputs:")
     print(
-        f"  Supabase: {len(supabase):,} movies | "
-        f"{file_mib(supabase_out):.2f} MiB | {supabase_out}"
+        f"  Catalog: {len(catalog):,} movies | "
+        f"{file_mib(catalog_out):.2f} MiB | {catalog_out}"
     )
     print(
-        f"  Pinecone candidates: {len(pinecone):,} movies | "
-        f"{file_mib(pinecone_out):.2f} MiB local ingestion file | {pinecone_out}"
+        f"  Synopses: {len(synopses):,} movies | "
+        f"{file_mib(synopses_out):.2f} MiB | {synopses_out}"
     )
     print(f"  Exact MPST coverage within scope: {coverage:.2f}%")
 
-    print("\nPersistent Pinecone metadata recommendation:")
-    print("  movie_id, title, release_year")
-    print("  Do NOT store embedding_text as Pinecone metadata.")
-    print("  embedding_text is only the local input used to create each vector.")
 
 
 if __name__ == "__main__":

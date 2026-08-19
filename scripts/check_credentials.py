@@ -86,8 +86,8 @@ def ping() -> None:
     """One minimal completion, to prove key + base URL + model id agree.
 
     Goes through llm_client.complete() rather than building a client here, so
-    it exercises exactly the path the agent uses -- including the offline guard
-    and the placeholder-credential check.
+    it exercises exactly the path the agent uses, including the
+    placeholder-credential check.
     """
     from agent import llm_client
 
@@ -155,7 +155,7 @@ def main() -> None:
     if llm_ok and index_ok:
         print(f"  {OK} run the 11 test cases locally")
         print("    catalog from committed CSVs, passages from the committed matrix;")
-        print("    no vector database and no Supabase involved")
+        print("    no vector database involved")
     elif llm_ok and not index_ok:
         print(f"  {WARN} the planner can run, but semantic search cannot until the")
         print("    passage index is rebuilt:  python -m rag.ingest   # ~$0.007")

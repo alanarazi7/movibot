@@ -10,7 +10,7 @@ reception, themes) for tone questions. An earlier version fetched twice, the
 second time without the release year, so the two halves could come from two
 different articles.
 
-Row count follows supabase_movies.csv -- feature films only, 238 at current
+Row count follows catalog.csv -- feature films only, 238 at current
 scope.
 
     python data_preprocessing/scrape_wikipedia.py
@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import wikipedia_client  # noqa: E402
 
 _DATA_READY = Path(__file__).resolve().parent / "data_ready"
-_CATALOG_CSV = _DATA_READY / "supabase_movies.csv"
+_CATALOG_CSV = _DATA_READY / "catalog.csv"
 _OUTPUT_CSV = _DATA_READY / "wikipedia_cache.csv"
 
 DELAY_BETWEEN_REQUESTS = 0.5  # seconds, to be polite to Wikipedia

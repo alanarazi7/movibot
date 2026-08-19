@@ -11,7 +11,7 @@ default only where the measurement says to, and record the deviation.
 ## 1. Corpus
 
 **1,254 passages from 159 films.** The source is
-`data_preprocessing/data_ready/pinecone_candidates.csv` — the Disney/Pixar
+`data_preprocessing/data_ready/synopses.csv` — the Disney/Pixar
 films that matched an MPST plot synopsis by exact IMDb id.
 
 Measured across the 159 synopses:
@@ -165,7 +165,7 @@ candidate pool without materially widening the context.
 ## 5. Storage — no vector database
 
 The vectors live in memory: a committed `.npy`, loaded once and scored with a
-numpy dot product. There is no Pinecone, and no switch to enable one.
+numpy dot product. There is no vector database, and no switch to enable one.
 
 This is a deliberate decision, not a shortcut. The arithmetic:
 
@@ -192,7 +192,7 @@ memory, or when a brute-force scan stops being instant. Neither is close. If the
 catalog grew past a demo — the full Kaggle set is 43,270 films — `rag/store.py`
 is the only file that would change.
 
-One honest note on the filenames: `pinecone_candidates.csv` is named from an
+One honest note on the filenames: `synopses.csv` is named from an
 early assumption that a vector database would ingest it. The name survives
 because renaming prepared data is churn; the file is simply the films that
 matched an MPST synopsis.
