@@ -713,9 +713,11 @@
         <p style="color:#666;font-size:0.85rem;margin-bottom:0.8rem;">
           Eleven cases covering each tool, each scope limit, and the ways the agent can
           plausibly go wrong. Click one to load it, then <b>Run Agent</b> and compare the
-          answer against what it should have done. A normal answer names at most three
-          films (<code>MAX_RECOMMENDATIONS</code>); only an explicit request for everything
-          should produce a full list.
+          answer against what it should have done. Every answer names at most three
+          films (<code>MAX_RECOMMENDATIONS</code>) &mdash; a hard ceiling that no request
+          raises, including one that asks for everything. Such a request should be told
+          the answer is not complete, and given the true match count when the agent has
+          one.
         </p>
         <div id="test-cases"></div>
       </div>
@@ -1771,7 +1773,7 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
       {
         kind: 'list',
         q: 'All Disney movies from 1990 onwards with no deaths that involve animals, for a 3-year-old. Be exhaustive, don’t miss any.',
-        expect: 'The one case where a shortlist is wrong. Expect every film that survived the filters, plus a statement of what the list is complete with respect to. Exhaustiveness over all 238 is possible but prohibitively expensive, so it filters first and reads at most 8 plots — it must not present that heuristic as a proof.'
+        expect: 'The ceiling test. Asking for everything must NOT produce a long list: expect at most 3 films, plus an explicit statement that this is not the complete answer. Because the filter and the screen are both exhaustive, it should also be able to give the true match count — “N films match, here are 3”. It must not imply the three are all of them.'
       },
       {
         kind: 'answer',

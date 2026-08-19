@@ -9,7 +9,7 @@ structured ones, then spend money only on what is left.
 POST /api/execute
   └─ loop.py            up to MAX_ROUNDS = 5 model turns; last turn gets no
                         tools, so it must answer rather than ask
-       └─ Planner       one prompt, 2,552 tokens, every turn. The only paid step
+       └─ Planner       one prompt, 3,150 tokens, every turn. The only paid step
                         turn 1 also writes the condition ledger, at no extra cost
             ├─ filter_catalog   238 -> N by column.  Free, exhaustive
             ├─ screen_out       N -> clear/flagged/insufficient.  Free, exhaustive
@@ -17,8 +17,9 @@ POST /api/execute
             └─ read_synopses    <= 8 films, <= 6,000 chars each.  Free
 ```
 
-Cheapest and most exhaustive first, so the token-heavy layer only ever sees
-what survived the free ones.
+The prompt encourages cheapest-and-most-exhaustive first, so the token-heavy
+tool only ever sees what survived the free ones — a preference, not a path:
+nothing in the code enforces the order.
 
 In place:
 
@@ -50,9 +51,12 @@ In place:
 
 ### A3. Prompt review  ← the remaining architecture item
 
-Never reviewed whole; it grew one section per problem we hit. Now **2,552
-tokens** on every turn plus 1,277 of tool schemas, against a brief that asks to
-minimise context — and the four-layer rewrite added 547 of that.
+Never reviewed whole; it grew one section per problem we hit. Now **3,150
+tokens** on every turn plus 1,344 of tool schemas — 4,494 in all — against a
+brief that asks to minimise context. The QA-workbook rewrites (routing by
+evidence, the claim rules, the output ceiling) added roughly 600 of that, and
+were correctness fixes rather than padding, but the section has never been read
+end to end for redundancy.
 
 The growth is arguably paid for: one avoided wrong-tool call (searching for a
 negation) costs a full round at ~3,800 tokens, so preventing one covers the
@@ -78,12 +82,12 @@ working set. Stale in several ways, and none has ever been run.
 - [ ] Add a negation case that exercises all three screen buckets, and one
       where the right answer is a *flagged* film (an attempted killing, not a
       death) so `flagged` is not treated as `rejected`
-- [ ] **`MAX_RECOMMENDATIONS = 3` is not being honoured.** A live production
-      run on "a Pixar film where nobody dies, besides Toy Story" listed all
-      **7** clear films. The screen returns a complete set and the model
-      presented the set, which reads as reasonable but contradicts the cap.
-      Decide which wins — the cap, or completeness when a layer is exhaustive
-      — and say so in one place rather than two
+- [ ] **Confirm the ceiling holds.** `MAX_RECOMMENDATIONS = 3` is now a hard
+      ceiling that no request raises, including one asking for everything; such
+      a request is told the answer is not complete and given the true match
+      count where the exhaustive tools settled the set. Decided; the production
+      run that listed all 7 clear films predates it. Verify against the ceiling
+      test in the test bed
 - [ ] **"besides Toy Story" is ambiguous** and the model resolved it
       differently across two runs: once as the franchise (four labels, one of
       them the non-existent *Toy Story 4*), once as the single 1995 film. The
