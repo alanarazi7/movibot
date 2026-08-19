@@ -42,7 +42,7 @@ The catalog is deliberately narrowed to Disney and Pixar, which keeps it in fami
 
 Raw Kaggle downloads (`data_preprocessing/data_full/`) are gitignored; everything in `data_ready/` is committed so the repo runs without a rebuild.
 
-**Full rationale — every source, filter, threshold, and *Frozen* traced end to end — is in [`data_preprocessing/PIPELINE_REVIEW.md`](data_preprocessing/PIPELINE_REVIEW.md).** Retrieval decisions (chunking, embedding model, why there is no vector database) are in [`rag/DECISIONS.md`](rag/DECISIONS.md), served live in the app's Retrieval tab.
+Retrieval decisions (chunking, embedding model, why there is no vector database) are in [`rag/DECISIONS.md`](rag/DECISIONS.md), served live in the app's Retrieval tab.
 
 > **The two CSV filenames are historical and now misleading.** `supabase_movies.csv` and `pinecone_candidates.csv` are plain committed CSVs — there is no Supabase and no Pinecone in this project, and neither was ever deployed. Both backends were removed rather than finished (a hosted service for 238 rows and 3,159 vectors buys nothing and costs a credential). The names were kept only because renaming them touches 37 references across 19 files for no functional gain. Read them as `catalog.csv` and `synopses.csv`.
 
