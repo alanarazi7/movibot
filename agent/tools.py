@@ -429,6 +429,22 @@ def screen_out(
         # and only the passage says which one involves an animal.
         matches = with_evidence(flagged)
         out["scope"] = "search and reading now cover only the matching films"
+        if and_words:
+            # Co-occurrence is proximity, not a relationship. Alice Through the
+            # Looking Glass has a Cheshire Cat and a Hatter in one passage and
+            # no cat in a hat anywhere. A word list cannot close that gap, and
+            # naming the film with a note that the link is unproven is the
+            # failure this whole path exists to avoid -- so say what the next
+            # move is instead of leaving the planner to invent one.
+            out["co_occurrence_warning"] = (
+                "Both word lists appear in these passages. That is proximity, not a "
+                "relationship: the text may pair the two things, or merely mention them "
+                "in the same scene. Read the quote. If it does not plainly show the "
+                "connection, call `read_synopses` on these films with `about` set to the "
+                "connection you need -- and if that does not settle it either, say the "
+                "plot text does not establish it and name nothing. Do not list a film "
+                "alongside a note that the link is unproven."
+            )
         out["matching_films"] = matches[:PREVIEW_FILMS]
         out["meaning"] = (
             "Every plot passage of every candidate was scanned, so this is "
