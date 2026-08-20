@@ -120,6 +120,7 @@ def screen(
     words: list[str],
     candidate_ids: list[int] | None = None,
     sources: list[str] | None = None,
+    and_words: list[str] | None = None,
 ) -> dict[str, Any]:
     """Split candidates into clear / flagged / insufficient_text.
 
@@ -135,6 +136,14 @@ def screen(
     allowed = set(int(c) for c in candidate_ids) if candidate_ids is not None else None
 
     tokens: dict[int, int] = {}
+    # A conjunction is not two scans intersected: "a cat that wears a hat" is
+    # not answered by films mentioning a cat somewhere and a hat somewhere,
+    # which on this catalog is 11 films and mostly nonsense. Both have to land
+    # in the SAME passage -- 300 tokens of one scene -- before the pairing means
+    # anything. Without this the tool returned 51 films for cat-or-hat and the
+    # planner spent the answer explaining why each one did not fit.
+    and_pattern = _pattern(and_words) if and_words else None
+
     evidence: dict[int, list[dict[str, Any]]] = {}
 
     for p in passages:
@@ -151,14 +160,25 @@ def screen(
         if found is None:
             continue
 
+        second = and_pattern.search(text) if and_pattern is not None else None
+        if and_pattern is not None and second is None:
+            continue
+
         hits = evidence.setdefault(movie_id, [])
         if len(hits) < MAX_EVIDENCE_PER_FILM:
-            start = max(0, found.start() - MAX_EVIDENCE_CHARS // 2)
-            hits.append({
+            # Quote the span that holds both, so the reader can judge whether
+            # the two words are actually related or merely adjacent.
+            lo = min(found.start(), second.start()) if second else found.start()
+            hi = max(found.end(), second.end()) if second else found.end()
+            start = max(0, lo - MAX_EVIDENCE_CHARS // 2)
+            hit = {
                 "word": found.group(0).lower(),
                 "chunk_index": int(p.get("chunk_index", 0)),
-                "quote": text[start:found.end() + MAX_EVIDENCE_CHARS // 2].strip(),
-            })
+                "quote": text[start:hi + MAX_EVIDENCE_CHARS // 2].strip(),
+            }
+            if second is not None:
+                hit["with"] = second.group(0).lower()
+            hits.append(hit)
 
     # Candidates with no indexed plot text at all never appear in the loop above,
     # so they have to be added back explicitly. Silently dropping them would be

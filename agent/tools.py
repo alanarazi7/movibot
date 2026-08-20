@@ -302,6 +302,7 @@ def screen_out(
     words: list[str] | None = None,
     vocabulary: str | None = None,
     keep: str = "clear",
+    and_words: list[str] | None = None,
     ctx: "ToolContext | None" = None,
 ) -> dict[str, Any]:
     """Scan every plot passage of every candidate for `words`. Free, both ways.
@@ -347,7 +348,8 @@ def screen_out(
     if candidates is None:
         candidates = [int(i) for i in catalog.movies()["id"]]
 
-    result = screening.screen(resolved, candidate_ids=candidates)
+    result = screening.screen(resolved, candidate_ids=candidates,
+                              and_words=and_words)
 
     clear, flagged = result["clear"], result["flagged"]
     thin = result["insufficient_text"]
@@ -383,6 +385,7 @@ def screen_out(
     out: dict[str, Any] = {
         "screened_for": resolved if len(resolved) <= 12 else
                         resolved[:12] + [f"... and {len(resolved) - 12} more"],
+        **({"together_with": and_words} if and_words else {}),
         "kept": keep,
         "clear": len(clear),
         "flagged": len(flagged),
@@ -756,6 +759,21 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                             "are given. Matched on word boundaries, so pass "
                             "each inflection and synonym you care about: "
                             "['hat', 'hats', 'fez', 'bonnet', 'cap']."
+                        ),
+                    },
+                    "and_words": {
+                        "type": "array", "items": {"type": "string"},
+                        "description": (
+                            "A SECOND word list that must appear in the same "
+                            "passage as one from `words`. Use it whenever the "
+                            "request pairs two things -- 'a cat that wears a "
+                            "hat', 'a robot on a spaceship'. Put the synonyms "
+                            "of one thing in `words` and of the other here. "
+                            "Without it the scan matches either word anywhere "
+                            "in a film: cat-or-hat returns 51 films, cat-words "
+                            "alone 27, and cat-with-hat-in-one-passage 2. The "
+                            "first two are lists of near-misses you would have "
+                            "to explain away; the third is the answer."
                         ),
                     },
                     "keep": {

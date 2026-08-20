@@ -38,6 +38,10 @@ running the whole set rather than spot-checking.
       prompt and response. Planner and Observer turns both carry `usage`; the
       embedding call inside `PlotSearch` still does not name its model, which is
       the one known gap
+- [ ] **Verify the paired scan.** `and_words` requires two word lists to land
+      in the same passage. Confirm the planner reaches for it on "a cat that
+      wears a hat" rather than scanning one list and rationalising over the
+      near-misses
 - [ ] **Verify the Observer end to end.** Never run. Confirm it returns usable
       JSON, that its verdicts are sane, that the quote check rejects a
       paraphrase rather than passing it, and that the planner cites the

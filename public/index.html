@@ -953,6 +953,17 @@
             reports the gap in its sources instead of naming films it could not verify.
           </p>
           <p>
+            <strong>A paired request needs both words in one passage.</strong>
+            &ldquo;A cat that wears a hat&rdquo; is not answered by films mentioning a
+            cat somewhere and a hat somewhere. Scanning for either word returns
+            <strong>51</strong> films and cat-words alone returns <strong>27</strong>
+            &mdash; lists of near-misses an answer would have to explain away, which is
+            exactly what it did. Requiring the two to land in the same 300-token passage
+            returns <strong>2</strong>: <em>The Great Mouse Detective</em> (Felicia the
+            cat) and <em>Alice Through the Looking Glass</em>. Three prompt rules failed
+            to stop the rationalising; narrowing the tool did.
+          </p>
+          <p>
             <strong>What a screen proves, and what it does not.</strong> It is
             exhaustive over its <em>word list</em>, not over the event. A
             <code>clear</code> result means no listed word appears in the film's stored

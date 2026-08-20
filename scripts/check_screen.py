@@ -137,6 +137,30 @@ def check_keep_flagged() -> list[str]:
     if fwd.get("flagged_note"):
         failures.append("keep='flagged' told the caller to use the clear set instead")
 
+    # A paired request is not two scans intersected. "A cat that wears a hat"
+    # matched 51 films on cat-or-hat and 27 on cat alone, so the planner was
+    # handed a pile of near-misses and spent the answer explaining why each one
+    # did not fit -- twice, in review, after three separate prompt rules had
+    # tried to stop it. Requiring both in one passage is the fix that worked.
+    cats = ["cat", "cats", "kitten", "kittens"]
+    hats = ["hat", "hats", "fez", "bonnet", "cap"]
+    loose = tools.screen_out(words=cats, keep="flagged")
+    tight = tools.screen_out(words=cats, and_words=hats, keep="flagged")
+    if tight["flagged"] >= loose["flagged"]:
+        failures.append("and_words did not narrow the match at all")
+    if tight["flagged"] > 5:
+        failures.append(f"cat-with-hat matched {tight['flagged']} films; the "
+                        f"co-occurrence requirement is not being applied")
+    found = {m["film"] for m in tight.get("matching_films", [])}
+    if "The Great Mouse Detective (1986)" not in found:
+        failures.append("The Great Mouse Detective pairs a cat and a cap in one "
+                        "passage but did not match")
+    for m in tight.get("matching_films", []):
+        if not m.get("quote"):
+            failures.append(f"{m['film']} matched on a pair but came back unquoted")
+            break
+
+
     # Narrowing must follow the direction, or the next tool searches the films
     # that failed the condition.
     ctx = tools.ToolContext()
