@@ -21,7 +21,6 @@ TEAM_INFO_PATH = os.path.join(BASE_DIR, "team_info.json")
 AGENT_INFO_PATH = os.path.join(BASE_DIR, "agent_info.json")
 ARCHITECTURE_PNG_PATH = os.path.join(BASE_DIR, "assets", "architecture.png")
 GUI_PATH = os.path.join(BASE_DIR, "public", "index.html")
-TODO_PATH = os.path.join(BASE_DIR, "TODO.md")
 RAG_DECISIONS_PATH = os.path.join(BASE_DIR, "rag", "DECISIONS.md")
 
 app = Flask(__name__)
@@ -42,18 +41,6 @@ def index():
     # Local dev convenience only. In production, Vercel's static routing
     # (see vercel.json) serves public/ directly and never hits app.py for "/".
     return send_file(GUI_PATH)
-
-
-@app.route("/api/status", methods=["GET"])
-def status():
-    # Served from TODO.md rather than duplicated into the GUI, so the checklist
-    # the team edits is the one the page shows. team_info.json proves non-.py
-    # files ship in the serverless bundle, so this works in production too.
-    try:
-        with open(TODO_PATH, "r", encoding="utf-8") as f:
-            return _cors(jsonify({"markdown": f.read()}))
-    except FileNotFoundError:
-        return _cors(jsonify({"markdown": None, "error": "TODO.md not bundled."})), 404
 
 
 @app.route("/api/budget", methods=["GET"])

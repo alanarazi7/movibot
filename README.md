@@ -55,10 +55,11 @@ than two that can drift apart. Retrieval parameters and their rationale live in
 
 Live and answering real queries at **[movibot-gamma.vercel.app](https://movibot-gamma.vercel.app)**.
 
-The app is the current record of what works and what is open: the
-**Architecture** tab documents the loop and every prompt verbatim, **Budget**
-reports live spend against the cap, and **TODO** serves
-[`TODO.md`](TODO.md) directly.
+The app is the current record of how it works: the **Architecture** tab
+documents the loop and every prompt verbatim, and **Budget** reports live spend
+against the cap. [`TODO.md`](TODO.md) keeps the project log — decisions, the
+numbers that settled them, and what was fixed — in the repo rather than in the
+GUI.
 
 ## API
 
@@ -129,18 +130,14 @@ Check by content, not by byte count — `wc -c` counts bytes and these files
 contain multibyte characters, so local and served lengths differ legitimately.
 
 **A change to a non-code file may not deploy at all.** Vercel reuses its build
-cache when it sees no change worth rebuilding for, so editing only `TODO.md`,
-`rag/DECISIONS.md`, or another file the app *reads* can leave production
-serving the old copy — with `x-vercel-cache: MISS`, so it does not look like a
-cache problem. Use:
+cache when it sees no change worth rebuilding for, so editing only
+`rag/DECISIONS.md`, `agent_info.json`, or another file the app *reads* can
+leave production serving the old copy — with `x-vercel-cache: MISS`, so it does
+not look like a cache problem. Use:
 
 ```bash
 vercel --prod --yes --force --scope alan-agents-course
 ```
-
-This matters more than it sounds: the TODO tab is served from `TODO.md`, so the
-page whose whole purpose is to be current is exactly the one that can silently
-go stale.
 
 `.vercelignore` keeps 113 MB of raw Kaggle input, the course PDFs, and the
 local `.env` files out of the upload. It deliberately does **not** exclude
