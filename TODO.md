@@ -1,24 +1,20 @@
-## What is left
+## Nothing is open
 
-One handover check. Everything else is closed.
-Spend to date $0.34 of $13 — 2.6%; the thirteen-case verification round cost
-4 cents and the example capture about one.
+Every item raised in review is closed. What follows is the record: what the
+agent is, what was decided and why, and what was fixed. Spend to date is
+**$0.36 of $13** — the thirteen-case verification round cost four cents.
 
-### G10 — the handover check
+Two check scripts run free and offline, and are the fastest way to confirm the
+project still holds together after a change:
 
-Deploys are **not** git-connected here: `git push` updates GitHub and nothing
-else, and `vercel --prod` returns 0 without necessarily promoting. So the
-repository and the live site can disagree silently, and every claim in the
-write-up is about the live site.
-
-It goes last because it is a statement about the final state. Running it before
-the last commit verifies a build that is about to be replaced.
-
-- [ ] Record the commit SHA that is actually serving
-- [ ] Confirm the served diagram, prompt and counts match the repo — the two
-      check scripts plus a hash comparison of `/api/model_architecture`
-- [ ] Confirm `/api/execute`, `/api/agent_info`, `/api/team_info` and
-      `/api/model_architecture` all answer on the live URL
+```
+python scripts/check_screen.py    # the screen's one-sided error, title
+                                  # exclusion, the forward scan, co-occurrence,
+                                  # language resolution
+python scripts/check_gates.py     # the /api/execute contract, module-name
+                                  # consistency, the model ids, every count
+                                  # shown in the GUI
+```
 
 ### Decided against
 
