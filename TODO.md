@@ -3,24 +3,6 @@
 Two working items and one handover check. Everything else is closed.
 Spend to date $0.33 of $13; the whole verification round cost 4 cents.
 
-### C01 / C02 — the graded endpoint  💰 ~$0.01
-
-`/api/agent_info` is graded, and the spec requires **`full_response` and
-`steps` on every prompt example**. Ours carry neither, and both `status`
-fields still say the response "will be captured once the LLM endpoint is
-enabled" — which tells a reviewer the project is half-built. It has been live
-for weeks and the suite has now run thirteen cases through it.
-
-This is the only place the project is currently non-compliant with something a
-grader can check mechanically.
-
-- [ ] Run both example prompts and store the exact final `response` as
-      `full_response`, plus the full returned `steps`
-- [ ] Replace the `status` text with a factual capture note naming the build,
-      or drop the field once `full_response` carries the evidence
-- [ ] Keep `expected_tool_path` and `verified_tool_output` only if they still
-      earn their place beside the required fields
-
 ### G10 — the handover check
 
 Deploys are **not** git-connected here: `git push` updates GitHub and nothing
@@ -172,6 +154,20 @@ Recorded so they are not relitigated.
 
 ## Closed
 
+- **C01 / C02 / C03 — the graded endpoint is compliant.** Both prompt examples
+  now carry `full_response` and `steps` captured verbatim from a real run,
+  stamped with the commit that produced them; `scripts/capture_examples.py`
+  regenerates them so they can never be hand-written again. The status fields
+  promising a capture "once the LLM endpoint is enabled" are gone, and the
+  wider sweep for future-work language is clean. C03 closed with them: the
+  empowering example now runs CatalogFilter -> PlotSearch -> SynopsisReader ->
+  Observer and cites the plot text rather than inferring a theme from
+  keywords. *2026-08-20*
+- **`verified_tool_output` dropped.** A hand-written narrative of what the
+  tools returned, sitting beside the captured steps, and it had already
+  drifted -- claiming 13 matches next to a step showing 11, because the model
+  picks its own filter arguments. The steps hold every number verbatim.
+  *2026-08-20*
 - **The full test bed ran, 13/13.** Eleven clean; two honest but imperfect —
   the animal-in-a-hat case names a near-miss, and the pretend-to-love case
   reaches Frozen on a concrete rewrite and reports "nothing supported" on an
