@@ -34,10 +34,10 @@ running the whole set rather than spot-checking.
       princess and the exclusions but not the adjective; `require_synopsis=true`
       only proves text exists. Give it its own ledger line and a tool that can
       settle it, and make the rationale cite that evidence
-- [ ] **G02** — every model call appears in `steps`, in order, with module,
-      prompt and response. Planner and Observer turns both carry `usage`; the
-      embedding call inside `PlotSearch` still does not name its model, which is
-      the one known gap
+- [ ] **G02** — confirm on a real trace that every model call is there in
+      order. Planner and Observer carry `usage`; `PlotSearch` now records a
+      `model_call` naming the embedding deployment, its input and its
+      dimensions, so the one known gap is closed pending verification
 - [ ] **Verify the paired scan.** `and_words` requires two word lists to land
       in the same passage. Confirm the planner reaches for it on "a cat that
       wears a hat" rather than scanning one list and rationalising over the
@@ -54,10 +54,12 @@ running the whole set rather than spot-checking.
 
 ### Free, but needs a decision
 
-- [ ] **"besides Toy Story" is ambiguous** and the model resolved it
-      differently across two runs: once as the franchise (four labels, one of
-      them the non-existent *Toy Story 4*), once as the single 1995 film. Both
-      readings are defensible. Pick one and put it in the tool description
+- [x] ~~"besides Toy Story" is ambiguous~~ — settled 2026-08-20 in favour of
+      what the code already does: exclusion is **exact title, never a
+      franchise**. "Toy Story" drops the 1995 film and leaves 2 and 3 in scope;
+      "The Jungle Book" drops two only because both remakes share that exact
+      title. Written into the `exclude_titles` schema, along with an
+      instruction never to invent a title to exclude
 
 ### After the round
 

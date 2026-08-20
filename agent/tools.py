@@ -41,6 +41,7 @@ from typing import Any
 from dataclasses import dataclass, field
 
 from agent import catalog
+from rag import config as ragcfg
 from rag import screen as screening
 from rag import store as retrieval
 from rag.corpora import DEFAULT_SOURCES
@@ -501,6 +502,16 @@ def search_plots(
 
     out: dict[str, Any] = {
         "query": query,
+        # This tool makes a real model call -- the query is embedded before it
+        # can be scored -- and the assignment asks for every model call to be
+        # visible in the trace. Naming it here puts it in the step record
+        # rather than leaving it implied by the tool's existence.
+        "model_call": {
+            "model": ragcfg.EMBED_MODEL,
+            "kind": "embedding",
+            "input": query,
+            "dimensions": retrieval.coverage().get("dim"),
+        },
         "searched_within": "whole catalog" if scoped is None else f"{len(scoped)} films in scope",
         "returned": len(results),
         "results": results,
@@ -694,7 +705,20 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                     },
                     "exclude_titles": {
                         "type": "array", "items": {"type": "string"},
-                        "description": "Exact titles to drop. Use when the user says 'besides X' or 'other than X'.",
+                        "description": (
+                            "Titles to drop, matched exactly. Use when the "
+                            "user says 'besides X' or 'other than X'. "
+                            "**Exclusion is never a franchise.** 'besides Toy "
+                            "Story' drops the 1995 film and leaves Toy Story 2 "
+                            "and 3 in scope, which is usually what was meant; "
+                            "if the user clearly means the whole series, pass "
+                            "each film by name. Two films sharing a title are "
+                            "both dropped by the bare title ('The Jungle Book' "
+                            "drops the 1967 and 2016 versions) and one by the "
+                            "label ('The Jungle Book (1967)'). Never invent a "
+                            "title to exclude: a title the catalog cannot "
+                            "match comes back as exclude_titles_unmatched."
+                        ),
                     },
                     "require_synopsis": {
                         "type": "boolean",
