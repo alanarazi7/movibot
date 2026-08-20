@@ -4,7 +4,7 @@ Offline only (PIL, no network or model calls).
 
 Two things this diagram must not drift from, so both are read rather than typed:
 module names come from agent.tools.TRACE_NAMES and the turn bound from
-agent.loop.MAX_ROUNDS. The assignment requires identical naming across the
+agent.tools.TRACE_NAMES. The assignment requires identical naming across the
 diagram, the /api/execute steps trace, and agent_info.json, so none of it is
 typed here.
 
@@ -225,32 +225,32 @@ def main() -> None:
     img = Image.new("RGB", (WIDTH * SS, HEIGHT * SS), BG)
     draw = ImageDraw.Draw(img)
 
-    _text(draw, (36, 26), "MoviBot Architecture", INK, 32, bold=True)
-    _text(draw, (36, 72),
-          "One ReAct loop. The planner chooses the tools, their arguments, "
-          "and when to stop \u2014 by not asking for one.", MUTED, 16)
+    title = "MoviBot ReAct Architecture"
+    _text(draw, (36, 26), title, INK, 32, bold=True)
+    popcorn = _emoji("\U0001F37F", 30)
+    if popcorn is not None:
+        img.paste(popcorn, (int(_s(36 + _width(draw, title, 32, True) + 14)), int(_s(28))), popcorn)
 
+    # Top right, stacked, so it clears the title and reads downward the way the
+    # boxes it explains are stacked.
     entries = [
         (PAID_FILL, PAID_LINE, "always a model call"),
         (MAYBE_FILL, MAYBE_LINE, "a model call for some tools, not others"),
         (FREE_FILL, FREE_LINE, "never \u2014 local Python, free"),
     ]
-    lx = 36
-    for fill, line, label in entries:
-        _swatch(draw, lx, 103, fill, line)
-        lx += 20
-        _text(draw, (lx, 101), label, MUTED, 14)
-        lx += _width(draw, label, 14) + 28
+    lw = max(_width(draw, label, 14) for _, _, label in entries)
+    lx = WIDTH - 36 - lw - 20
+    for i, (fill, line, label) in enumerate(entries):
+        ly = 30 + i * 22
+        _swatch(draw, lx, ly, fill, line)
+        _text(draw, (lx + 20, ly - 2), label, MUTED, 14)
 
     # ---- the loop ------------------------------------------------------
-    # The frame carries the turn bound, because "bounded" is the honest
-    # qualifier on "the model decides when to stop": it decides, up to here.
+    # The frame is left unlabelled: the title says ReAct, and the two edge
+    # labels say what continues the cycle and what ends it. The turn bound is
+    # a real fact but it is a cost guard, not part of reading the picture.
     frame = (210, 130, 680, 555)
     _dashed_rect(draw, frame)
-    _label(draw, 445, 130,
-           f"REACT LOOP  ·  the model repeats this until it stops, "
-           f"or {loop.MAX_ROUNDS} times",
-           colour=MUTED, size=15, bold=True)
 
     reason = (235, 175, 425, 300)
     act = (490, 175, 655, 300)
@@ -344,7 +344,9 @@ def main() -> None:
     img.save(OUTPUT_PATH)
     print(f"Wrote {OUTPUT_PATH}  ({WIDTH * SS}x{HEIGHT * SS}, "
           f"laid out as {WIDTH}x{HEIGHT} at {SS}x)")
-    print(f"  loop bound: {loop.MAX_ROUNDS} model turns")
+    # Reported, not drawn: the bound is a cost guard rather than something
+    # a reader needs in order to follow the picture.
+    print(f"  loop bound: {loop.MAX_ROUNDS} model turns (not shown)")
     print(f"  modules: Planner, Observer, "
           f"{', '.join(tools.TRACE_NAMES[k] for k, *_ in specs)}")
 
