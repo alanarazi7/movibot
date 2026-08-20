@@ -926,10 +926,18 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                     "about": {
                         "type": "string",
                         "description": (
-                            "What you need to find out, e.g. 'does any major "
-                            "character die' or 'is the prince trustworthy'. "
-                            "Returns the passages relevant to this instead of "
-                            "the opening of the plot. Strongly recommended."
+                            "The ONE thing the text either shows or does not "
+                            "show, phrased so that 'yes' has a single "
+                            "meaning: 'does a major character die', 'does "
+                            "someone pretend to love another to gain power'. "
+                            "**Never phrase it two-sidedly.** 'whether the "
+                            "ending is sad or not sad' makes the verdict "
+                            "meaningless -- 'no' then answers neither half, "
+                            "and both a death scene and a warm goodbye come "
+                            "back marked the same way. Ask about the sad "
+                            "ending, and read `no` as the not-sad ones. This "
+                            "also selects which passages come back, so it is "
+                            "strongly recommended."
                         ),
                     },
                     "max_chars": {

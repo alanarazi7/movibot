@@ -53,6 +53,10 @@ For each film return one object:
             -- who a name refers to, or that an act was attempted rather than
             completed. Never a summary of the film.
 
+If the question is two-sided -- "whether the ending is sad or not sad" -- \
+`yes` and `no` cannot both be meaningful. Answer about the FIRST thing it \
+names, say so in `note`, and let the quote carry the rest.
+
 Rules that matter more than fluency:
 
 - **The quote must be copied exactly from the text you were given.** Do not \
