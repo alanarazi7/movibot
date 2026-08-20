@@ -89,16 +89,26 @@ MAX_SYNOPSIS_CHARS = 6000
 MAX_SEARCH_RESULTS = 25
 
 # Below this, the top hit is usually a sign the query was phrased as a theme
-# rather than as an event. Measured on this corpus: three abstract queries
-# ("a film about the dangers of vanity", "a story exploring themes of identity
-# and belonging", "someone pretends to love another to seize power") topped out
-# at 0.3423, 0.3492 and 0.3528; three concrete ones ("a rat cooks in a Paris
-# restaurant kitchen", "toys come alive when their owner leaves the room", "he
-# says he never loved her and leaves her to die so he can take the throne")
-# scored 0.6635, 0.4767 and 0.4380. The gap is clean, and it is the difference
-# between finding Frozen for the Hans betrayal and never seeing it at all.
+# rather than as an event. Measured on this corpus, seven queries:
+#
+#   abstract  0.3423  "a film about the dangers of vanity"
+#             0.3492  "a story exploring themes of identity and belonging"
+#             0.3528  "someone pretends to love another to seize power"
+#             0.4063  "a character pretends to love another person, gains
+#                      power or a throne, then reveals the deception"
+#   concrete  0.4380  "he says he never loved her and leaves her to die so he
+#                      can take the throne"
+#             0.4767  "toys come alive when their owner leaves the room"
+#             0.6635  "a rat cooks in a Paris restaurant kitchen"
+#
+# The fourth is why this is 0.42 rather than 0.40. It reads as concrete and is
+# not -- it names an abstraction ("gains power or a throne") instead of a
+# scene, scored just above the old threshold, and returned five films without
+# Frozen among them. Everything observed still separates cleanly, but the gap
+# is 0.4063 to 0.4380, not 0.3528 to 0.4380.
+#
 # Advisory only: a real answer can score below this, so it warns, never filters.
-WEAK_MATCH_SIMILARITY = 0.40
+WEAK_MATCH_SIMILARITY = 0.42
 
 # Each search hit carries the passage that matched, as evidence. Long enough
 # to judge a story beat, short enough that 25 of them stay affordable.
@@ -937,7 +947,9 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                             "back marked the same way. Ask about the sad "
                             "ending, and read `no` as the not-sad ones. This "
                             "also selects which passages come back, so it is "
-                            "strongly recommended."
+                            "strongly recommended: without it a long plot "
+                            "arrives truncated at its opening and you will "
+                            "miss the ending."
                         ),
                     },
                     "max_chars": {

@@ -81,49 +81,45 @@ running the whole set rather than spot-checking.
 
 ---
 
-## A3. The prompt is the weakest part of the project
-
-**It is bad, and it is bad in a way the brief specifically marks down.**
-Requirement 1 of the assignment is *"Build the agent in an optimized way: avoid
-unnecessary LLM calls, **minimize prompt/context size (only what's needed)**."*
-That is graded, not a nicety, and the prompt has moved the wrong way all week:
+## A3. Prompt trimmed 43%  ✅ 2026-08-20
 
 | | system prompt | + schemas | per turn |
 |---|---|---|---|
 | start of review, 2026-08-19 | 3,150 | 1,344 | 4,494 |
-| now, 2026-08-20 | **4,197** | **1,670** | **5,867** |
+| peak, 2026-08-20 | 4,197 | 1,670 | 5,867 |
+| **after the trim** | **2,374** | 2,067 | **4,441** |
 
-**+33% in two days.** Every addition had a reproduction behind it, which is the
-defence, and it is not good enough: the same lessons are now taught over and
-over in different words, and that is a cause of failures rather than a cure.
+**−43% on the prompt.** Requirement 1 of the brief asks to minimize prompt
+size, so this is a graded number, not housekeeping.
 
-Counted by hand:
+What was actually wrong was not length but repetition. The same four lessons
+were each stated three to six times — "do not claim what you did not verify"
+in six places, "screen_out tests words not events" in four — and two of those
+restatements had been in outright contradiction until earlier the same day.
+One prompt saying the same thing six ways is not emphasis; it is six chances
+to disagree with itself.
 
-- **"do not claim what you did not verify" — 6 separate places**
-- **"screen_out tests words, not events" — 4 places**
-- **"cheapest and most exhaustive first" — 4 places**
-- **the 3-film ceiling — 4 places**
+The rewrite states the governing rule once, at the top, and makes everything
+else an application of it. `HOW TO WORK` held two overlapping structures — a
+condition-type table and a numbered layer list encoding the same routing
+knowledge twice — now merged into one table that carries the operational
+detail with the routing. Rules that belong at the point of use moved into the
+tool schemas, which is why schemas grew while the prompt shrank.
 
-Redundancy is not the worst of it. Two restatements were in outright
-**contradiction** until 2026-08-20 — "where you relied on the approximate
-layers, say so" against "if you are writing *but I did not verify*, cut it" —
-and the model resolved that by satisfying one and breaking the other. That is
-exactly the class of failure that kept turning up in review: a rejected film
-under an "Also possible" heading, an apologetic second recommendation. One
-prompt saying the same thing six ways is not emphasis; it is six chances to
-disagree with itself.
+**The trim caused one regression, and testing caught it.** The
+pretend-to-love case had returned Frozen; afterwards it returned Princess
+Diaries 2. The dropped worked example was doing real work: without it the
+model wrote "a character pretends to love another person, gains power or a
+throne", which scored 0.4063 — just above the old 0.40 `weak_match`
+threshold, so nothing warned, and Frozen was not in the top five.
 
-`HOW TO WORK` alone is **1,336 tokens, a third of the whole prompt**, and holds
-two overlapping structures: the condition-type table and the numbered layer
-order encode much the same routing knowledge twice.
+Both halves are fixed. The threshold is 0.42, which the seven observed
+queries still separate cleanly, and a compact three-line version of the
+example is back with the middle case as the trap: a query can read as
+concrete and still name an abstraction. Re-run returns Frozen in one tool
+call.
 
-- [ ] Merge the four repeated lessons into one statement each; target ~3,400
-- [ ] Collapse the two structures in `HOW TO WORK` into one
-- [ ] Re-run the 13 cases against the round's baseline, so any regression is
-      attributable to the trim
-- [ ] Put the measured before/after in the write-up. "We cut the prompt 33% with
-      no regression on 13 cases" is a requirement-1 answer; "it grew because
-      every addition was justified" is not
+- [ ] Re-run the remaining cases against the trimmed prompt before handover
 
 ---
 
