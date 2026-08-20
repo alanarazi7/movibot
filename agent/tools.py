@@ -452,6 +452,21 @@ def screen_out(
                 "matching films; all of them are in scope."
             )
 
+        # A wide flat match on a presence query is nearly always a request that
+        # paired two things, scanned as one list. The words are matched with
+        # OR, so every film mentioning either one lands here, and answering
+        # from that set means naming films and explaining why they do not fit.
+        # The tool knows this before the planner does, so it says so.
+        if not and_words and len(matches) > MAX_FLAGGED_EVIDENCE:
+            out["consider_pairing"] = (
+                f"{len(matches)} films matched, because these {len(resolved)} words are "
+                "matched with OR: a film needs only one of them. If the request pairs "
+                "two things -- 'a cat that wears a hat', 'a robot on a spaceship' -- put "
+                "one thing's synonyms in `words` and the other's in `and_words`, and only "
+                "films where both land in the same passage come back. Do not answer from "
+                "this wide set by naming a film and noting which half it fails."
+            )
+
     if thin:
         out["insufficient_films"] = [catalog.label_of(i) for i in thin][:PREVIEW_FILMS]
 
@@ -779,10 +794,14 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                     "words": {
                         "type": "array", "items": {"type": "string"},
                         "description": (
-                            "Words to scan for, added to `vocabulary` if both "
-                            "are given. Matched on word boundaries, so pass "
-                            "each inflection and synonym you care about: "
-                            "['hat', 'hats', 'fez', 'bonnet', 'cap']."
+                            "The synonyms and inflections of ONE thing, "
+                            "matched on word boundaries: ['hat', 'hats', "
+                            "'fez', 'bonnet', 'cap']. Added to `vocabulary` if "
+                            "both are given. **Never mix two things into this "
+                            "list.** ['cat','hat'] matches a cat OR a hat "
+                            "anywhere in a film, which is 51 films of "
+                            "near-misses; the second thing belongs in "
+                            "`and_words`."
                         ),
                     },
                     "and_words": {
