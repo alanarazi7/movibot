@@ -1,0 +1,141 @@
+[
+  {
+    "prompt": "A film where someone pretends to love another to seize power",
+    "status": "ok",
+    "seconds": 9.9,
+    "model_calls": 4,
+    "prompt_tokens": 19412,
+    "cached_tokens": 11136,
+    "tools": [
+      "PlotSearch",
+      "SynopsisReader"
+    ],
+    "tool_args": [
+      {
+        "query": "someone pretends to love another to seize power and then reveals the deception to take control",
+        "top_k": 5
+      },
+      {
+        "films": [
+          "Enchanted (2007)",
+          "The Princess Diaries 2: Royal Engagement (2004)",
+          "Beauty and the Beast (2017)",
+          "Beauty and the Beast (1991)"
+        ],
+        "about": "does someone pretend to love another to gain power",
+        "max_chars": 2500
+      }
+    ],
+    "observer": [
+      {
+        "Enchanted (2007)": "no",
+        "The Princess Diaries 2: Royal Engagement (2004)": "no",
+        "Beauty and the Beast (2017)": "no",
+        "Beauty and the Beast (1991)": "no"
+      }
+    ],
+    "response": "Nothing I checked is supported for that. The closest matches I read all came back no: for example, The Princess Diaries 2: Royal Engagement (2004) shows manipulation to stop an engagement, not pretending to love someone to gain power.",
+    "case": 4
+  },
+  {
+    "prompt": "All Disney movies from 1990 onwards with no deaths that involve animals, for a 3-year-old. Be exhaustive, don't miss any.",
+    "status": "ok",
+    "seconds": 12.4,
+    "model_calls": 5,
+    "prompt_tokens": 40872,
+    "cached_tokens": 28672,
+    "tools": [
+      "CatalogFilter",
+      "LexicalScreen",
+      "LexicalScreen",
+      "SynopsisReader"
+    ],
+    "tool_args": [
+      {
+        "year_min": 1990,
+        "exclude_genres": [
+          "Live Action"
+        ],
+        "require_synopsis": true,
+        "studio": "Disney",
+        "list_all": true
+      },
+      {
+        "vocabulary": "death",
+        "keep": "clear"
+      },
+      {
+        "words": [
+          "animal",
+          "animals",
+          "dog",
+          "dogs",
+          "cat",
+          "cats",
+          "bear",
+          "bears",
+          "lion",
+          "lions",
+          "tiger",
+          "tigers",
+          "horse",
+          "horses",
+          "mouse",
+          "mice",
+          "bird",
+          "birds",
+          "fish",
+          "frog",
+          "frogs",
+          "duck",
+          "ducks",
+          "rabbit",
+          "rabbits",
+          "elephant",
+          "elephants",
+          "giraffe",
+          "giraffes",
+          "zebra",
+          "zebras",
+          "shark",
+          "sharks",
+          "whale",
+          "whales",
+          "insect",
+          "insects",
+          "bug",
+          "bugs"
+        ],
+        "keep": "flagged"
+      },
+      {
+        "films": [
+          "Inside Out (2015)",
+          "WALL·E (2008)",
+          "Cars (2006)",
+          "Winnie the Pooh (2011)",
+          "Bolt (2008)",
+          "The Parent Trap (1998)",
+          "Tinker Bell (2008)",
+          "Secret of the Wings (2012)"
+        ],
+        "about": "does a death happen",
+        "max_chars": 2500
+      }
+    ],
+    "observer": [
+      {
+        "Inside Out (2015)": "no",
+        "WALL·E (2008)": "yes",
+        "Cars (2006)": "unclear",
+        "Winnie the Pooh (2011)": "unclear",
+        "Bolt (2008)": "unclear",
+        "The Parent Trap (1998)": "unclear",
+        "Tinker Bell (2008)": "unclear",
+        "Secret of the Wings (2012)": "unclear"
+      }
+    ],
+    "response": "This demo can only give a shortlist, not an exhaustive list of all matches.\n\nInside Out (2015) — no death happens in the plot text I read, and the scan found animal-related words in its plot text. It also sits at the top of the filtered set.\n\nCars (2006) — the scan found a match on animal-related wording in the plot text, and no death term appears in the plot text I screened.\n\nWinnie the Pooh (2011) — the scan found animal-related wording in the plot text, and no death term appears in the plot text I screened.\n\nI did not verify every one of the 205 Disney films from 1990 onward for both conditions, so this is not exhaustive.",
+    "case": 8
+  }
+]

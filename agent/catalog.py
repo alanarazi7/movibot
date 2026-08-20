@@ -245,6 +245,25 @@ def resolve_language(name: str) -> tuple[str, str] | None:
     return _language_lookup().get((name or "").strip().lower())
 
 
+def labels_in(text: str) -> list[str]:
+    """Every catalog film named in a block of prose, in the order they appear.
+
+    Exact because films are always written "Title (Year)" and there are only
+    238 of them. Used to check the recommendation ceiling: an instruction the
+    model can read past twice is better enforced by counting.
+    """
+    # _labels() keys are lowercased, so match against a lowered copy and read
+    # the film's real label back out of the catalog.
+    lowered = text.lower()
+    found: list[tuple[int, str]] = []
+    for key, movie_id in _labels()[0].items():
+        at = lowered.find(key)
+        if at >= 0:
+            found.append((at, label_of(movie_id) or key))
+    found.sort()
+    return [label for _, label in found]
+
+
 def stats() -> dict[str, Any]:
     """Small summary used by tests and the /api/agent_info payload."""
     df = movies()

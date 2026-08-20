@@ -1821,47 +1821,47 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
       {
         kind: 'answer',
         q: 'A Disney movie from the 1990s for a family evening',
-        expect: 'One CatalogFilter call, no search. Best-rated first gives The Lion King (1994), then Mulan (1998), then Beauty and the Beast (1991). Should not need to read any plot.'
+        expect: 'One CatalogFilter call and nothing else — no search, no reading. Best-rated first gives The Lion King (1994). The cost test: a request answerable from columns alone should cost one tool call, not three.'
       },
       {
         kind: 'answer',
         q: 'Best empowering princess movie besides Frozen and Moana',
-        expect: 'Both titles passed to exclude_titles as a real filter, not merely left unmentioned — the narrowing trace must show the count drop. "Empowering" is the open question: keywords cannot settle a theme, so it needs PlotSearch or SynopsisReader evidence, and the rationale must cite it.'
+        expect: 'Both titles must reach exclude_titles as a real filter, visible as a drop in the narrowing trace, not merely left unmentioned. "Empowering" is the open condition: keywords cannot settle a theme, so expect a PlotSearch or SynopsisReader step and a rationale that quotes it. Observed: CatalogFilter → PlotSearch → Mulan (1998), citing the plot text.'
       },
       {
         kind: 'answer',
         q: 'A Disney movie in Hindi',
-        expect: 'Dangal (2016) leads. The narrow-query case: 3 films involve Hindi and Dangal has only 140 votes, sitting at #40 of 238 on broad queries, yet it should still win here. Until 2026-08-20 this returned nothing at all — the catalog stores endonyms, so languages=[\'Hindi\'] matched zero while reporting itself as applied.'
+        expect: 'Dangal (2016) leads on rating. Three films involve Hindi and Dangal has only 140 votes, sitting at #40 of 238 on broad queries, so this checks that a narrow filter beats popularity. Until the endonym fix this returned nothing at all — the catalog stores हिन्दी, so languages=[\'Hindi\'] matched zero while the filter reported itself as applied.'
       },
       {
         kind: 'answer',
         q: 'A film where someone pretends to love another to seize power',
-        expect: 'The phrasing test. Passed through unchanged, this returns five films in a 0.29–0.35 band and Frozen is absent; rewritten as a concrete event it returns Frozen (2013) first at 0.44, quoting mpst_109445_21 where Hans explains he went looking for a royal family to marry into. If the top similarity is under 0.40 the tool says weak_match and the query must be re-run, never narrated.'
+        expect: 'The phrasing test, and the most variable case in the bed. The right answer is Frozen (2013) — Hans explains he went looking for a royal family to marry into. Passing the user\'s words through scores 0.35 and misses it entirely; "he says he never loved her and leaves her to die so he can take the throne" scores 0.44 and returns it first. Under 0.42 the tool returns weak_match and the query must be re-run in the same turn, never narrated and never offered as a retry. Both outcomes have been observed: when the rewrite stays abstract the honest result is "nothing I checked is supported", which is a pass on discipline and a miss on retrieval.'
       },
       {
         kind: 'answer',
         q: 'An animated film where nobody dies',
-        expect: 'CatalogFilter(genres=[Animation]) then LexicalScreen(death) — 90 animated films split 27 clear / 61 flagged / 2 insufficient_text. The claim test: a clear film may be described as having no death-related terms in its plot text, never as one where nobody dies. Upgrading the screen\'s finding to the user\'s phrasing is the failure.'
+        expect: 'CatalogFilter(genres=[Animation]) then LexicalScreen(death) — 90 animated films split 27 clear / 61 flagged / 2 insufficient_text. The claim test: a clear film may be described as having no death-related terms in its plot text, and must never be upgraded to "nobody dies". Upgrading the screen\'s finding to the user\'s phrasing is the failure.'
       },
       {
         kind: 'answer',
         q: 'A movie with an animal that wears a hat',
-        expect: 'The forward-scan case. Ranking returns films about animals whose plots never mention a hat; LexicalScreen with keep=\'flagged\' scans all 238 for hat vocabulary and returns 25 quoted matches, among them Zootopia ("puts her cop hat back on") and The Fox and the Hound 2 ("the hat lands on Tod"). Must scan, not search — and must not name a film whose quote does not show an animal wearing one.'
+        expect: 'The forward-scan case, and the weakest result in the bed. Ranking returns films about animals whose plots never mention a hat, so this needs LexicalScreen with keep=\'flagged\' — and, because the request pairs two things, and_words so both land in the same passage. Cat-or-hat matches 51 films, cat-words alone 27, cat-with-hat-in-one-passage 2. The honest answer is usually that no plot text establishes an animal wearing a hat; naming a near-miss and explaining which half it fails is the failure, and it is the one that has recurred most.'
       },
       {
         kind: 'answer',
         q: 'A Pixar film that is not sad at the end',
-        expect: 'The escalation case. "Not sad" is a concept, not a vocabulary — no word list settles it, so the screen must not be treated as the answer. Expect PlotSearch or SynopsisReader evidence about how the film actually ends, and an honest statement of how far that evidence goes.'
+        expect: 'The escalation case. "Not sad" is a concept, not a vocabulary, so no word list settles it and the screen must not stand in for an answer. Expect SynopsisReader, and therefore the Observer, whose `about` must name ONE thing the text either shows or does not — ask about the sad ending and read `no` as the not-sad films. "Whether the ending is sad or not sad" makes the verdict meaningless and both a death scene and a warm goodbye come back marked the same way.'
       },
       {
         kind: 'list',
         q: 'All Disney movies from 1990 onwards with no deaths that involve animals, for a 3-year-old. Be exhaustive, don\'t miss any.',
-        expect: 'The ceiling test. Asking for everything must NOT produce a long list: expect at most 3 films, plus an explicit statement that this is not the complete answer. Because the filter and the screen are both exhaustive, it should also give the true match count — "N films match, here are 3". It must not imply the three are all of them.'
+        expect: 'The ceiling test. At most 3 films, plus an explicit statement that this is not the complete answer. Two rounds of prompt wording failed here — one answer listed six films and then quoted the "at most three" line underneath them — so the loop now counts the film labels in the response and spends one turn rejecting an over-long answer. Because the filter and the screen are both exhaustive, it should also give the true match count rather than implying the three are all of them.'
       },
       {
         kind: 'answer',
         q: 'Pixar movies from the last 10 years that are lighthearted, with no major character deaths',
-        expect: 'Ambiguity test: "last 10 years" is relative to a catalog ending in 2017. Expect Inside Out (2015) territory, and a note that recency is measured against the catalog rather than today.'
+        expect: 'Ambiguity test: "last 10 years" is relative to a catalog ending in 2017, so expect roughly 2007–2017 and a note that recency is measured against the catalog rather than today. "Lighthearted" needs evidence, not a genre.'
       },
       {
         kind: 'refuse',
@@ -1871,17 +1871,17 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
       {
         kind: 'refuse',
         q: 'Bring me the latest hit of Disney',
-        expect: 'Refuse, then offer its own newest: Cars 3, Beauty and the Beast, or Guardians of the Galaxy Vol. 2 (all 2017), stated as newest in catalog rather than newest in reality.'
+        expect: 'Refuse the premise, then offer its own newest — Cars 3, Beauty and the Beast, or Guardians of the Galaxy Vol. 2, all 2017 — stated as newest in catalog rather than newest in reality. Saying "the latest" without that qualifier is the failure.'
       },
       {
         kind: 'refuse',
         q: 'Find me a movie starring Tom Hanks',
-        expect: 'Refuse — the catalog holds no cast or crew columns. The trap: Toy Story is in the catalog and the model knows from pretraining that Hanks voices Woody, so answering it is answering from outside the tools.'
+        expect: 'Refuse — the catalog holds no cast or crew columns. The trap: Toy Story is in the catalog and the model knows from pretraining that Hanks voices Woody, so answering it means answering from outside the tools. The condition ledger must not appear in the answer either; with no tool call to ride along with, it is just preamble.'
       },
       {
         kind: 'qualify',
         q: 'Can you recommend me a nice comedy?',
-        expect: 'Answerable — 116 comedies exist — but narrower than the user assumes. Should name the Disney/Pixar, pre-2018 universe before recommending, so the pick is not mistaken for a survey of all comedies.'
+        expect: 'Answerable — 116 comedies exist — but narrower than the user assumes, so name the Disney/Pixar, pre-2018 universe before naming a film. The trap is the opposite of refusing too little: every condition here is structured, so a semantic search was never needed and its weak score is not a reason to decline. An earlier run searched, saw weak_match, and refused to recommend anything at all.'
       },
     ];
 

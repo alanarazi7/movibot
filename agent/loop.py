@@ -22,7 +22,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from agent import llm_client, observer, prompts, tools
+from agent import catalog, llm_client, observer, prompts, tools
 
 # Enough for filter -> search -> read -> answer, with one round spare for a
 # correction. Queries needing more than this are usually a sign the model is
@@ -52,6 +52,7 @@ def execute(prompt: str) -> dict[str, Any]:
     # read scope themselves to it. It never enters the prompt, and it dies with
     # the request, so there is no cross-request state to reason about.
     ctx = tools.ToolContext()
+    corrected = False
 
     if not prompt or not prompt.strip():
         return _error("The 'prompt' field is required.", steps)
@@ -104,6 +105,41 @@ def execute(prompt: str) -> dict[str, Any]:
                     return _error(
                         "The model returned an empty answer.", steps
                     )
+
+                # The ceiling is checked, not requested. Two rounds of prompt
+                # wording failed on it: one answer listed six films and then
+                # quoted the "at most three" line underneath them, which is
+                # what an instruction looks like when it has become boilerplate.
+                # Counting is exact -- every film is named "Title (Year)" and
+                # the catalog knows all 238 -- so the loop can simply refuse to
+                # return an over-long answer, and pay one turn to fix it.
+                named = catalog.labels_in(answer)
+                if len(named) > prompts.MAX_RECOMMENDATIONS and not corrected:
+                    corrected = True
+                    messages.append(message)
+                    messages.append({
+                        "role": "user",
+                        "content": (
+                            f"You named {len(named)} films: "
+                            f"{', '.join(named)}. The ceiling is "
+                            f"{prompts.MAX_RECOMMENDATIONS} and it is not "
+                            "negotiable. Send the same answer again keeping "
+                            "only the best "
+                            f"{prompts.MAX_RECOMMENDATIONS}, with the same "
+                            "evidence for each, and say the list is not "
+                            "complete."
+                        ),
+                    })
+                    steps.append({
+                        "module": "Planner",
+                        "round": round_index + 1,
+                        "prompt": {"system_prompt": prompts.SYSTEM_PROMPT,
+                                   "user_prompt": "(ceiling exceeded, answer rejected)"},
+                        "response": {"content": answer,
+                                     "rejected": f"named {len(named)} films, "
+                                                 f"ceiling is {prompts.MAX_RECOMMENDATIONS}"},
+                    })
+                    continue
                 return {
                     "status": "ok",
                     "error": None,
