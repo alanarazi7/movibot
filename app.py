@@ -255,6 +255,13 @@ def execute():
     user_prompt = (data.get("prompt") or "").strip()
 
     if not user_prompt:
+        # 200, not 400. The spec describes "error" as a response *format* --
+        # status, error, response, steps -- and never mentions HTTP codes, so
+        # the failure belongs in the body. Every other error this endpoint can
+        # produce already returns 200 with that shape: an internal exception, an
+        # empty answer from the model, the round bound being exhausted. A
+        # missing prompt was the one kind that answered differently, which made
+        # a caller's raise_for_status() throw on one error and not the others.
         return _cors(
             jsonify(
                 {
@@ -264,7 +271,7 @@ def execute():
                     "steps": [],
                 }
             )
-        ), 400
+        ), 200
 
     try:
         result = loop.execute(user_prompt)

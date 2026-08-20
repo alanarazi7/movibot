@@ -162,9 +162,37 @@ def g09_counts() -> list[str]:
     return failures
 
 
+def g01_execute_contract() -> list[str]:
+    """Both paths of /api/execute answer with exactly the four fields, at 200.
+
+    The spec fixes the top-level fields "exactly", and describes the error case
+    as a response format rather than a transport failure. Asserting it here
+    means the contract cannot drift the next time an early return is added.
+    """
+    import app as flask_app
+
+    failures = []
+    client = flask_app.app.test_client()
+    required = ["error", "response", "status", "steps"]
+
+    for label, payload in [("missing prompt", {"prompt": ""}), ("no body", {})]:
+        r = client.post("/api/execute", json=payload)
+        body = r.get_json()
+        if sorted(body) != required:
+            failures.append(f"{label}: fields are {sorted(body)}, expected {required}")
+        if body.get("status") != "error":
+            failures.append(f"{label}: status is {body.get('status')!r}, expected 'error'")
+        if r.status_code != 200:
+            failures.append(f"{label}: HTTP {r.status_code}; errors belong in the body, "
+                            f"and every other error path here answers 200")
+    return failures
+
+
 def main() -> int:
     total = 0
     for name, fn, what in [
+        ("G01", g01_execute_contract,
+         "/api/execute answers with exactly four fields on both paths"),
         ("G03", g03_module_names, "module names agree across diagram, agent_info and steps"),
         ("G04", g04_models, "the course-provided model deployments are the ones configured"),
         ("G09", g09_counts, "every displayed count comes from the shipped data"),
