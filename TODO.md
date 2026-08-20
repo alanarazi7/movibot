@@ -1,83 +1,53 @@
 ## What is left
 
-Three days out. Almost everything remaining needs live model calls, so it is
-one budgeted round rather than a queue. Spend to date is on the Budget tab.
+Two working items and one handover check. Everything else is closed.
+Spend to date $0.33 of $13; the whole verification round cost 4 cents.
 
-### Blocked on one paid round  💰 ~$0.10 of $12.91 remaining
+### C01 / C02 — the graded endpoint  💰 ~$0.01
 
-Nothing below has ever met a live model. The last two queries tried by hand
-each found a real bug that no expectation predicted, which is the argument for
-running the whole set rather than spot-checking.
+`/api/agent_info` is graded, and the spec requires **`full_response` and
+`steps` on every prompt example**. Ours carry neither, and both `status`
+fields still say the response "will be captured once the LLM endpoint is
+enabled" — which tells a reviewer the project is half-built. It has been live
+for weeks and the suite has now run thirteen cases through it.
 
-- [ ] **Run all 13 test cases** and compare each against what it says should
-      happen. The three traps: "starring Tom Hanks" must refuse rather than
-      answer Toy Story from pretraining; "besides Frozen and Moana" must become
-      a real filter; "a Disney movie in Hindi" must still surface Dangal at 140
-      votes. Watch for over-refusal on "a nice comedy" and invented post-2017
-      titles
-- [ ] **Six behaviour changes are unverified.** C05 routing (negations reach
-      different tools by evidence, not by the word "no"), C06 escalation (a
-      negative no word list settles must reach search or reading), C08 ceiling
-      (a request for everything returns at most 3 and says so), the weak-search
-      rule (`weak_match` under 0.40 forces a re-query), the answer-shape rule
-      (a rejected film gets no heading), the evidence rule (no event described
-      that was not in a passage the model was shown)
-- [ ] **C01 — `prompt_examples` are missing required fields.** The spec requires
-      `full_response` and `steps` on every example. Capture both, for both
-      examples, from a real run. `steps[].module` must match a real trace
-      exactly
-- [ ] **C02 — both `status` fields still say the response "will be captured
-      once the LLM endpoint is enabled".** It has been live for weeks. Replace
-      with a capture note, or drop the field once `full_response` carries the
-      evidence. The rest of the user-visible surface swept clean 2026-08-20
-- [ ] **C03 — "empowering" has no evidence step.** `prompt_examples[0]` settles
-      princess and the exclusions but not the adjective; `require_synopsis=true`
-      only proves text exists. Give it its own ledger line and a tool that can
-      settle it, and make the rationale cite that evidence
-- [ ] **G02** — confirm on a real trace that every model call is there in
-      order. Planner and Observer carry `usage`; `PlotSearch` now records a
-      `model_call` naming the embedding deployment, its input and its
-      dimensions, so the one known gap is closed pending verification
-- [ ] **Verify the paired scan.** `and_words` requires two word lists to land
-      in the same passage. Confirm the planner reaches for it on "a cat that
-      wears a hat" rather than scanning one list and rationalising over the
-      near-misses
-- [ ] **Verify the Observer end to end.** Never run. Confirm it returns usable
-      JSON, that its verdicts are sane, that the quote check rejects a
-      paraphrase rather than passing it, and that the planner cites the
-      findings instead of asserting past them. Measure the real token saving
-      against the ~5,000-token synopsis payload it replaces
-- [ ] **G05** — a high-complexity bounded request finishes well under 300 s
-- [ ] **Read `cached_tokens` off the first run.** Captured and shown per run
-      since 2026-08-20 but never yet observed. It decides whether trimming the
-      prompt saves 500 tokens or 2,000, so it comes before A3
+This is the only place the project is currently non-compliant with something a
+grader can check mechanically.
 
-### Free, but needs a decision
+- [ ] Run both example prompts and store the exact final `response` as
+      `full_response`, plus the full returned `steps`
+- [ ] Replace the `status` text with a factual capture note naming the build,
+      or drop the field once `full_response` carries the evidence
+- [ ] Keep `expected_tool_path` and `verified_tool_output` only if they still
+      earn their place beside the required fields
 
-- [x] ~~"besides Toy Story" is ambiguous~~ — settled 2026-08-20 in favour of
-      what the code already does: exclusion is **exact title, never a
-      franchise**. "Toy Story" drops the 1995 film and leaves 2 and 3 in scope;
-      "The Jungle Book" drops two only because both remakes share that exact
-      title. Written into the `exclude_titles` schema, along with an
-      instruction never to invent a title to exclude
+### G10 — the handover check
 
-### After the round
+Deploys are **not** git-connected here: `git push` updates GitHub and nothing
+else, and `vercel --prod` returns 0 without necessarily promoting. So the
+repository and the live site can disagree silently, and every claim in the
+write-up is about the live site.
 
-- [ ] **A3 — trim the prompt.** See below; it is the weakest part of the
-      project and the brief grades it. Deliberately sequenced last: six
-      unverified changes are in there now, so a regression after a trim would
-      be unattributable
-- [ ] **G10 — at handover**, record the commit SHA and confirm the live GUI and
-      API match the reviewed source
+It goes last because it is a statement about the final state. Running it before
+the last commit verifies a build that is about to be replaced.
+
+- [ ] Record the commit SHA that is actually serving
+- [ ] Confirm the served diagram, prompt and counts match the repo — the two
+      check scripts plus a hash comparison of `/api/model_architecture`
+- [ ] Confirm `/api/execute`, `/api/agent_info`, `/api/team_info` and
+      `/api/model_architecture` all answer on the live URL
 
 ### Decided against
 
 - **Instrumenting the ledger against the trace.** Would tell us whether the
-  loop earns its keep over a static executor. Good question, does not fit in
-  three days.
-- **Sweeping for other queries the abstract phrasing loses.** The two we found
+  loop earns its keep over a static executor. Good question, does not fit.
+- **Sweeping for other queries the abstract phrasing loses.** The ones we found
   were found by hand; a systematic sweep needs a corpus of queries we do not
   have.
+- **Chasing the animal-in-a-hat case further.** Three mechanism fixes narrowed
+  it from 51 candidates to 2 and it still names a near-miss rather than saying
+  nothing qualifies. Recorded in the test bed as the weakest result rather than
+  hidden.
 
 ---
 
@@ -119,7 +89,8 @@ example is back with the middle case as the trap: a query can read as
 concrete and still name an abstraction. Re-run returns Frozen in one tool
 call.
 
-- [ ] Re-run the remaining cases against the trimmed prompt before handover
+All thirteen cases were re-run against the trimmed prompt on 2026-08-20; the
+expectations in the test bed are written from that run.
 
 ---
 
@@ -200,6 +171,28 @@ Recorded so they are not relitigated.
 ---
 
 ## Closed
+
+- **The full test bed ran, 13/13.** Eleven clean; two honest but imperfect —
+  the animal-in-a-hat case names a near-miss, and the pretend-to-love case
+  reaches Frozen on a concrete rewrite and reports "nothing supported" on an
+  abstract one. The run found two live defects: the recommendation ceiling was
+  not holding (six films listed, with the "at most three" line quoted
+  underneath), and a weak search was being offered back to the user rather than
+  re-run. *2026-08-20*
+- **The ceiling is enforced in code**, not prose. `catalog.labels_in()` counts
+  the films named in an answer and the loop rejects an over-long one at the
+  cost of one turn. Two rounds of prompt wording had failed first. *2026-08-20*
+- **C05, C06, C08 and the weak-search, answer-shape and evidence rules** all
+  verified against a live model. *2026-08-20*
+- **The Observer, the paired scan and G02** verified: the Observer returns
+  usable JSON and its substring check rejected a quote for real; `and_words`
+  took the cat-and-hat scan from 27 films to 2; Planner and Observer steps
+  carry `usage` and `PlotSearch` names its embedding deployment. *2026-08-20*
+- **G05** — the slowest of thirteen cases took 14.1s against a 300s limit.
+  *2026-08-20*
+- **`cached_tokens` read at last**: 72–83% of prompt tokens come back cached,
+  which is why the A3 trim is worth less in money than it looked and still
+  worth doing for the graded requirement. *2026-08-20*
 
 - **G01** — `/api/execute` returned seven top-level fields against a spec that
   fixes four exactly. `plan` was byte-identical to `steps[0].response.content`
