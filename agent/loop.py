@@ -22,7 +22,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from agent import llm_client, prompts, tools
+from agent import llm_client, observer, prompts, tools
 
 # Enough for filter -> search -> read -> answer, with one round spare for a
 # correction. Queries needing more than this are usually a sign the model is
@@ -135,10 +135,54 @@ def execute(prompt: str) -> dict[str, Any]:
                     "response": result,
                 })
 
+                # Plot text is the one payload worth a reader of its own. A
+                # synopsis read is ~5,000 tokens and would otherwise sit in the
+                # planner's context for the rest of the request, re-sent every
+                # turn, to answer a question a 422-token prompt can answer
+                # better. So the Observer reads it and the planner sees the
+                # findings instead.
+                #
+                # The full text still goes into `steps` above, so the trace
+                # stays completely auditable while the context stays small --
+                # what a reviewer can inspect and what the model must carry are
+                # deliberately different things.
+                payload = result
+                if name == "read_synopses" and result.get("synopses"):
+                    seen = observer.observe(
+                        arguments.get("about") or prompt.strip(),
+                        result["synopses"],
+                    )
+                    steps.append({
+                        "module": "Observer",
+                        "round": round_index + 1,
+                        "usage": seen.get("usage"),
+                        "prompt": {
+                            "system_prompt": observer.OBSERVER_PROMPT,
+                            "user_prompt": seen.get("prompt", ""),
+                        },
+                        "response": {"findings": seen["findings"],
+                                     **({"error": seen["error"]} if seen.get("error") else {})},
+                    })
+                    # Only substitute when there is something to substitute. A
+                    # failed Observer must not silently blank the evidence.
+                    if seen["findings"]:
+                        payload = {
+                            "read": [e.get("film") for e in result["synopses"]],
+                            "question": arguments.get("about"),
+                            "findings": seen["findings"],
+                            "note": (
+                                "Read by the Observer. Every quote here is verbatim from "
+                                "the plot text and was checked against it. A verdict of "
+                                "`unclear` means the text does not settle the question -- "
+                                "do not upgrade it. You may cite these quotes; you may not "
+                                "assert anything about these films that is not in one."
+                            ),
+                        }
+
                 messages.append({
                     "role": "tool",
                     "tool_call_id": call.id,
-                    "content": json.dumps(result, default=str),
+                    "content": json.dumps(payload, default=str),
                 })
 
         # Fell out of the loop: MAX_ROUNDS turns without a final answer.

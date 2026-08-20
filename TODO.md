@@ -35,7 +35,14 @@ running the whole set rather than spot-checking.
       only proves text exists. Give it its own ledger line and a tool that can
       settle it, and make the rationale cite that evidence
 - [ ] **G02** — every model call appears in `steps`, in order, with module,
-      prompt and response. No unlogged final synthesis call
+      prompt and response. Planner and Observer turns both carry `usage`; the
+      embedding call inside `PlotSearch` still does not name its model, which is
+      the one known gap
+- [ ] **Verify the Observer end to end.** Never run. Confirm it returns usable
+      JSON, that its verdicts are sane, that the quote check rejects a
+      paraphrase rather than passing it, and that the planner cites the
+      findings instead of asserting past them. Measure the real token saving
+      against the ~5,000-token synopsis payload it replaces
 - [ ] **G05** — a high-complexity bounded request finishes well under 300 s
 - [ ] **Read `cached_tokens` off the first run.** Captured and shown per run
       since 2026-08-20 but never yet observed. It decides whether trimming the

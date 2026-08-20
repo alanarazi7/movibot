@@ -17,7 +17,7 @@ MoviBot is a **ReAct agent**: a planner model reasons, calls tools, observes wha
 | `filter_catalog` | catalog columns | all → N | free, exhaustive |
 | `screen_out` | a word scan | N → the half you keep | free, exhaustive |
 | `search_plots` | meaning | N → a top handful | ~$0.0000002 |
-| `read_synopses` | full text | ≤ 8 films | free, token-heavy |
+| `read_synopses` | full text | ≤ 8 films | free; its output is read by the Observer |
 
 `screen_out` is what answers the query in the pitch above. A negation cannot be retrieved for: embed *"no deaths"* and the top hits are the films where somebody dies, because that is what those plots say. So it is screened instead — every plot passage of every candidate is scanned, which is exhaustive over the word list in a way fixed-K retrieval cannot be. Its error is one-sided by design: *"dead heat"* over-excludes, it never under-excludes. A match makes a film **flagged**, not rejected, since a word list cannot tell an attempt from an outcome.
 
@@ -25,7 +25,9 @@ The same scan runs forwards. *"An animal that wears a hat"* is one small detail 
 
 **Guardrails live in the data and tool code, never in the prompt** — the model cannot forget them and a bad plan cannot bypass them. Results are always ordered by `weighted_rating` rather than raw `vote_average`; `read_synopses` reads at most 8 films, truncated to 6,000 characters each, which is what bounds the cost of a turn; and `screen_out` refuses to certify a film with under 600 tokens of plot text, so absence of evidence is never reported as evidence.
 
-`python scripts/check_screen.py` asserts the screen's safety property offline and for free.
+**Plot text is read by a separate module.** A synopsis read is ~5,000 tokens; left in the planner's context it would be re-sent every turn. The **Observer** reads it instead, with a 422-token prompt of its own against the planner's 5,867 — no tool schemas, no routing rules — and returns a verdict per film plus the sentence that decides it. Every quote is checked to be a literal substring of the source and discarded otherwise, so the planner cites evidence rather than a summary of it. The full text stays in the `steps` trace.
+
+`python scripts/check_screen.py` and `python scripts/check_gates.py` assert the screen's safety property, the language filter, and every displayed count — offline and for free.
 
 **The app's [Architecture tab](https://movibot-gamma.vercel.app) is the full account** — the loop, every tool description, and every prompt verbatim, served live from the source. The diagram alone is at `GET /api/model_architecture`.
 

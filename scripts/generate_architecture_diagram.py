@@ -66,9 +66,12 @@ MUTED = (110, 117, 126)
 FAINT = (174, 181, 190)
 ARROW = (128, 134, 142)
 
-# Blue marks the one metered step; green marks everything that is free and
-# local. That distinction is the main thing a reader should take away.
+# Three states, and the middle one is the point of the picture now. Blue is a
+# step that ALWAYS costs a model call. Violet is one that costs a model call
+# only sometimes -- Observe runs the Observer when a tool returned plot text to
+# read, and is a plain context append otherwise. White is never: local Python.
 PAID_FILL, PAID_LINE = (233, 240, 253), (48, 92, 176)
+MAYBE_FILL, MAYBE_LINE = (242, 236, 250), (114, 71, 168)
 FREE_FILL, FREE_LINE = (233, 246, 237), (46, 125, 80)
 PLAIN_FILL, PLAIN_LINE = (255, 255, 255), (150, 157, 165)
 PANEL_FILL, PANEL_LINE = (250, 251, 252), (219, 224, 230)
@@ -139,6 +142,12 @@ def _text(draw, xy, text, fill=INK, size=16, bold=False):
 def _width(draw, text, size=16, bold=False):
     """Text width, back in layout units, for right-aligning."""
     return draw.textbbox((0, 0), text, font=_font(size, bold))[2] / SS
+
+
+def _swatch(draw, x, y, fill, line, size=13):
+    """A small filled square, so a legend entry reads as the box it explains."""
+    draw.rounded_rectangle(_st((x, y, x + size, y + size)), radius=_s(3),
+                           fill=fill, outline=line, width=_s(2))
 
 
 def _box(draw, xy, title, lines=(), fill=PLAIN_FILL, line=PLAIN_LINE,
@@ -221,6 +230,18 @@ def main() -> None:
           "One ReAct loop. The planner chooses the tools, their arguments, "
           "and when to stop \u2014 by not asking for one.", MUTED, 16)
 
+    entries = [
+        (PAID_FILL, PAID_LINE, "always a model call"),
+        (MAYBE_FILL, MAYBE_LINE, "a model call for some tools, not others"),
+        (FREE_FILL, FREE_LINE, "never \u2014 local Python, free"),
+    ]
+    lx = 36
+    for fill, line, label in entries:
+        _swatch(draw, lx, 103, fill, line)
+        lx += 20
+        _text(draw, (lx, 101), label, MUTED, 14)
+        lx += _width(draw, label, 14) + 28
+
     # ---- the loop ------------------------------------------------------
     # The frame carries the turn bound, because "bounded" is the honest
     # qualifier on "the model decides when to stop": it decides, up to here.
@@ -236,12 +257,12 @@ def main() -> None:
     observe = (490, 385, 655, 510)
     stop = (235, 385, 425, 510)
 
-    _box(draw, reason, "Reason", ("Planner \u00b7 the only", "model call"),
+    _box(draw, reason, "Reason", ("Planner \u00b7 one call", "every turn"),
          fill=PAID_FILL, line=PAID_LINE, title_size=27, sub_size=15)
     _box(draw, act, "Act", ("run the tools", "it asked for"),
          title_size=27, sub_size=15)
-    _box(draw, observe, "Observe", ("results appended", "to the context"),
-         title_size=27, sub_size=15)
+    _box(draw, observe, "Observe", ("Observer reads a", "plot; else appended"),
+         fill=MAYBE_FILL, line=MAYBE_LINE, title_size=27, sub_size=15)
     _box(draw, stop, "Stop?", ("did this turn ask", "for a tool?"),
          title_size=27, sub_size=15)
     # The exit condition is the model's own output, not a scripted check: a
@@ -288,23 +309,25 @@ def main() -> None:
                            outline=PANEL_LINE, width=_s(2))
     _text(draw, (60, 664), "TOOLS", MUTED, 15, bold=True)
     _text(draw, (60 + _width(draw, "TOOLS", 15, True) + 12, 665),
-          "free · local · any order, any turn", FAINT, 14)
+          "any order, any turn · violet reaches a model", FAINT, 14)
 
     # Left of x=390, so the "Yes" elbow above has nothing to knock out.
     _arrow(draw, (280, 557), (280, 641), both=True)
     _label(draw, 188, 599, "call · result", colour=MUTED, size=14)
 
     specs = [
-        ("filter_catalog", "structured facts", "\U0001F5C2"),
-        ("screen_out", "exhaustive scan", "\U0001F6AB"),
-        ("search_plots", "vector search", "\U0001F50E"),
-        ("read_synopses", "full plot text", "\U0001F4D6"),
+        ("filter_catalog", "structured facts", "\U0001F5C2", False),
+        ("screen_out", "exhaustive scan", "\U0001F6AB", False),
+        ("search_plots", "vector search \u00b7 embeds the query", "\U0001F50E", True),
+        ("read_synopses", "plot text \u00b7 read by the Observer", "\U0001F4D6", True),
     ]
     row_h, row_gap, row_y = 44, 7, 694
-    for i, (key, sub, glyph) in enumerate(specs):
+    for i, (key, sub, glyph, calls_model) in enumerate(specs):
         y0 = row_y + i * (row_h + row_gap)
+        fill, line = ((MAYBE_FILL, MAYBE_LINE) if calls_model
+                      else (FREE_FILL, FREE_LINE))
         draw.rounded_rectangle(_st((60, y0, 840, y0 + row_h)), radius=_s(8),
-                               fill=FREE_FILL, outline=FREE_LINE, width=_s(1))
+                               fill=fill, outline=line, width=_s(1))
         tx = 76
         icon = _emoji(glyph, 20)
         if icon is not None:
@@ -322,7 +345,8 @@ def main() -> None:
     print(f"Wrote {OUTPUT_PATH}  ({WIDTH * SS}x{HEIGHT * SS}, "
           f"laid out as {WIDTH}x{HEIGHT} at {SS}x)")
     print(f"  loop bound: {loop.MAX_ROUNDS} model turns")
-    print(f"  modules: {', '.join(tools.TRACE_NAMES[k] for k, _, _ in specs)}")
+    print(f"  modules: Planner, Observer, "
+          f"{', '.join(tools.TRACE_NAMES[k] for k, *_ in specs)}")
 
 
 if __name__ == "__main__":

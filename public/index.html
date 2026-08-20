@@ -1010,6 +1010,31 @@
             three turns of budget unspent.
           </p>
 
+          <h4>Why the Observer has its own prompt</h4>
+          <p>
+            A synopsis read is about <strong>5,000 tokens</strong>. Left in the planner's
+            context it would be re-sent on every later turn, so the most expensive
+            payload in the system would be carried by the most expensive reader &mdash;
+            one holding 5,867 tokens of routing rules that do not help decide whether a
+            passage shows what was asked for.
+          </p>
+          <p>
+            So reading is split out. The <strong>Observer</strong> gets the question, the
+            passages, and a <strong>422-token</strong> prompt of its own &mdash; no tool
+            schemas, no scope rules, no routing taxonomy, no answer format. It returns a
+            verdict per film and the sentence that decides it, and the planner sees that
+            instead of the raw text.
+          </p>
+          <p>
+            <strong>Quotes are verbatim, and that is enforced rather than requested.</strong>
+            <code>loop.py</code> checks every quote is a literal substring of the passage it
+            claims to come from, discards it if not, and downgrades a <code>yes</code> to
+            <code>unclear</code>. Without that the planner would be citing a summary of
+            evidence rather than evidence, breaking the chain one link before the answer.
+            The full text still appears in the steps trace below, so what you can inspect
+            and what the model has to carry are deliberately different.
+          </p>
+
           <h4>What the answer may claim</h4>
           <p>
             Two tools are exhaustive and two are not, and the difference decides what
@@ -2293,7 +2318,7 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
       const b = {model_calls: 0, tool_calls: 0, prompt_tokens: 0,
                  completion_tokens: 0, cached_prompt_tokens: 0};
       for (const s of steps) {
-        if (s.module === 'Planner') {
+        if (s.module === 'Planner' || s.module === 'Observer') {
           b.model_calls++;
           const u = s.usage || {};
           b.prompt_tokens += u.prompt_tokens || 0;

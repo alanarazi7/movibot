@@ -67,9 +67,20 @@ def g03_module_names() -> list[str]:
         if name not in tools.TRACE_NAMES:
             failures.append(f"tool {name!r} is offered to the model but has no TRACE_NAME")
 
-    # The planner is a module too, and it is the one that appears most.
+    # Planner and Observer are modules too, and they are the ones that make the
+    # model calls the steps trace exists to record.
     if "Planner" not in (info["architecture"].get("planner_module") or ""):
         failures.append("agent_info does not name the Planner module")
+    if "Observer" not in (info["architecture"].get("observer_module") or ""):
+        failures.append("agent_info does not name the Observer module")
+
+    # Every module the loop can log must be declared somewhere in agent_info,
+    # or a trace shows a name the architecture never mentions.
+    declared_all = declared | {"Planner", "Observer"}
+    loop_src = (_ROOT / "agent" / "loop.py").read_text()
+    for logged in set(re.findall(r'"module":\s*"(\w+)"', loop_src)):
+        if logged not in declared_all:
+            failures.append(f"loop.py logs module {logged!r}, which agent_info does not declare")
 
     return failures
 

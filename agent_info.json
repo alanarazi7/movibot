@@ -6,8 +6,9 @@
     "example": "Query: Best empowering princess movie besides Frozen and Moana."
   },
   "architecture": {
-    "type": "ReAct agent (reason -> act -> observe -> stop), native tool calling",
+    "type": "ReAct agent (reason -> act -> observe -> stop), native tool calling, with a separate Observer module that reads plot text",
     "planner_module": "Planner",
+    "observer_module": "Observer. A second model call with its own 422-token prompt, against the planner's 5,867 including tool schemas. It runs only when SynopsisReader returned plot text, and answers one question: does this passage show what was asked for. It returns a verdict per film (yes / no / unclear) and the sentence that decides it, quoted verbatim; loop.py verifies every quote is a literal substring of the source text and discards it otherwise, downgrading a 'yes' to 'unclear'. The planner then sees the findings instead of ~5,000 tokens of synopsis it would otherwise carry for the rest of the request. The full text still appears in the /api/execute steps trace, so what a reviewer can inspect and what the model must carry are deliberately different.",
     "tool_modules": [
       "CatalogFilter",
       "LexicalScreen",
@@ -15,7 +16,7 @@
       "SynopsisReader"
     ],
     "max_model_turns_per_request": 5,
-    "notes": "Module names here match the boxes in /api/model_architecture and the `module` field of every entry in the /api/execute steps trace. Three of the four tools are entirely free and the fourth costs one embedding call (~$0.0000002), because all of them run against local data; only the planner turns cost anything, which is what the turn bound exists to cap. The candidate set is held in Python between calls and never enters the prompt, so films are addressed by \"Title (Year)\" rather than by id.",
+    "notes": "Module names here match the boxes in /api/model_architecture and the `module` field of every entry in the /api/execute steps trace. Three of the four tools are entirely free and the fourth costs one embedding call (~$0.0000002), because all of them run against local data; the planner turns and the Observer are what cost anything, which is what the turn bound exists to cap. The Observer runs at most once per SynopsisReader call and never sees the tool schemas. The candidate set is held in Python between calls and never enters the prompt, so films are addressed by \"Title (Year)\" rather than by id.",
     "tool_order": "A heuristic preference, not an enforced invariant, and the distinction matters for cost and reproducibility. The system prompt encourages cheapest-and-most-exhaustive first -- CatalogFilter narrows 238 films to N on columns; LexicalScreen splits N into clear/flagged/insufficient_text on a word scan and keeps whichever half the condition calls for; PlotSearch ranks what remains; SynopsisReader reads at most 8 -- because when that order is followed each call hands the next a smaller candidate set, so the token-heavy tool only ever sees what survived the free ones. The planner MAY reorder, skip, or repeat tools, and does skip any step whose kind of condition a request does not contain; two runs of the same query are not guaranteed to produce the same tool sequence. Nothing in the code enforces the order. What the code does enforce are the hard bounds: max_model_turns_per_request, the per-call read and result caps, the 45-minute runtime floor, and vote-weighted ranking.",
     "condition_types": {
       "_routing_rule": "Conditions are routed by the evidence that would settle them, never by how the user phrased them. A negation is not a category: 'not Pixar' is a column lookup, 'nobody dies' is a word test, 'not depressing' is a concept that needs reading. Direction is not a category either: LexicalScreen tests a word list in both directions.",
