@@ -1,7 +1,8 @@
 ## What is left
 
-Two working items and one handover check. Everything else is closed.
-Spend to date $0.33 of $13; the whole verification round cost 4 cents.
+One handover check. Everything else is closed.
+Spend to date $0.34 of $13 — 2.6%; the thirteen-case verification round cost
+4 cents and the example capture about one.
 
 ### G10 — the handover check
 
