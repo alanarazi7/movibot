@@ -252,18 +252,6 @@
     .kind-qualify { background: #fdf3e2; color: #a5680b; }
     .kind-list    { background: #eceaf8; color: #5b46b5; }
 
-    #expected-box {
-      display: none;
-      background: #f7f9fb;
-      border: 1px solid #e4e9ee;
-      border-left: 3px solid #0070f3;
-      border-radius: 6px;
-      padding: 0.75rem 0.9rem;
-      margin-bottom: 1.2rem;
-      font-size: 0.85rem;
-      color: #444;
-    }
-    #expected-box b { color: #0070f3; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; display: block; margin-bottom: 0.25rem; }
 
     /* Budget card: read live from LLMod.ai, so the number cannot go stale. */
     .budget-headline { display: flex; align-items: baseline; gap: 0.5rem; flex-wrap: wrap; }
@@ -650,7 +638,6 @@
         <div id="status"></div>
       </div>
 
-      <div id="expected-box"></div>
 
       <div class="card" id="response-card">
         <div class="card-head">
@@ -675,8 +662,8 @@
           <label style="margin-top:1rem;">Narrowing &mdash; how the working set shrank</label>
           <div class="arch-diagram" id="narrowing-text" style="margin-top:0.5rem;"></div>
         </div>
-        <details id="steps-details" style="margin-top:1rem;">
-          <summary class="steps-summary">🔬 Full steps trace &mdash; every call, verbatim</summary>
+        <details id="steps-details" style="margin-top:1rem;" open>
+          <summary class="steps-summary">Full Trace</summary>
           <div class="card-head" style="margin-top:0.8rem;">
             <label>Reason &rarr; act &rarr; verify &rarr; answer</label>
             <button class="copy-btn" id="copy-trace">&#128203; Copy trace JSON</button>
@@ -1221,12 +1208,6 @@
         host.querySelectorAll('.test-case').forEach(b => b.classList.remove('loaded'));
         btn.classList.add('loaded');
 
-        // The lead sentence carries the claim; the rest is the argument for it,
-        // which belongs in the repo rather than above the input box.
-        const gist = String(c.expect).split(/(?<=[.?!])\s+/)[0];
-        const box = document.getElementById('expected-box');
-        box.innerHTML = '<b>Expect</b> ' + escapeHtml(gist);
-        box.style.display = 'block';
         document.getElementById('prompt').scrollIntoView({ behavior: 'smooth', block: 'center' });
       });
     }
@@ -1800,16 +1781,6 @@
       if (!b.model_calls) { el.style.display = 'none'; return; }
 
       const cached = b.cached_prompt_tokens || 0;
-      const share = b.prompt_tokens ? Math.round(100 * cached / b.prompt_tokens) : 0;
-      let note;
-      if (cached > 0) {
-        note = `The system prompt and tool schemas are identical on every turn and sit at the
-                front of the request, so the provider served ${share}% of the input from its
-                prefix cache rather than charging full price for it again.`;
-      } else {
-        note = `No cached input reported. Either the prefix cache did not hit, or this
-                provider does not report the split \u2014 the two are indistinguishable from here.`;
-      }
 
       el.innerHTML =
         `<b>${b.model_calls}</b> model turn${b.model_calls === 1 ? '' : 's'} &middot; ` +
@@ -1817,8 +1788,7 @@
         `<b>${b.prompt_tokens.toLocaleString()}</b> prompt tokens ` +
         `(<b>${cached.toLocaleString()}</b> cached) &middot; ` +
         `<b>${b.completion_tokens.toLocaleString()}</b> generated` +
-        (elapsedMs ? ` &middot; <b>${(elapsedMs / 1000).toFixed(1)}s</b>` : '') +
-        `<span class="cost-note">${note}</span>`;
+        (elapsedMs ? ` &middot; <b>${(elapsedMs / 1000).toFixed(1)}s</b>` : '');
       el.style.display = 'block';
     }
 
