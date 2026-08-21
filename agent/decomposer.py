@@ -141,6 +141,23 @@ PLAN_SCHEMA: dict[str, Any] = {
                                 "time'. Nothing is excluded unless you say so."
                             ),
                         },
+                        "for_requirement": {
+                            "type": "string",
+                            "description": (
+                                "The entry in `verify` this scan is looking "
+                                "for, copied exactly. Scanning for death words "
+                                "because the request says nobody dies means "
+                                "this is 'no character dies'. It matters: a "
+                                "sentence containing one of your words cannot "
+                                "be the evidence that the thing did not "
+                                "happen, and this is what lets that be "
+                                "checked. Leave empty if the scan is for a "
+                                "presence rather than an absence. Always "
+                                "answer this field: an absence scan whose "
+                                "requirement is left blank cannot be checked "
+                                "for the mistake it exists to catch."
+                            ),
+                        },
                         "keep": {
                             "type": "string", "enum": ["clear", "flagged"],
                             "description": (
@@ -152,6 +169,7 @@ PLAN_SCHEMA: dict[str, Any] = {
                             ),
                         },
                     },
+                    "required": ["words", "keep", "for_requirement"],
                 },
                 "search": {
                     "type": "array", "items": {"type": "string"},
@@ -225,7 +243,8 @@ phrased -- a negation over a column is still a column lookup.
   these to `verify`: plot text cannot confirm a release year, and a
   requirement nothing can settle makes the whole request fail.
 
-  an absence, or a concrete object -> `screen`
+  an absence, or a concrete object -> `screen`, and when it is an absence
+  say which `verify` entry the scan is for, in `screen.for_requirement`.
   "nobody dies", "nothing scary", "a film with a train". An absence
   cannot be searched for: embed "no deaths" and you get the films where
   somebody dies, because that is what those plots say.
@@ -237,6 +256,14 @@ phrased -- a negation over a column is still a column lookup.
   a claim about what happens       -> `verify`
   Everything the story has to settle, including the absences you also
   screened for. The screen finds candidates; only the Verifier decides.
+
+**What the request is ABOUT is a condition, and the easiest one to lose.** "A \
+princess movie", "a pirate film", "something with robots" name the subject, \
+and a request whose only condition you route is an exclusion has been read \
+wrong: filtering "besides Frozen and Moana" and nothing else returns the \
+best-rated films in the catalog, which is not an answer to anything. Send the \
+subject to `filter.keywords` when the catalog is likely to tag it, to `verify` \
+so the story is actually checked, or to both.
 
 Not every phrase is a condition. "For a family evening", "for my nephew", \
 "something to relax to" say who is watching, not what happens. No plot text \
@@ -284,10 +311,10 @@ def decompose(request: str) -> dict[str, Any]:
         return {"plan": None, "usage": usage,
                 "error": f"the plan was not valid JSON: {exc}"}
 
-    return {"plan": _normalise(plan), "usage": usage}
+    return {"plan": _normalise(plan, request), "usage": usage}
 
 
-def _normalise(plan: dict[str, Any]) -> dict[str, Any]:
+def _normalise(plan: dict[str, Any], request: str) -> dict[str, Any]:
     """Fill in what the schema allows to be absent, and drop what it forbids.
 
     The provider enforces types, not sense: `max_films` above the ceiling and
@@ -295,6 +322,11 @@ def _normalise(plan: dict[str, Any]) -> dict[str, Any]:
     both are wrong in ways the stages downstream cannot recover from.
     """
     out: dict[str, Any] = {
+        # The words the plan was made from, carried with it. Every later stage
+        # works from the plan, so without this the request itself stops
+        # existing after the first call -- and the Verifier was judging
+        # "an animal appears" with no idea what had been asked for.
+        "request": request.strip(),
         "outcome": plan.get("outcome") or "search",
         "message": (plan.get("message") or "").strip(),
         "conditions": [c for c in (plan.get("conditions") or []) if str(c).strip()],

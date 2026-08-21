@@ -388,6 +388,55 @@ def g10_verdicts_need_evidence() -> list[str]:
     if r["accepted"]:
         failures.append("a film was accepted on a requirement that got no verdict")
 
+    # An absence evidenced by a sentence containing the thing denied.
+    # "no character dies" came back yes, quoting "McLeach is swept over the
+    # waterfall to his death" -- a literal substring, no hedging note, a
+    # decisive verdict with evidence. Every other guard passed.
+    #
+    # The pairing comes from the plan: the Decomposer says which requirement
+    # it wrote the scan for. An earlier version guessed by matching the
+    # requirement against English negation words, which caught "no character
+    # dies" and missed "everyone lives" -- the phrasings someone thought of,
+    # again.
+    deny = {"everyone lives": ["dies", "died", "death", "killed"]}
+    if verifier._refuted_by_its_own_quote(
+            "everyone lives", "McLeach is swept over the waterfall to his death.",
+            deny) is None:
+        failures.append("a `yes` for an absence quoting the thing denied was not caught, "
+                        "on a requirement with no negation word in it")
+    if verifier._refuted_by_its_own_quote(
+            "an animal appears", "Mufasa dies in the stampede.", deny) is not None:
+        failures.append("a requirement the plan did not pair with a word list was "
+                        "refuted anyway")
+    if verifier._refuted_by_its_own_quote(
+            "everyone lives", "The dog finds his way home safely.", deny) is not None:
+        failures.append("a clean quote for an absence was wrongly refuted")
+
+    # The Verifier judges a requirement without the words it came from unless
+    # the request reaches it. "an animal appears" means something different
+    # under "a film with animals" than under "an animal that wears a hat", and
+    # the plan is the only thing carrying the difference.
+    import inspect
+    if "request" not in inspect.signature(verifier.verify).parameters:
+        failures.append("verifier.verify does not take the request, so it judges each "
+                        "requirement with no idea what was asked for")
+    r = verifier.verify.__doc__ or ""
+    probe = run({"findings": [{"requirement": "a hat appears", "verdict": "yes",
+                               "quote": "A rabbit puts her cap on."}]},
+                ["a hat appears"], "A rabbit puts her cap on.")
+    if not probe["accepted"]:
+        failures.append("a supported yes stopped being accepted")
+    if "context, never evidence" not in verifier.VERIFIER_PROMPT:
+        failures.append("the Verifier prompt does not say the request is context rather "
+                        "than evidence, which is how wanting to answer becomes a reason "
+                        "to read a passage generously")
+
+    # Nothing about which phrasings count as a negation may be stored here.
+    vsrc = (_ROOT / "agent" / "verifier.py").read_text()
+    if "nobody" in vsrc and "none|never" in vsrc:
+        failures.append("verifier.py is matching requirements against a stored list of "
+                        "negation words; the plan states the pairing instead")
+
     # A clean identifying note must survive, or every honest yes is punished.
     r = run({"findings": [{"requirement": cond[0], "verdict": "yes",
                            "quote": "A rabbit puts her cap on.",
@@ -457,6 +506,18 @@ def g11_screen_orders_not_filters() -> list[str]:
                         "is written per request now")
     if "words" not in (schema["function"]["parameters"].get("required") or []):
         failures.append("screen_out does not require `words`")
+
+    # A ranking is not a verification, and the two must not share a key: the
+    # Answerer wrote "3 verified" about films nothing had read, because the
+    # unverified list arrived under the name `accepted`.
+    from agent import answerer, loop
+    src = (_ROOT / "agent" / "loop.py").read_text()
+    if 'evidence["accepted"] = accepted' in src:
+        failures.append("loop.py reports an unverified ranking as `accepted`; the "
+                        "Answerer cannot tell it from a verified list")
+    if "ranked_not_verified" not in answerer.ANSWERER_PROMPT:
+        failures.append("the Answerer prompt does not say what to do with a ranking "
+                        "nothing verified, so it will describe one as verified")
 
     # And a short list says so, because that is this design's failure mode.
     if not tools.screen_out(words=["dies"], keep="clear").get("thin_word_list"):

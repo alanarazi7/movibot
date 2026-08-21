@@ -72,6 +72,11 @@ class ToolContext:
     shortlist: list[int] = field(default_factory=list)
     conditions: list[str] = field(default_factory=list)
 
+    # requirement -> the words the scan looked for on its behalf, as the
+    # Decomposer paired them. Verification uses this to tell a quote that
+    # supports "no character dies" from one that refutes it.
+    deny: dict[str, list[str]] = field(default_factory=dict)
+
     # Films the lexical screen found clean, best-first. A PRIOR, not a verdict:
     # it says these are the cheapest candidates to check for an absence, and
     # nothing more. See screen_out for why it stopped being a filter.
@@ -355,6 +360,7 @@ def _describe(applied: dict[str, Any]) -> str:
 
 def screen_out(
     words: list[str] | None = None,
+    for_requirement: str | None = None,
     keep: str = "clear",
     and_words: list[str] | None = None,
     exclude_phrases: list[str] | None = None,
@@ -424,6 +430,8 @@ def screen_out(
     thin = result["insufficient_text"]
 
     if ctx is not None:
+        if for_requirement and str(for_requirement).strip():
+            ctx.deny[str(for_requirement).strip()] = list(resolved)
         if keep == "clear":
             # ORDERS, never narrows. Deleting the flagged half is what made a
             # word scan into a verdict: 194 of 316 films flag on the death
@@ -833,6 +841,7 @@ def _drop_structured(conditions: list[str]) -> tuple[list[str], list[str]]:
 
 
 def verify_candidates(
+    request: str = "",
     conditions: list[str] | None = None,
     films: list[str] | None = None,
     max_accept: int = 3,
@@ -927,7 +936,9 @@ def verify_candidates(
             continue
 
         checked += 1
-        result = verifier.verify(label, conditions, _trim(text, MAX_SYNOPSIS_CHARS))
+        result = verifier.verify(label, conditions, _trim(text, MAX_SYNOPSIS_CHARS),
+                                 deny=(ctx.deny if ctx else None),
+                                 request=request)
         rows.append(result)
         if result.get("accepted"):
             accepted.append(label)

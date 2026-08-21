@@ -160,7 +160,8 @@ def execute(prompt: str) -> dict[str, Any]:
         # ---- verify ----------------------------------------------------
         if plan["verify"]:
             ctx.calls_remaining = budget.remaining - 1   # reserve the Answerer
-            walk = tools.verify_candidates(conditions=plan["verify"],
+            walk = tools.verify_candidates(request=plan["request"],
+                                           conditions=plan["verify"],
                                            max_accept=plan["max_films"], ctx=ctx)
             budget.verifier += int(walk.get("verified") or 0)
             steps.append(_tool_step("CandidateWalk",
@@ -188,10 +189,19 @@ def execute(prompt: str) -> dict[str, Any]:
         else:
             # Nothing for a reader to settle, so the ranking is the answer and
             # the best-rated survivors are what there is to recommend.
+            # Nothing here needs plot text, so nothing was verified and the
+            # word must not appear. Reported under its own key: calling this
+            # `accepted` had the Answerer write "3 verified" about films
+            # nothing had looked at, and quote the explanation as if it were
+            # evidence.
             accepted = _best(ctx, plan["max_films"])
-            evidence["accepted"] = accepted
-            evidence["basis"] = ("no story condition to verify; these are the "
-                                 "best-rated films matching the catalog constraints")
+            evidence["ranked_not_verified"] = accepted
+            evidence["basis"] = (
+                "NOTHING WAS VERIFIED. No condition in this request needs plot "
+                "text, so no film was read. These are the best-rated films "
+                "matching the catalog constraints, and that is all you may say "
+                "about them."
+            )
 
         # ---- answer, then check ----------------------------------------
         return _compose(prompt, evidence, accepted, plan, steps, budget)

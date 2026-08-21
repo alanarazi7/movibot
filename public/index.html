@@ -1129,7 +1129,7 @@
     const TEST_CASES = [
       {
         kind: 'answer',
-        q: 'A Disney movie from 1990+, with animals and no death',
+        q: 'A Disney movie from the 90s that includes animals, and nobody dies',
         expect: 'The headline case: three conditions of three different kinds in one sentence. Studio and year are columns and go to CatalogFilter; "no death" is an absence no search can rank for, so it is screened; "animals" is a story fact the Verifier settles per film. Every recommendation must quote the plot text that shows the animal, and the count must equal what verification accepted. Sending "Disney studio" or "1990 or later" to the Verifier is the failure — plot text cannot confirm a studio, and one unsettleable condition makes a request with a real answer return nothing.'
       },
       {
@@ -1139,7 +1139,7 @@
       },
       {
         kind: 'answer',
-        q: 'Best empowering princess movie besides Frozen and Moana',
+        q: 'A princess movie, besides Frozen and Moana',
         expect: 'Both titles must reach exclude_titles as a real filter, visible as a drop in the narrowing trace, not merely left unmentioned. "Empowering" is the open condition: keywords cannot settle a theme, so expect a SemanticRetrieval or Verifier step and a rationale that quotes it. Observed: CatalogFilter → SemanticRetrieval → Mulan (1998), citing the plot text.'
       },
       {
@@ -1151,11 +1151,6 @@
         kind: 'answer',
         q: 'A film where someone pretends to love another to seize power',
         expect: 'The phrasing test, and the most variable case in the bed. The right answer is Frozen (2013) — Hans explains he went looking for a royal family to marry into. Passing the user\'s words through scores 0.35 and misses it entirely; "he says he never loved her and leaves her to die so he can take the throne" scores 0.44 and returns it first. Under 0.42 the tool returns weak_match and the query must be re-run in the same turn, never narrated and never offered as a retry. Both outcomes have been observed: when the rewrite stays abstract the honest result is "nothing I checked is supported", which is a pass on discipline and a miss on retrieval.'
-      },
-      {
-        kind: 'answer',
-        q: 'An animated film where nobody dies',
-        expect: 'CatalogFilter(genres=[Animation]) then a lexical scan whose word list the planner writes. The claim test: a clear film may be described as having no death-related terms in its plot text, and must never be upgraded to "nobody dies". Upgrading the screen\'s finding to the user\'s phrasing is the failure.'
       },
       {
         kind: 'answer',

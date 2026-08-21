@@ -28,6 +28,7 @@ Two properties carried over from the Observer, both load-bearing:
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from agent import llm_client
@@ -92,6 +93,12 @@ not support the answer you are about to give. Write `unclear` instead. A note \
 identifies who a name refers to; it never argues a quote into saying more than \
 it says.
 
+**The user's request is context, never evidence.** It tells you what a \
+requirement means -- whether "a hat" is one someone wears or one on a shelf -- \
+and nothing more. It cannot make a film satisfy anything, and wanting to \
+answer it is not a reason to read a passage generously. Judge each requirement \
+from the plot text alone.
+
 Return JSON only: {"findings": [ ... ]}. No prose around it.\
 """
 
@@ -142,7 +149,37 @@ def _accepted(findings: list[dict[str, Any]], conditions: list[str]) -> bool:
     return all(verdicts.get(c) == "yes" for c in conditions)
 
 
-def verify(film: str, conditions: list[str], text: str) -> dict[str, Any]:
+def _refuted_by_its_own_quote(requirement: str, quote: str,
+                              deny: dict[str, list[str]] | None) -> str | None:
+    """The word in this quote that contradicts the absence it is supporting.
+
+    The Verifier returned `yes` for "no character dies" quoting "McLeach is
+    swept over the waterfall to his death." Every other guard passed: the
+    quote is a literal substring, it carries no hedging note, and the verdict
+    cites evidence. Quote-checking proves where a sentence came from, never
+    what it shows.
+
+    What makes this decidable is that the Decomposer wrote the vocabulary for
+    the thing being denied AND said which requirement it wrote it for, so the
+    pairing is stated rather than guessed. An earlier version guessed, by
+    matching the requirement against a list of English negation words -- which
+    fired on "no character dies" and did nothing for "everyone lives", because
+    the list only ever covers the phrasings someone thought of.
+    """
+    if not deny or not quote:
+        return None
+    words = deny.get((requirement or "").strip())
+    if not words:
+        return None
+    for word in words:
+        if re.search(rf"\b{re.escape(word)}\b", quote, re.I):
+            return word
+    return None
+
+
+def verify(film: str, conditions: list[str], text: str,
+           deny: dict[str, list[str]] | None = None,
+           request: str = "") -> dict[str, Any]:
     """Check one film against every condition. One model call.
 
     Returns the verdict row plus the step record the loop logs, so a Verifier
@@ -154,7 +191,9 @@ def verify(film: str, conditions: list[str], text: str) -> dict[str, Any]:
                 "skipped": "no conditions, or no text to read"}
 
     listed = "\n".join(f"- {c}" for c in conditions)
-    user = f"FILM: {film}\n\nREQUIREMENTS\n{listed}\n\nPLOT TEXT\n{text}"
+    asked = f"WHAT THE USER ASKED FOR\n{request.strip()}\n\n" if request else ""
+    user = (f"{asked}FILM: {film}\n\nREQUIREMENTS\n{listed}\n\n"
+            f"PLOT TEXT\n{text}")
 
     message, usage = llm_client.complete([
         {"role": "system", "content": VERIFIER_PROMPT},
@@ -208,6 +247,17 @@ def verify(film: str, conditions: list[str], text: str) -> dict[str, Any]:
         # empty quote counted as satisfied -- which is the model asserting a
         # story fact, exactly what this module exists to stop. `unclear` is
         # allowed to have no quote; it is the verdict that claims nothing.
+        # A `yes` for an absence, evidenced by a sentence containing the very
+        # thing denied, is not a yes.
+        if f.get("verdict") == "yes":
+            hit = _refuted_by_its_own_quote(condition, quote, deny)
+            if hit:
+                f["verdict"] = "no"
+                f["downgraded"] = (
+                    f"the quote offered for this absence contains {hit!r}, so it "
+                    f"shows the opposite of what the verdict claims"
+                )
+
         # A `yes` whose note argues against it is not a yes.
         if f.get("verdict") == "yes":
             marker = _hedged(str(f.get("note") or ""))

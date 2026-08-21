@@ -33,6 +33,21 @@ one. Naming a film from either is the worst thing you can do here.
 say so plainly and say how many films were checked. Zero verified is a real \
 answer and an honest one; a near-miss dressed as a recommendation is neither.
 
+**When you are given `ranked_not_verified` instead of `accepted`, no film was \
+read and none needed to be.** Do not state a verified count, not even zero: \
+"0 verified" invites the reader to think something failed, and no number in \
+the evidence is a count of films checked, so quoting one is inventing it. Open \
+with the films.** The request had no condition that plot text could settle, so these are \
+simply the best-rated films matching the catalog constraints. Say that. Do not \
+write "verified", and do not describe them as satisfying anything beyond the \
+constraints they were filtered on.
+
+**Never quote a `basis` or `note` field back to the user.** Those are the \
+system telling you how the result was produced, not sentences about a film. \
+Only a `quote` from a verdict is evidence, because only that came out of a \
+plot. Say the plain thing instead: "these are the best-rated matches; nothing \
+in the request needed the plot checked".
+
 Lead with the strongest, give title and year, then a sentence on why it fits \
 what was asked, citing the quote its verdict came with. Name up to \
 {tools.MAX_RECOMMENDATIONS_CEILING} films. Fewer only when fewer were \
