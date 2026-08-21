@@ -58,7 +58,7 @@ MAX_ROUNDS = 5
 #
 # Raising MAX_ROUNDS without raising this does nothing, which is the right way
 # round -- rounds are a thinking budget, calls are the bill.
-MAX_TOTAL_LLM_CALLS = 12
+MAX_TOTAL_LLM_CALLS = 16
 
 
 class _Budget:
@@ -72,10 +72,11 @@ class _Budget:
     def __init__(self) -> None:
         self.planner = 0
         self.observer = 0
+        self.verifier = 0
 
     @property
     def total(self) -> int:
-        return self.planner + self.observer
+        return self.planner + self.observer + self.verifier
 
     @property
     def remaining(self) -> int:
@@ -92,7 +93,8 @@ class _Budget:
 
     def as_dict(self) -> dict[str, int]:
         return {"planner": self.planner, "observer": self.observer,
-                "total": self.total, "cap": MAX_TOTAL_LLM_CALLS}
+                "verifier": self.verifier, "total": self.total,
+                "cap": MAX_TOTAL_LLM_CALLS}
 
 
 def execute(prompt: str) -> dict[str, Any]:
@@ -119,6 +121,11 @@ def execute(prompt: str) -> dict[str, Any]:
     ctx = tools.ToolContext()
     budget = _Budget()
     corrected = False
+    # What verification actually accepted, and what it looked at. Held here, in
+    # Python, because the exit gate below compares the answer against it: a
+    # film the model names is recommendable only if it is in this set.
+    verified: dict[str, set[str] | bool] = {"accepted": set(), "seen": set(),
+                                            "ran": False}
 
     if not prompt or not prompt.strip():
         return _error("The 'prompt' field is required.", steps)
@@ -188,6 +195,54 @@ def execute(prompt: str) -> dict[str, Any]:
                 # the catalog knows all 238 -- so the loop can simply refuse to
                 # return an over-long answer, and pay one turn to fix it.
                 named = catalog.labels_in(answer)
+
+                # The exit gate. A film may be named only if verification
+                # accepted it, and this is checked rather than requested for
+                # the same reason the ceiling below is: an instruction the
+                # model can read past is not a guarantee. It is what makes
+                # greed self-defeating -- a shortcut that skips verification
+                # produces films with no verdicts, and no answer can be built
+                # out of them, so the cheap route stops being a route at all.
+                #
+                # Only armed once verification has run. A request that never
+                # needed it -- "who are you", "what can you do", an impossible
+                # premise -- has nothing to gate, and gating it would be the
+                # loop refusing an answer for not citing evidence it was never
+                # supposed to gather.
+                unverified = ([f for f in named if f not in verified["accepted"]]
+                              if verified["ran"] else [])
+                if unverified and not corrected:
+                    corrected = True
+                    messages.append(message)
+                    messages.append({
+                        "role": "user",
+                        "content": (
+                            f"You named {', '.join(unverified)}, which "
+                            f"verification did not accept. "
+                            + (f"Accepted: {', '.join(sorted(verified['accepted']))}. "
+                               if verified["accepted"] else
+                               "Nothing was accepted. ")
+                            + "Only accepted films may be recommended, and the "
+                            "count you state must match how many there are. "
+                            "Rewrite the answer using only accepted films; if "
+                            "there are none, say plainly that nothing could be "
+                            "verified and how many films were checked. Do not "
+                            "present an unresolved title as a near-miss."
+                        ),
+                    })
+                    steps.append({
+                        "module": "Planner",
+                        "round": round_index + 1,
+                        "llm_calls": budget.as_dict(),
+                        "prompt": {"system_prompt": prompts.SYSTEM_PROMPT,
+                                   "user_prompt": "(unverified films named, answer rejected)"},
+                        "response": {"content": answer,
+                                     "rejected": f"named {unverified}, "
+                                                 f"accepted was "
+                                                 f"{sorted(verified['accepted'])}"},
+                    })
+                    continue
+
                 if len(named) > prompts.MAX_RECOMMENDATIONS and not corrected:
                     corrected = True
                     messages.append(message)
@@ -235,13 +290,25 @@ def execute(prompt: str) -> dict[str, Any]:
                         "error": f"Arguments were not valid JSON: {exc}"
                     }
                 else:
+                    ctx.calls_remaining = budget.remaining
                     result = tools.dispatch(name, arguments, ctx)
+
+                if name == "verify_candidates" and not result.get("error"):
+                    verified["ran"] = True
+                    verified["accepted"] |= set(result.get("accepted") or [])
+                    for bucket in ("accepted", "rejected", "unresolved"):
+                        verified["seen"] |= set(result.get(bucket) or [])
+                    # Each film cost a model call, and they were made inside
+                    # the tool, so the budget has to learn about them here or
+                    # the cap it enforces is a cap on the wrong number.
+                    budget.verifier += int(result.get("verified") or 0)
 
                 steps.append({
                     "module": tools.TRACE_NAMES.get(name, name),
                     "round": round_index + 1,
                     "prompt": {"tool": name, "arguments": arguments},
                     "scope": ctx.scope_note,
+                    "llm_calls": budget.as_dict(),
                     "response": result,
                 })
 

@@ -40,7 +40,7 @@ from typing import Any
 
 from dataclasses import dataclass, field
 
-from agent import catalog
+from agent import catalog, shortlist, verifier
 from rag import config as ragcfg
 from rag import screen as screening
 from rag import store as retrieval
@@ -62,6 +62,20 @@ class ToolContext:
     working_set: set[int] | None = None      # None = whole catalog
     scope_note: str = "whole catalog"
     trace: list[str] = field(default_factory=list)
+
+    # The fused ordering from build_shortlist, and the conditions it fused.
+    # Held here rather than passed through the prompt for the same reason the
+    # working set is: it is bookkeeping, the model cannot improve it by seeing
+    # it, and a list of ids re-typed by a model is a list of ids with a
+    # transcription error in it.
+    shortlist: list[int] = field(default_factory=list)
+    conditions: list[str] = field(default_factory=list)
+
+    # How many model calls the request can still afford. verify_candidates
+    # spends calls inside a single tool call, so without this the loop's cap
+    # would be enforced only between tool calls -- which is to say, after the
+    # overspend had already happened.
+    calls_remaining: int | None = None
 
     def narrow(self, ids: set[int], why: str) -> None:
         self.working_set = ids
@@ -609,6 +623,186 @@ def search_plots(
     return out
 
 
+# How many films each condition's own search contributes. Twenty is wide
+# enough that a film satisfying every condition moderately still places on
+# each list, which is the recall this whole mechanism depends on, and narrow
+# enough that the fused table stays readable.
+SHORTLIST_PER_CONDITION = 20
+
+# How many fused rows come back to the planner. The full ordering is kept in
+# the context regardless -- this bounds what is shown, not what is considered.
+SHORTLIST_ROWS = 15
+
+
+def build_shortlist(
+    conditions: list[str] | None = None,
+    top_k: int = SHORTLIST_PER_CONDITION,
+    ctx: "ToolContext | None" = None,
+) -> dict[str, Any]:
+    """Search EVERY story condition separately, then fuse the rankings.
+
+    This is the tool that stops the agent being greedy. Searching one condition
+    and reading its top hits assumes the other conditions hold in whatever came
+    back, and nothing makes that true: a film ranking first on "a princess" and
+    thirty-first on "snow and ice" gets read, while the film placing tenth on
+    both is never seen.
+
+    So each condition gets its own search -- one embedding each, no model call
+    -- and the lists are fused before anything expensive happens. Films are
+    ordered by how many conditions they placed for first, and by their average
+    rank among those second, so satisfying everything moderately beats
+    satisfying one thing perfectly.
+
+    Searches are scoped to the current working set, so a catalog filter run
+    beforehand removes films from every condition's list at once.
+    """
+    wanted = [c.strip() for c in (conditions or []) if str(c).strip()]
+    if not wanted:
+        return {"error": "build_shortlist needs at least one condition to search for."}
+
+    top_k = max(1, min(int(top_k), MAX_SEARCH_RESULTS))
+    scoped = ctx.candidates() if ctx is not None else None
+
+    lists: dict[str, list[int]] = {}
+    passages: dict[tuple[str, int], str] = {}
+    for condition in wanted:
+        hits = retrieval.search(condition, top_k=top_k, candidate_ids=scoped,
+                                sources=DEFAULT_SOURCES)
+        lists[condition] = [h["movie_id"] for h in hits]
+        for h in hits:
+            passages[(condition, h["movie_id"])] = h["passage"]
+
+    ratings = {int(i): (catalog.rating_of(int(i)) or 0.0)
+               for ids in lists.values() for i in ids}
+    fused = shortlist.fuse(lists, ratings=ratings)
+
+    if ctx is not None:
+        ctx.shortlist = [c.movie_id for c in fused]
+        ctx.conditions = wanted
+
+    rows = [shortlist.explain(c, wanted, catalog.label_of(c.movie_id) or str(c.movie_id))
+            for c in fused[:SHORTLIST_ROWS]]
+
+    full = len(fused)
+    covered_all = sum(1 for c in fused if c.covered == len(wanted))
+    return {
+        "conditions": wanted,
+        "searched_within": "whole catalog" if scoped is None
+                           else f"{len(scoped)} films in scope",
+        "candidates": full,
+        "matching_every_condition": covered_all,
+        "shortlist": rows,
+        "note": (
+            f"{full} films placed for at least one condition; {covered_all} placed for "
+            f"all {len(wanted)}. Ordered by conditions matched, then average rank -- so "
+            "the top of this list is the best place to start verifying, and a film's "
+            "position here is a search ranking, NOT evidence that it satisfies "
+            "anything. Verify before recommending."
+        ),
+        "model_call": {"model": ragcfg.EMBED_MODEL, "kind": "embedding",
+                       "calls": len(wanted), "inputs": wanted},
+    }
+
+
+# How many films the Verifier will look at before giving up. Ten one-film
+# calls is the ceiling on a request that never finds anything; the walk stops
+# the moment MAX_RECOMMENDATIONS are accepted, so the common case costs three
+# or four. This is a demo, and a demo that cannot find an answer says so
+# rather than searching forever.
+MAX_VERIFICATIONS = 10
+
+# How many films an answer may name. Owned here rather than in prompts.py
+# because verify_candidates has to enforce it and prompts.py imports from this
+# module, so the dependency only runs one way. prompts.MAX_RECOMMENDATIONS is
+# a re-export, not a second copy.
+MAX_RECOMMENDATIONS_CEILING = 3
+
+
+def verify_candidates(
+    conditions: list[str] | None = None,
+    films: list[str] | None = None,
+    max_accept: int = 3,
+    ctx: "ToolContext | None" = None,
+) -> dict[str, Any]:
+    """Walk the shortlist best-first, checking EVERY condition on each film.
+
+    One model call per film, each seeing that film's plot text and the whole
+    list of requirements at once. A film is accepted only when every condition
+    comes back `yes`; the accepted list is built here, in Python, so what the
+    answer may claim is a count of a list rather than an assertion the model
+    makes about its own reasoning.
+
+    The walk stops at `max_accept` films or MAX_VERIFICATIONS calls, whichever
+    comes first. Running out is a real outcome and is reported as one: this is
+    a demo, and the honest answer to "nothing verified" is that nothing
+    verified, not a longer search.
+    """
+    conditions = [c.strip() for c in (conditions or []) if str(c).strip()]
+    if not conditions and ctx is not None:
+        conditions = list(ctx.conditions)
+    if not conditions:
+        return {"error": "verify_candidates needs the conditions to check against."}
+
+    # Explicit films win; otherwise walk the fused shortlist in its order,
+    # which is the whole point of having fused it.
+    if films:
+        order = [i for i in (catalog.resolve(f) for f in films) if i is not None]
+    elif ctx is not None and ctx.shortlist:
+        order = list(ctx.shortlist)
+    else:
+        return {"error": "no candidates: call build_shortlist first, or name films."}
+
+    max_accept = max(1, min(int(max_accept), MAX_RECOMMENDATIONS_CEILING))
+
+    # Never spend the request's last call here: the planner still has to write
+    # the answer, and evidence nobody gets to report is evidence wasted.
+    affordable = MAX_VERIFICATIONS
+    if ctx is not None and ctx.calls_remaining is not None:
+        affordable = max(0, min(affordable, ctx.calls_remaining - 1))
+
+    accepted, rejected, unresolved, rows = [], [], [], []
+    checked = 0
+    for movie_id in order:
+        if len(accepted) >= max_accept or checked >= affordable:
+            break
+        label = catalog.label_of(movie_id)
+        text = catalog.synopsis(movie_id)
+        if not label or not text:
+            # No text is not a verdict. Never counted as satisfying anything.
+            unresolved.append(label or str(movie_id))
+            continue
+
+        checked += 1
+        result = verifier.verify(label, conditions, _trim(text, MAX_SYNOPSIS_CHARS))
+        rows.append(result)
+        if result.get("accepted"):
+            accepted.append(label)
+        elif any(f.get("verdict") == "no" for f in result.get("findings") or []):
+            rejected.append(label)
+        else:
+            unresolved.append(label)
+
+    return {
+        "conditions": conditions,
+        "verified": checked,
+        "accepted": accepted,
+        "rejected": rejected,
+        "unresolved": unresolved,
+        "budget": {"checked": checked, "allowed": affordable,
+                    "ceiling": MAX_VERIFICATIONS},
+        "exhausted": checked >= affordable and len(accepted) < max_accept,
+        "verdicts": rows,
+        "note": (
+            f"{len(accepted)} film(s) satisfied every condition. **Only these may be "
+            "recommended, and the number you state must be this number.** A film in "
+            "`rejected` failed a condition; one in `unresolved` was not settled by its "
+            "text, which is not the same as satisfying it. If `accepted` is empty, say "
+            "plainly that nothing could be verified and how many films were checked -- "
+            "do not offer an unresolved title as a near-miss."
+        ),
+    }
+
+
 def _trim(text: str, limit: int) -> str:
     text = (text or "").strip()
     return text if len(text) <= limit else text[:limit].rstrip() + "..."
@@ -909,52 +1103,6 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "search_plots",
-            "description": (
-                "Rank movies by how closely their plot matches a described "
-                "story, premise, character, or theme. Use for anything not "
-                "expressible as a column: 'a rat who wants to cook', 'a father "
-                "learning to let go'. Automatically limited to whatever "
-                "filter_catalog last selected -- you do not pass candidates. "
-                "Only films with plot text are searchable."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": (
-                            "The EVENT a plot summary would literally narrate, "
-                            "not the theme the user named. This is the single "
-                            "highest-leverage choice you make here. Do not pass "
-                            "the request through unchanged: translate it. "
-                            "'Someone pretends to love another to seize power' "
-                            "scores 0.35 and misses the film entirely; 'he says "
-                            "he never loved her and leaves her to die so he can "
-                            "take the throne' scores 0.44 and returns it first. "
-                            "Name who does what, and what happens as a result."
-                        ),
-                    },
-                    "ignore_scope": {
-                        "type": "boolean",
-                        "description": (
-                            "Search the whole catalog rather than the filtered set. "
-                            "Only when the request has no structured constraint, or "
-                            "the filter returned nothing and needs widening."
-                        ),
-                    },
-                    "top_k": {
-                        "type": "integer",
-                        "description": f"How many to return (hard cap {MAX_SEARCH_RESULTS}).",
-                    },
-                },
-                "required": ["query"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
             "name": "read_synopses",
             "description": (
                 "Read the plot text of specific movies. This is the ONLY way "
@@ -1007,14 +1155,115 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "verify_candidates",
+            "description": (
+                "Check films against EVERY condition, one model call per "
+                "film, and return the ones that satisfy all of them. **This "
+                "is the only thing that makes a film recommendable.** It "
+                "walks the shortlist best-first, reads each film's plot text, "
+                "and returns `accepted`, `rejected` and `unresolved`. Only "
+                "films in `accepted` may appear in your answer, and the "
+                "number you state must equal how many are in it. It stops at "
+                "3 accepted or 10 films checked, whichever comes first; if it "
+                "runs out having accepted nothing, say so plainly and say how "
+                "many were checked."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "conditions": {
+                        "type": "array", "items": {"type": "string"},
+                        "description": (
+                            "Every condition the film must satisfy, phrased "
+                            "as a REQUIREMENT rather than a question -- 'no "
+                            "character dies', 'a princess appears'. Include "
+                            "the negative ones here: this is where an absence "
+                            "is actually adjudicated, and a lexical flag is "
+                            "only a reason to look. Defaults to the "
+                            "conditions you passed to build_shortlist."
+                        ),
+                    },
+                    "films": {
+                        "type": "array", "items": {"type": "string"},
+                        "description": (
+                            "Optional. Specific films to check, as "
+                            "'Title (Year)'. Omit to walk the fused shortlist "
+                            "in its own order, which is usually what you want."
+                        ),
+                    },
+                    "max_accept": {
+                        "type": "integer",
+                        "description": "Stop after this many films pass. Default 3.",
+                    },
+                },
+                "required": ["conditions"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "build_shortlist",
+            "description": (
+                "Search EVERY story condition separately and fuse the "
+                "rankings into one ordered shortlist. **Use this instead of "
+                "search_plots whenever the request has more than one story "
+                "condition.** Searching one condition and reading its top "
+                "hits assumes the others hold in whatever came back, which "
+                "nothing makes true: a film ranking 1st on 'a princess' and "
+                "31st on 'snow and ice' gets read while the film placing "
+                "10th on both is never seen. Costs one embedding per "
+                "condition and no model call. Films are ordered by how many "
+                "conditions they placed for, then by average rank, so "
+                "satisfying everything moderately beats satisfying one thing "
+                "perfectly. Scoped to the current working set, so run "
+                "filter_catalog first when the request has structured "
+                "constraints. A position in this list is a search ranking, "
+                "NOT evidence -- verify with read_synopses before "
+                "recommending."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "conditions": {
+                        "type": "array", "items": {"type": "string"},
+                        "description": (
+                            "One entry per story condition, each phrased as a "
+                            "CONCRETE EVENT the way search_plots requires -- "
+                            "'snow and ice cover the kingdom', not 'wintry'. "
+                            "Do not put structured constraints here (year, "
+                            "runtime, studio, language): those belong in "
+                            "filter_catalog, which is exact. Do not put a "
+                            "pure absence here ('nobody dies') either: "
+                            "nothing can be searched for by not happening, so "
+                            "that is screen_out's job."
+                        ),
+                    },
+                    "top_k": {
+                        "type": "integer",
+                        "description": (
+                            "Films per condition, default 20. Raise it when a "
+                            "condition is broad and you want more of the "
+                            "middle of its ranking to reach the fusion."
+                        ),
+                    },
+                },
+                "required": ["conditions"],
+            },
+        },
+    },
 ]
 
 # Human-readable trace names, matching the boxes in the Architecture tab.
 TRACE_NAMES = {
     "filter_catalog": "CatalogFilter",
     "screen_out": "LexicalScreen",
-    "search_plots": "PlotSearch",
+    "build_shortlist": "ShortlistFusion",
     "read_synopses": "SynopsisReader",
+    "verify_candidates": "Verifier",
 }
 
 
@@ -1032,9 +1281,16 @@ def dispatch(name: str, arguments: dict[str, Any],
         return {"error": f"{type(exc).__name__}: {exc}"}
 
 
+# search_plots is deliberately absent. It is still the primitive that
+# build_shortlist calls once per condition, but it is no longer offered to the
+# model, because "search one condition and read its top hits" is the greedy
+# move this design exists to prevent -- and a tool the model can reach is a
+# tool a prompt has to talk it out of using. One condition is build_shortlist
+# with a list of one, so nothing is lost.
 _DISPATCH = {
     "filter_catalog": filter_catalog,
     "screen_out": screen_out,
-    "search_plots": search_plots,
+    "build_shortlist": build_shortlist,
     "read_synopses": read_synopses,
+    "verify_candidates": verify_candidates,
 }

@@ -255,7 +255,8 @@ def g06_call_budget() -> list[str]:
     if not planner_steps:
         failures.append("no Planner steps in the trace")
     for s in planner_steps:
-        if set(s.get("llm_calls") or {}) != {"planner", "observer", "total", "cap"}:
+        if set(s.get("llm_calls") or {}) != {"planner", "observer", "verifier",
+                                             "total", "cap"}:
             failures.append(f"a Planner step reports llm_calls as {s.get('llm_calls')!r}")
             break
 
@@ -268,6 +269,63 @@ def g06_call_budget() -> list[str]:
     if info["architecture"].get("max_planner_rounds_per_request") != loop.MAX_ROUNDS:
         failures.append("agent_info does not publish the planner-round bound separately "
                         "-- rounds and calls are different quantities")
+    return failures
+
+
+def g07_fusion_beats_greed() -> list[str]:
+    """Coverage outranks average rank, and the greedy answer loses. Free.
+
+    Pure arithmetic on synthetic lists, so it costs nothing and can assert the
+    exact property the mechanism exists for: a film satisfying every condition
+    moderately must beat a film satisfying one condition perfectly.
+
+    The second case is the one worth keeping. Averaging a penalty rank for a
+    missing condition -- the obvious implementation -- makes a film ranked
+    1st, 1st and absent (7.7 with a penalty of 21) beat one ranked 10th, 10th
+    and 10th (10.0). That is the greedy answer arriving by arithmetic, and it
+    is why the ordering is tiered by coverage first.
+    """
+    from agent import shortlist
+
+    failures = []
+
+    # Satisfying everything moderately beats satisfying one thing perfectly.
+    fused = shortlist.fuse({"a": [7, 1], "b": [7, 2], "c": [7]})
+    if not fused or fused[0].movie_id != 7:
+        failures.append(f"the film matching all three conditions did not rank first: "
+                        f"{[(c.movie_id, c.covered) for c in fused]}")
+
+    # Coverage must dominate average rank, not merely contribute to it.
+    fused = shortlist.fuse({"a": [1, 9], "b": [1, 9], "c": [9]})
+    order = [c.movie_id for c in fused]
+    if order[:1] != [9]:
+        failures.append(f"film 9 covers 3/3 at rank 9 and film 1 covers 2/3 at rank 1; "
+                        f"order was {order} -- coverage is not dominating")
+
+    # Within a coverage tier, average rank decides.
+    fused = shortlist.fuse({"a": [1, 2], "b": [1, 2]})
+    if [c.movie_id for c in fused] != [1, 2]:
+        failures.append("within one coverage tier the better average rank did not win")
+
+    # Ties break on the catalog rating, the only ordering this project uses.
+    fused = shortlist.fuse({"a": [1, 2]}, ratings={1: 5.0, 2: 9.0})
+    fused = shortlist.fuse({"a": [1], "b": [2]}, ratings={1: 5.0, 2: 9.0})
+    if [c.movie_id for c in fused] != [2, 1]:
+        failures.append("equal coverage and equal rank did not break on rating")
+
+    # A rank of None must be reported, not omitted: a condition missing from
+    # the row reads as an oversight rather than as a finding.
+    row = shortlist.explain(fused[0], ["a", "b"], "Film (2000)")
+    if set(row["ranks"]) != {"a", "b"}:
+        failures.append(f"explain() dropped a condition instead of reporting None: "
+                        f"{row['ranks']}")
+
+    # The tool is offered to the model and traced.
+    from agent import tools
+    if "build_shortlist" not in {s["function"]["name"] for s in tools.TOOL_SCHEMAS}:
+        failures.append("build_shortlist is not in TOOL_SCHEMAS, so the model cannot use it")
+    if "build_shortlist" not in tools.TRACE_NAMES:
+        failures.append("build_shortlist has no TRACE_NAME")
     return failures
 
 
@@ -403,7 +461,9 @@ def main() -> int:
         ("G05", g05_runtime_is_structured,
          "runtime is a filter argument, exact and inclusive, and cited back"),
         ("G06", g06_call_budget,
-         "the total model-call cap binds planner and Observer together"),
+         "the total model-call cap binds planner, Observer and Verifier"),
+        ("G07", g07_fusion_beats_greed,
+         "rank fusion puts coverage above average rank, so greed loses"),
         ("G09", g09_counts, "every displayed count comes from the shipped data"),
     ]:
         failures = fn()

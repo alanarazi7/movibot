@@ -57,7 +57,7 @@ OUTPUT_PATH = os.path.join(_ROOT, "assets", "architecture.png")
 # actually gets. SS only buys resampling quality: the image is drawn SS times
 # larger and shrunk back down at save time, so curves and small type stay clean
 # on a retina display and survive the browser's own scaling.
-WIDTH, HEIGHT = 900, 930
+WIDTH, HEIGHT = 900, 981
 SS = 2
 
 BG = (255, 255, 255)
@@ -304,7 +304,7 @@ def main() -> None:
     # the planner usually adopts -- a preference, not a path, so nothing here
     # connects one tool to the next. The connector leaves the frame rather than
     # the Act box for the same reason: any turn may call any tool.
-    panel = (36, 645, 864, 905)
+    panel = (36, 645, 864, 956)
     draw.rounded_rectangle(_st(panel), radius=_s(11), fill=PANEL_FILL,
                            outline=PANEL_LINE, width=_s(2))
     _text(draw, (60, 664), "TOOLS", MUTED, 15, bold=True)
@@ -318,8 +318,10 @@ def main() -> None:
     specs = [
         ("filter_catalog", "structured facts", "\U0001F5C2", False),
         ("screen_out", "exhaustive scan", "\U0001F6AB", False),
-        ("search_plots", "vector search \u00b7 embeds the query", "\U0001F50E", True),
-        ("read_synopses", "plot text \u00b7 read by the Observer", "\U0001F4D6", True),
+        ("build_shortlist", "one embedding per condition \u00b7 fused", "\U0001F50E", True),
+        ("read_synopses", "plot text, on request", "\U0001F4D6", False),
+        ("verify_candidates", "one model call per film \u00b7 all conditions",
+         "\u2705", True),
     ]
     row_h, row_gap, row_y = 44, 7, 694
     for i, (key, sub, glyph, calls_model) in enumerate(specs):
