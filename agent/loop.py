@@ -289,6 +289,46 @@ def execute(prompt: str) -> dict[str, Any]:
                     })
                     continue
 
+                # The inverse failure, and the worse one. Verification accepted
+                # Peter Pan and the answer said "I could not verify any Disney
+                # film" -- a claim contradicted by a tool result in the same
+                # request. The gate above could not see it: it asks whether a
+                # named film was accepted, and this answer named none, so every
+                # check passed on an empty set.
+                #
+                # Reporting nothing when something was accepted is worse than
+                # reporting a film that was not, because it is invisible. A
+                # wrong recommendation can be argued with; a suppressed one
+                # looks like an honest "nothing fits".
+                missed = sorted(verified["accepted"] - set(named))
+                if verified["ran"] and verified["accepted"] and not corrected and missed \
+                        and not (set(named) & verified["accepted"]):
+                    corrected = True
+                    messages.append(message)
+                    messages.append({
+                        "role": "user",
+                        "content": (
+                            f"Verification accepted {', '.join(missed)}, and your "
+                            "answer names none of them. An accepted film satisfied "
+                            "every condition you asked about; saying nothing could "
+                            "be verified contradicts your own evidence. Recommend "
+                            f"the accepted film(s), up to "
+                            f"{prompts.MAX_RECOMMENDATIONS}, citing the quote each "
+                            "verdict came with."
+                        ),
+                    })
+                    steps.append({
+                        "module": "Planner",
+                        "round": round_index + 1,
+                        "llm_calls": budget.as_dict(),
+                        "prompt": {"system_prompt": prompts.SYSTEM_PROMPT,
+                                   "user_prompt": "(accepted films omitted, answer rejected)"},
+                        "response": {"content": answer,
+                                     "rejected": f"verification accepted {missed}, "
+                                                 f"the answer named none of them"},
+                    })
+                    continue
+
                 # Under-delivery. "A Disney movie from the 1990s" matched 61
                 # films and came back with one, which is not restraint: the
                 # request ruled almost nothing out, so it had three answers.
