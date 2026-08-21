@@ -163,11 +163,18 @@ def g09_counts() -> list[str]:
 
 
 def g01_execute_contract() -> list[str]:
-    """Both paths of /api/execute answer with exactly the four fields, at 200.
+    """Every malformed input to /api/execute answers with the four fields, at 200.
 
     The spec fixes the top-level fields "exactly", and describes the error case
     as a response format rather than a transport failure. Asserting it here
     means the contract cannot drift the next time an early return is added.
+
+    The type cases are the ones that bit. This gate used to test only "" and
+    {}, both of which are falsy strings by the time they reach the check, so it
+    passed while {"prompt": 123} raised AttributeError on .strip() and Flask
+    served a 500 HTML page. An automated grader posting junk finds that in one
+    request. Anything that is not a dict with a string prompt has to come back
+    as JSON in the same shape as every other error.
     """
     import app as flask_app
 
@@ -175,13 +182,38 @@ def g01_execute_contract() -> list[str]:
     client = flask_app.app.test_client()
     required = ["error", "response", "status", "steps"]
 
-    for label, payload in [("missing prompt", {"prompt": ""}), ("no body", {})]:
+    cases = [
+        ("empty prompt", {"prompt": ""}),
+        ("no body", {}),
+        ("whitespace-only prompt", {"prompt": "   "}),
+        ("null prompt", {"prompt": None}),
+        ("integer prompt", {"prompt": 123}),
+        ("array prompt", {"prompt": ["hello"]}),
+        ("object prompt", {"prompt": {"text": "hello"}}),
+        ("boolean prompt", {"prompt": True}),
+        ("body is an array", ["hello"]),
+        ("body is a bare string", "hello"),
+        ("body is a number", 7),
+    ]
+
+    for label, payload in cases:
         r = client.post("/api/execute", json=payload)
-        body = r.get_json()
+        if r.content_type and "json" not in r.content_type:
+            failures.append(f"{label}: Content-Type is {r.content_type!r}, not JSON "
+                            f"-- this is the 500 HTML page the contract forbids")
+            continue
+        body = r.get_json(silent=True)
+        if not isinstance(body, dict):
+            failures.append(f"{label}: body is {body!r}, expected the error object")
+            continue
         if sorted(body) != required:
             failures.append(f"{label}: fields are {sorted(body)}, expected {required}")
         if body.get("status") != "error":
             failures.append(f"{label}: status is {body.get('status')!r}, expected 'error'")
+        if body.get("response") is not None or body.get("steps") != []:
+            failures.append(f"{label}: response/steps are "
+                            f"{body.get('response')!r}/{body.get('steps')!r}, "
+                            f"expected null and []")
         if r.status_code != 200:
             failures.append(f"{label}: HTTP {r.status_code}; errors belong in the body, "
                             f"and every other error path here answers 200")
@@ -192,7 +224,7 @@ def main() -> int:
     total = 0
     for name, fn, what in [
         ("G01", g01_execute_contract,
-         "/api/execute answers with exactly four fields on both paths"),
+         "/api/execute answers with exactly four fields on every malformed input"),
         ("G03", g03_module_names, "module names agree across diagram, agent_info and steps"),
         ("G04", g04_models, "the course-provided model deployments are the ones configured"),
         ("G09", g09_counts, "every displayed count comes from the shipped data"),

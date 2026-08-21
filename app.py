@@ -238,10 +238,30 @@ def execute():
     if request.method == "OPTIONS":
         return _cors(jsonify({}))
 
-    data = request.get_json(silent=True) or {}
-    user_prompt = (data.get("prompt") or "").strip()
+    # Both of these are type checks before they are anything else. A JSON body
+    # that parses is not a body of the shape we asked for: `[1, 2]` parses to a
+    # list, which has no .get, and {"prompt": 123} parses to an int, which has
+    # no .strip. Either used to raise here -- above the try below -- so Flask
+    # answered with a 500 HTML page instead of the error JSON the spec
+    # mandates. Truthiness was never the right test; type is.
+    body = request.get_json(silent=True)
+    data = body if isinstance(body, dict) else {}
+    raw_prompt = data.get("prompt")
+    user_prompt = raw_prompt.strip() if isinstance(raw_prompt, str) else ""
 
     if not user_prompt:
+        # Say which of the two it was. "Required" is wrong for {"prompt": 123}:
+        # the field was supplied, it was the wrong type, and a caller told to
+        # supply a field it already supplied has been sent to look in the wrong
+        # place.
+        if raw_prompt is None or isinstance(raw_prompt, str):
+            message = "The 'prompt' field is required."
+        else:
+            message = (
+                f"The 'prompt' field must be a string, not "
+                f"{type(raw_prompt).__name__}."
+            )
+
         # 200, not 400. The spec describes "error" as a response *format* --
         # status, error, response, steps -- and never mentions HTTP codes, so
         # the failure belongs in the body. Every other error this endpoint can
@@ -253,7 +273,7 @@ def execute():
             jsonify(
                 {
                     "status": "error",
-                    "error": "The 'prompt' field is required.",
+                    "error": message,
                     "response": None,
                     "steps": [],
                 }
