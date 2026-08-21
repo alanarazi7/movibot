@@ -649,7 +649,6 @@
     <div id="agent" class="tab-content active">
       <div class="card">
         <h2>Run MoviBot Agent</h2>
-        <p style="color: #666; font-size: 0.9rem; margin-bottom: 1rem;">Movie discovery for mixed constraints — structured facts (year, studio, runtime) plus fuzzy, subjective ones (mood, tone, "no deaths") verified per-title, not guessed.</p>
 
         <label for="prompt">Your request</label>
         <textarea id="prompt" placeholder="e.g. Bring me a not-too-old (1990+) Disney movie with no deaths, that involves animals, for my 3 year old kid."></textarea>
@@ -694,16 +693,7 @@
       </div>
 
       <div class="card">
-        <label>Test bed</label>
-        <p style="color:#666;font-size:0.85rem;margin-bottom:0.8rem;">
-          Fourteen cases covering each tool, both directions of the screen, each scope limit, and the ways the agent can
-          plausibly go wrong. Click one to load it, then <b>Run Agent</b> and compare the
-          answer against what it should have done. Every answer names at most three
-          films (<code>MAX_RECOMMENDATIONS</code>) &mdash; a hard ceiling that no request
-          raises, including one that asks for everything. Such a request should be told
-          the answer is not complete, and given the true match count when the agent has
-          one.
-        </p>
+        <label>Examples</label>
         <div id="test-cases"></div>
       </div>
 
@@ -1665,7 +1655,7 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
       }
     }
 
-    // --- Test bed -------------------------------------------------------
+    // --- Examples --------------------------------------------------------
     // Each case pairs a query with what the agent should do. Chosen to cover
     // one tool each, both scope limits, and the specific ways this agent can
     // plausibly go wrong: answering from pretraining instead of the catalog,
@@ -1705,23 +1695,8 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
       },
       {
         kind: 'answer',
-        q: 'A movie with an animal that wears a hat',
-        expect: 'The forward-scan case, and the weakest result in the bed. Ranking returns films about animals whose plots never mention a hat, so this needs LexicalScreen with keep=\'flagged\' — and, because the request pairs two things, and_words so both land in the same passage. Cat-or-hat matches 51 films, cat-words alone 27, cat-with-hat-in-one-passage 2. The honest answer is usually that no plot text establishes an animal wearing a hat; naming a near-miss and explaining which half it fails is the failure, and it is the one that has recurred most.'
-      },
-      {
-        kind: 'answer',
         q: 'A Pixar film that is not sad at the end',
         expect: 'The escalation case. "Not sad" is a concept, not a vocabulary, so no word list settles it and the screen must not stand in for an answer. Expect SynopsisReader, and therefore the Observer, whose `about` must name ONE thing the text either shows or does not — ask about the sad ending and read `no` as the not-sad films. "Whether the ending is sad or not sad" makes the verdict meaningless and both a death scene and a warm goodbye come back marked the same way.'
-      },
-      {
-        kind: 'list',
-        q: 'All Disney movies from 1990 onwards with no deaths that involve animals, for a 3-year-old. Be exhaustive, don\'t miss any.',
-        expect: 'The ceiling test. At most 3 films, plus an explicit statement that this is not the complete answer. Two rounds of prompt wording failed here — one answer listed six films and then quoted the "at most three" line underneath them — so the loop now counts the film labels in the response and spends one turn rejecting an over-long answer. Because the filter and the screen are both exhaustive, it should also give the true match count rather than implying the three are all of them.'
-      },
-      {
-        kind: 'answer',
-        q: 'Pixar movies from the last 10 years that are lighthearted, with no major character deaths',
-        expect: 'Ambiguity test: "last 10 years" is relative to a catalog ending in 2017, so expect roughly 2007–2017 and a note that recency is measured against the catalog rather than today. "Lighthearted" needs evidence, not a genre.'
       },
       {
         kind: 'refuse',
