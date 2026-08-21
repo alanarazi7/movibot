@@ -58,7 +58,7 @@ OUTPUT_PATH = os.path.join(_ROOT, "assets", "architecture.png")
 # actually gets. SS only buys resampling quality: the image is drawn SS times
 # larger and shrunk back down at save time, so curves and small type stay clean
 # on a retina display and survive the browser's own scaling.
-WIDTH, HEIGHT = 918, 600
+WIDTH, HEIGHT = 918, 622
 SS = 2
 
 BG = (255, 255, 255)
@@ -237,7 +237,7 @@ def main() -> None:
     entries = [
         (PAID_FILL, PAID_LINE, "text-model call"),
         (MAYBE_FILL, MAYBE_LINE, "embedding call"),
-        (FREE_FILL, FREE_LINE, "pure Python"),
+        (FREE_FILL, FREE_LINE, "Python"),
     ]
     lw = max(_width(draw, label, 14) for _, _, label in entries)
     lx = WIDTH - 36 - lw - 20
@@ -259,33 +259,40 @@ def main() -> None:
     answer  = (528, 420, 728, 550)
     reply   = (762, 420, 888, 550)
 
-    _box(draw, request, "Request", ("natural language,", "mixed constraints"),
-         title_size=20, sub_size=13)
-    _box(draw, decomp, "Decomposer", ("reads the request,", "decides what it needs"),
+    _box(draw, request, "Request", ("in natural language",), title_size=20, sub_size=13)
+    _box(draw, decomp, "Decomposer", ("decides what it needs",),
          fill=PAID_FILL, line=PAID_LINE, title_size=21, sub_size=14)
 
     _dashed_rect(draw, ops)
-    _text(draw, (448, 156), "ASKS FOR WHAT THE REQUEST NEEDS", MUTED, 12, bold=True)
-    _text(draw, (448, 174), "any of them, some more than once", FAINT, 12)
-    for k, (name, sub, fill, line) in enumerate([
-        ("CatalogFilter", "stored columns \u00b7 exact", FREE_FILL, FREE_LINE),
-        ("PlotScan", "words, over every plot", FREE_FILL, FREE_LINE),
-        ("PlotRetrieval", "meaning \u00b7 one embedding per condition",
-         MAYBE_FILL, MAYBE_LINE),
-    ]):
-        y0 = 198 + k * 46
-        draw.rounded_rectangle(_st((448, y0, 684, y0 + 38)), radius=_s(7),
-                               fill=fill, outline=line, width=_s(1))
-        _text(draw, (460, y0 + 4), name, INK, 16, bold=True)
-        _text(draw, (460, y0 + 21), sub, MUTED, 12)
+    tools_icon = _emoji("\U0001F9F0", 19)
+    tx = 448
+    if tools_icon is not None:
+        img.paste(tools_icon, (_s(tx), _s(154)), tools_icon)
+        tx += 26
+    _text(draw, (tx, 155), "Tools", MUTED, 17, bold=True)
+    _text(draw, (tx + _width(draw, "Tools", 17, True) + 12, 158),
+          "any, some twice", FAINT, 12)
 
-    _box(draw, verify, "Verifier",
-         ("one film at a time, until enough", "pass or the candidates run out"),
+    for k, (name, glyph, fill, line) in enumerate([
+        ("CatalogFilter", "\U0001F5C2", FREE_FILL, FREE_LINE),
+        ("PlotScan", "\U0001F50E", FREE_FILL, FREE_LINE),
+        ("PlotRetrieval", "\U0001F9E0", MAYBE_FILL, MAYBE_LINE),
+    ]):
+        y0 = 190 + k * 48
+        draw.rounded_rectangle(_st((448, y0, 684, y0 + 40)), radius=_s(7),
+                               fill=fill, outline=line, width=_s(1))
+        ix = 462
+        icon = _emoji(glyph, 19)
+        if icon is not None:
+            img.paste(icon, (_s(ix), _s(y0) + int((_s(40) - _s(19)) / 2)), icon)
+            ix += 28
+        _text(draw, (ix, y0 + 10), name, INK, 17, bold=True)
+
+    _box(draw, verify, "Verifier", ("one film at a time",),
          fill=PAID_FILL, line=PAID_LINE, title_size=21, sub_size=13)
-    _box(draw, answer, "Answerer", ("drafts the reply from", "what was verified"),
+    _box(draw, answer, "Answerer", ("drafts the reply",),
          fill=PAID_FILL, line=PAID_LINE, title_size=21, sub_size=13)
-    _box(draw, reply, "Reply", ("with the evidence", "behind it"),
-         title_size=19, sub_size=13)
+    _box(draw, reply, "Reply", ("with its evidence",), title_size=19, sub_size=13)
 
     _arrow(draw, (180, 241), (208, 241))
     _arrow(draw, (394, 241), (428, 241), fill=CYCLE, width=3)
@@ -293,6 +300,12 @@ def main() -> None:
     _elbow(draw, [(566, 342), (566, 376), (346, 376), (346, 416)],
            fill=CYCLE, width=3)
     _label(draw, 420, 382, "candidates", colour=MUTED, size=13)
+    # The Verifier reads one film, then the next, until enough have passed or
+    # the candidates run out. Drawn as a loop because that is what it is, and
+    # because it is where a verifying request spends nearly all of its money.
+    _elbow(draw, [(300, 552), (300, 582), (186, 582), (186, 470), (208, 470)],
+           fill=CYCLE, width=3)
+    _text(draw, (196, 596), "next candidate, until enough pass", MUTED, 12)
     _arrow(draw, (482, 485), (524, 485), fill=CYCLE, width=3)
     _arrow(draw, (730, 485), (758, 485), fill=CYCLE, width=3)
 
