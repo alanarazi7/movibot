@@ -431,6 +431,17 @@ def g11_two_corpora() -> list[str]:
         failures.append("the two retrievals read overlapping corpora, so the split "
                         "buys nothing")
 
+    # Retrieval ranks the whole scope. A cut at twenty films per condition
+    # could not save work -- the walk reads ten either way -- and dropped the
+    # twenty-first film before anyone looked at it. Scoring everything is one
+    # matrix multiply against an embedding call that is paid regardless.
+    ctx = tools.ToolContext()
+    scope = tools.filter_catalog(ctx=ctx, studio="Disney")["matched"]
+    out = tools.retrieve_metadata(conditions=["a strong female character"], ctx=ctx)
+    if out["candidates"] < scope * 0.9:
+        failures.append(f"retrieval ranked {out['candidates']} of {scope} films in "
+                        f"scope; it should rank the scope, not a slice of it")
+
     props = decomposer.PLAN_SCHEMA["function"]["parameters"]["properties"]
     for field in ("search_plots", "search_metadata"):
         if field not in props:

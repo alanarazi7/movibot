@@ -9,7 +9,7 @@ candidate set:
 
     filter_catalog   columns      316 -> N     free, exact, exhaustive
     screen_out       regex        N -> clear   free, one-sided, word-list only
-    search_plots     vectors      N -> ~10     one embedding, ~$0.0000002
+    retrieve_*       vectors      ranks N      one embedding per condition
     read_synopses    full text    <= 8 films   free, but token-heavy
 
 Each answers something the others cannot. Columns settle era, studio, language
@@ -344,104 +344,19 @@ def _describe(applied: dict[str, Any]) -> str:
 # Tool 3: semantic search
 # ---------------------------------------------------------------------
 
-def search_plots(
-    query: str,
-    top_k: int = 10,
-    ignore_scope: bool = False,
-    ctx: "ToolContext | None" = None,
-) -> dict[str, Any]:
-    """Rank movies by how well their plot matches a described story.
-
-    Search is passage-level: each film's synopsis is split into ~300-token
-    passages and scored independently, so a single story beat buried in a long
-    plot is findable. Each result carries the passage that matched, which is
-    evidence the planner can quote instead of inferring.
-    """
-    top_k = max(1, min(int(top_k), MAX_SEARCH_RESULTS))
-    scoped = None if (ignore_scope or ctx is None) else ctx.candidates()
-
-    # Plot-bearing corpora only. The index also holds cast lists and one-line
-    # blurbs, which score plausibly on story questions without answering them:
-    # asked "does anyone die", a cast list came second. They stay searchable
-    # deliberately, but not when the question is about what happens.
-    hits = retrieval.search(query, top_k=top_k, candidate_ids=scoped,
-                            sources=DEFAULT_SOURCES)
-
-    df = catalog.movies().set_index("id")
-    results = []
-    for hit in hits:
-        movie_id = hit["movie_id"]
-        if movie_id not in df.index:
-            continue
-        row = df.loc[movie_id]
-        results.append({
-            "film": f"{row['title']} ({int(row['release_year'])})",
-            "similarity": round(float(hit["score"]), 4),
-            "rating": round(float(row["weighted_rating"]), 2),
-            "matching_passage": _trim(hit["passage"], MAX_PASSAGE_CHARS),
-            "passages_matched": hit["passage_count"],
-        })
-
-    out: dict[str, Any] = {
-        "query": query,
-        # This tool makes a real model call -- the query is embedded before it
-        # can be scored -- and the assignment asks for every model call to be
-        # visible in the trace. Naming it here puts it in the step record
-        # rather than leaving it implied by the tool's existence.
-        "model_call": {
-            "model": ragcfg.EMBED_MODEL,
-            "kind": "embedding",
-            "input": query,
-            "dimensions": retrieval.coverage().get("dim"),
-        },
-        "searched_within": "whole catalog" if scoped is None else f"{len(scoped)} films in scope",
-        "returned": len(results),
-        "results": results,
-        # Only films with plot text are indexed, so a query restricted to
-        # candidates that have none legitimately returns nothing. Say so,
-        # rather than letting it look like "no good match".
-        "note": (
-            "No indexed passages exist for the given candidates; semantic "
-            "search cannot rank them. Filter with require_synopsis=true first."
-            if not results else None
-        ),
-    }
-
-    # The score the planner already has, read back to it as a verdict. Asked
-    # "a film where someone pretends to love another to seize power", the
-    # abstract phrasing returned five films in a 0.29-0.35 band and the answer
-    # named three of them while explaining that none actually fit. The number
-    # saying so was in the result all along.
-    if results and results[0]["similarity"] < WEAK_MATCH_SIMILARITY:
-        out["weak_match"] = (
-            f"Top similarity {results[0]['similarity']:.2f}, below "
-            f"{WEAK_MATCH_SIMILARITY}. On this corpus that band means the query "
-            "was probably phrased as a theme rather than as an event, and these "
-            "films are unlikely to fit. Re-run it as something a plot summary "
-            "would literally narrate -- name the action, who does it and what "
-            "happens -- before answering from these results. Do not recommend a "
-            "film here while explaining that it does not match."
-        )
-
-    return out
-
-
-# How many films each condition's own search contributes. Twenty is wide
-# enough that a film satisfying every condition moderately still places on
-# each list, which is the recall this whole mechanism depends on, and narrow
-# enough that the fused table stays readable.
-SHORTLIST_PER_CONDITION = 20
-
-# How many fused rows come back to the planner. The full ordering is kept in
-# the context regardless -- this bounds what is shown, not what is considered.
-SHORTLIST_ROWS = 15
 
 
 # Two corpora, two questions. Plot text narrates what happens; the rest of a
 # Wikipedia page -- cast, production, reception, themes -- is where a film is
 # described rather than told. "A strong female character" is written about a
 # film far more often than it is narrated inside one, which is why retrieving
-# only over plots answered it badly.
+# only over plots answered it badly. Disjoint on purpose: a condition belongs
+# to one or the other, and the split is only worth having if they differ.
+# How many fused rows come back in the result. Bounds what is SHOWN, never
+# what is ranked or walked -- the whole scope is ranked and the walk reads as
+# far down it as the budget allows.
+SHORTLIST_ROWS = 15
+
 PLOT_SOURCES = ["mpst", "wiki_plot"]
 METADATA_SOURCES = ["wiki_context", "overview"]
 
@@ -485,9 +400,11 @@ def build_shortlist(
     if not wanted:
         return {"error": "build_shortlist needs at least one condition to search for."}
 
-    top_k = max(1, min(int(top_k or SHORTLIST_PER_CONDITION), MAX_SEARCH_RESULTS))
     sources = sources or PLOT_SOURCES
     scoped = ctx.candidates() if ctx is not None else None
+    # Everything in scope, unless a caller asks for less. MAX_SEARCH_RESULTS
+    # still bounds what is SHOWN; it has no business bounding what is ranked.
+    top_k = int(top_k) if top_k else (len(scoped) if scoped else len(catalog.movies()))
 
     lists: dict[str, list[int]] = {}
     passages: dict[tuple[str, int], str] = {}
@@ -519,6 +436,9 @@ def build_shortlist(
 
     full = len(fused)
     covered_all = sum(1 for c in fused if c.covered == len(wanted))
+    # With full rankings a film is missing from a condition's list only when it
+    # has no indexed text in that corpus at all, so this counts coverage of the
+    # corpus rather than quality of the match.
     return {
         "conditions": wanted,
         "over": sources,
@@ -528,8 +448,8 @@ def build_shortlist(
         "matching_every_condition": covered_all,
         "shortlist": rows,
         "note": (
-            f"{full} films placed for at least one condition; {covered_all} placed for "
-            f"all {len(wanted)}. Ordered by conditions matched, then average rank -- so "
+            f"{full} films ranked; {covered_all} have text for all {len(wanted)} "
+            f"conditions. Ordered by conditions covered, then average rank -- so "
             "the top of this list is the best place to start verifying, and a film's "
             "position here is a search ranking, NOT evidence that it satisfies "
             "anything. Verify before recommending."
@@ -772,7 +692,7 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                             "Shortest runtime in minutes, inclusive. Every "
                             "film in the catalog has a runtime, so this is "
                             "exact -- never try to settle a length constraint "
-                            "with search_plots, which cannot see it."
+                            "by retrieval, which cannot see it."
                         ),
                     },
                     "runtime_max": {
@@ -1008,12 +928,6 @@ def dispatch(name: str, arguments: dict[str, Any],
         return {"error": f"{type(exc).__name__}: {exc}"}
 
 
-# search_plots is deliberately absent. It is still the primitive that
-# build_shortlist calls once per condition, but it is no longer offered to the
-# model, because "search one condition and read its top hits" is the greedy
-# move this design exists to prevent -- and a tool the model can reach is a
-# tool a prompt has to talk it out of using. One condition is build_shortlist
-# with a list of one, so nothing is lost.
 _DISPATCH = {
     "filter_catalog": filter_catalog,
     "retrieve_plots": retrieve_plots,
