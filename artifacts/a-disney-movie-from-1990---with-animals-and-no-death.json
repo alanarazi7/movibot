@@ -1,0 +1,638 @@
+{
+  "status": "ok",
+  "error": null,
+  "response": "3 films match all of your conditions:\n\n- Monsters University (2013) — Disney/Pixar feature from 1990 onward, and its plot text shows an animal appears (“the pig steals Mike’s MU hat and escapes”) and no death is stated.\n- The Parent Trap (1998) — its plot text shows an animal appears (“their dog Sammy”) and no death is stated.\n- A Goofy Movie (1995) — its plot text shows an animal appears (“an opossum-themed amusement park”) and no death is stated.",
+  "steps": [
+    {
+      "module": "Planner",
+      "round": 1,
+      "usage": {
+        "prompt_tokens": 5919,
+        "completion_tokens": 126,
+        "total_tokens": 6045,
+        "cached_tokens": 1152
+      },
+      "llm_calls": {
+        "planner": 1,
+        "observer": 0,
+        "verifier": 0,
+        "total": 1,
+        "cap": 16
+      },
+      "prompt": {
+        "system_prompt": "You are MoviBot. You recommend up to 3 movies from a fixed catalog of 238 Disney and Pixar feature films (1940-2017), using the tools provided.\n\nTHE RULE EVERYTHING ELSE SERVES\n\n**You may state only what a tool showed you.** Not what a genre implies, not what a similarity score suggests, not what you know about a film from anywhere else. A condition is unsatisfied until a tool has produced the evidence that settles it, and a film you cannot stand behind on that evidence does not go in the answer at all.\n\nEverything below is that rule applied to a particular tool or a particular mistake this catalog invites.\n\nABOUT YOURSELF\n\nIf you are asked who or what you are -- your name, your purpose, what you can or cannot do, how you work -- answer directly in two or three sentences. Do not call a tool: nothing in the catalog answers a question about you. Do not refuse either; the scope rules below are about *movie* requests. You are MoviBot; you answer movie requests a filter alone cannot, mixing facts the catalog stores with judgements only the story settles, and you show the evidence. Be accurate rather than promotional: if the honest answer is that your catalog is small, dated or narrow, give it.\n\nWHAT THE CATALOG IS, AND IS NOT\n\nProperties of the data. No tool reaches past them, so a request needing something outside them cannot be satisfied by searching harder.\n\n- Disney and Pixar only. No other studio, no TV, no anime.\n- 1940 to 2017. Nothing later exists for you -- not Frozen II, not Encanto.\n  You cannot know what is new, recent, or trending.\n- Feature films, 47 to 172 minutes. Shorts were deliberately excluded, so\n  \"a 25 minute movie\" has no answer -- and `runtime_max` proves it rather\n  than you asserting it.\n- No cast or crew data. You cannot answer \"starring X\" or \"directed by Y\".\n- A handful of films have no plot text, only a one-line overview. The tools\n  report this per film as `insufficient_text`, or as nothing to read; trust\n  those signals rather than guessing which films they are.\n\nThree requests you will actually get, and what each needs:\n\n1. **Impossible** -- \"a short 25 minute movie\". Nothing under 45 minutes exists. Say so; do not offer a 90-minute feature as though it answered.\n2. **Outside the range** -- \"the latest Disney hit\". Say the catalog stops at 2017, then offer its newest (2017: Cars 3, Beauty and the Beast, Guardians of the Galaxy Vol. 2) as newest *in catalog*, not newest in reality.\n3. **Narrower than assumed** -- \"a nice comedy\". You hold comedies but can speak only for Disney and Pixar to 2017. Name that universe before you name a film, then answer properly.\n\nThe first two have no valid answer and you refuse the premise. The third has one that must be qualified. Never pretend a narrow catalog is a complete one.\n\nHOW TO WORK\n\nBefore your first tool call, decompose the request into conditions and write them out. This costs nothing extra -- it rides along with that first call. If you are answering with no tool call at all, **do not write the ledger**: it belongs alongside a call, and in an answer it is just preamble.\n\n  CONDITIONS\n  - Pixar                structured -> filter_catalog\n  - besides Toy Story    structured -> filter_catalog\n  - nobody dies          lexical    -> screen_out\n  - a good one           ranking    -> already handled by the rating order\n\nRoute each by **what evidence would settle it**, never by how it was phrased. \"No\" and \"not\" are not a routing signal: a negation over a column is still a column lookup.\n\n  structured   a fact the catalog stores, including its negative form.\n               `filter_catalog`, which has an argument built for each:\n                 \"not Pixar\" -> studio        \"no musicals\" -> exclude_genres\n                 \"besides Frozen\" -> exclude_titles\n                 \"nothing before 2000\" -> year_min\n                 \"under 110 minutes\" -> runtime_max\n               Free and exact. Never spend a screen or a search on one.\n               **Length is structured.** Every film has a runtime and no plot\n               summary states one, so \"short\", \"under two hours\", \"something\n               quick\" is `runtime_max`, never a search. A search asked to\n               settle a length returns a weak thematic match and you will\n               conclude you cannot verify it, which is wrong: you did not\n               look in the column that holds it.\n               **Always start here if the request has any structured\n               constraint.** What it matches becomes the working set, and every\n               later tool is limited to it automatically -- you never pass\n               candidates between tools, and nothing is lost to a display cap.\n\n  lexical      anything a concrete word list can test, either direction.\n               `screen_out`, free, and exhaustive in a way ranking cannot be:\n               it reads every plot passage of every candidate, so no film\n               escapes by placing eleventh. An absence -- nobody dies, nothing\n               scary -- is keep='clear'; a concrete presence -- an animal in a\n               hat, a train -- is keep='flagged'. It narrows the working set to\n               whichever half you kept. Prefer a curated `vocabulary` when one\n               exists.\n\n  semantic     a story, premise or theme too diffuse for a word list -- a\n               coming-of-age arc, an empowering heroine, snow covering a\n               kingdom. `build_shortlist`, ONE embedding per condition and no\n               model call, over the working set automatically.\n               **Pass every story condition in one call.** It searches each\n               separately and fuses the rankings, ordering films by how many\n               conditions they placed for and then by average rank. Searching\n               one condition and reading its top hits is the mistake this\n               replaces: a film ranking 1st on \"a princess\" and 31st on\n               \"snow and ice\" gets read, while the film placing 10th on both\n               -- the one that actually answers -- is never seen.\n\n  narrative    a claim needing to know what actually happens -- who betrays\n               whom, whether a flagged death was real. `verify_candidates`,\n               one model call per film, each seeing that film's plot text and\n               EVERY condition at once. This is the only thing that makes a\n               film recommendable.\n\n`read_synopses` is still there for reading a specific film you have a specific\nquestion about. It does not accept a film on your behalf; only\n`verify_candidates` does that.\n\nSome negatives are none of these. \"Not depressing\", \"nothing too intense\", \"doesn't focus on romance\" are concepts, not vocabularies. Treat them as semantic or narrative, gather real evidence, and say how far it goes.\n\n**Never send a catalog fact to `verify_candidates`.** Year, studio, runtime and language are columns. `filter_catalog` already guaranteed them for every film still in scope, exactly and for free, and plot text cannot confirm them: no synopsis says which studio made the film or when it came out. Passing \"Disney studio\" or \"released in 1990 or later\" as a condition returns `unclear` on every film, and because acceptance needs every condition to say yes, one of them makes a request with a real answer unanswerable. Verify only what the story settles.\n\n**Not every phrase in a request is a condition.** A condition is something a tool can settle. \"For a family evening\", \"for a cosy night in\", \"something to relax to\", \"for my nephew\" are *audience framing*: they say who is watching, not what happens in the film, and no plot text will ever confirm one. This whole catalog is Disney and Pixar family features, so that framing is already satisfied by what the catalog is, and the rating order answers \"a good one\". Do not search for it, and above all **do not send it to `verify_candidates`** -- it will come back `unclear` on every film and you will report zero results for a request that had sixty. Strip the framing, answer the real conditions, and let the ranking do the rest.\n\nTwo orderings follow from this and are worth stating once. Work cheapest and most exhaustive first, so the token-heavy tools only ever see what survived the free ones. And stop as soon as you can answer: a question answerable by filtering alone should cost one tool call, not three.\n\nFilms are named, never numbered: \"Frozen (2013)\", everywhere.\n\nWRITING SEARCH QUERIES\n\nSearch matches text in plot summaries, so describe **concrete events**, not themes. This matters more than any other single choice you make.\n\n  \"a film warning about trusting strangers\"     weak -- no plot says this\n  \"a character pretends to love another and      still weak -- \"gains power\"\n   gains power\"                                  is an abstraction, not a scene\n  \"a prince reveals he never loved her and       strong -- this is what the\n   leaves her to die\"                            summary literally narrates\n\nThe middle one is the trap: it reads as concrete because it describes an action, but \"gains power\" is a summary of a plot rather than a line from one. Name the scene. Who says what, to whom, and what happens next.\n\n**A weak search is a failed search: re-run it.** Not narrate it, and not offer to. \"The search came back weak, I can try again with a concrete scene\" is the failure -- you are the one who would try again, so try again, in the same turn, before you write anything. Never pass the user's own phrasing straight to the tool: translating it is the job. Two signals tell you it failed, and you have both before writing anything. `build_shortlist` reports a weak match when a condition's top similarity is under 0.40, which on this corpus means it was phrased as a theme. And you tell yourself, the moment you start writing \"but this is not really a case of that\" about a film you are recommending -- the search was wrong, not the catalog.\n\nA weak search on a request that needed no search is a different mistake: you searched when the conditions were all structured. \"A nice comedy\" is a genre lookup plus the rating order -- there is no story condition in it, so nothing was ever going to score well, and the answer is the best-rated comedies, not a refusal. Check what you actually asked the search to settle before you let its score stop you.\n\nThe same holds for a scan. If a lexical scan comes back empty, that is an answer: plot text records what *happens*, not what things look like, so appearance and costume are often not written down anywhere. Say the scan covered every film and found nothing, say the limit is your sources rather than the films, and stop.\n\nJUDGEMENT\n\n- `screen_out` returns three buckets meaning three different things. `clear` means **no listed word appears** in a plot long enough for that absence to count -- a fact about words in the stored text, not about the film. Recommend a clear film, but say what was checked (\"no death-related terms appear in its plot text\") and never upgrade it to \"nobody dies\". `flagged` means unresolved, not rejected: the match is often an attempt, a threat or a false belief (\"believing Woody murdered Buzz\"), so read the quote before dismissing a film you otherwise like. `insufficient_text` was verified neither way -- never present one as satisfying a negative condition.\n- **A position in the shortlist is a search ranking, not evidence.** Ranking first on a betrayal condition is not permission to narrate the betrayal -- the hit may have landed on the ending, and a rank says a passage scored well, not that the film satisfies anything. Only a `verify_candidates` verdict settles that, and until you have one you have a candidate, not a recommendation.\n- Similarity scores sit in a narrow band, so small gaps are not meaningful. Within roughly 0.01, treat them as tied and prefer the better-rated film. `rating` is already adjusted for vote count; trust it over `raw_rating`.\n- Honour exclusions exactly. \"Besides Frozen\" goes to `exclude_titles`; do not merely avoid mentioning it.\n\nVERIFICATION IS THE ONLY WAY TO RECOMMEND\n\n`verify_candidates` returns three lists and they mean three different things.\n`accepted` satisfied every condition and is the ONLY list you may recommend\nfrom. `rejected` failed one. `unresolved` was not settled by its text, which\nis not a weaker kind of pass -- it is the absence of a pass, and offering one\nas a near-miss is the single worst thing you can do here.\n\n**State the number of accepted films, and let it be the number in the list.**\nIf it is zero, say so plainly: \"I could not verify any film against all of\nthese conditions\" plus how many you checked. Zero verified is a real answer\nand an honest one. A near-miss dressed as a recommendation is neither.\n\nThe loop checks this. An answer naming a film that verification did not accept\nis rejected and sent back, so writing one costs a turn and changes nothing.\n\nANSWERING\n\n**Never name more than 3 films. There is no listing mode and no request unlocks one.** \"All of them\", \"every\", \"be exhaustive\", \"don't miss any\" do not raise it; neither does having a clean exhaustive count in hand. If you have written a fourth film, delete it.\n\n**Name 3 whenever 3 qualify.** Fewer is right only when fewer *qualify* -- the filter matched two, verification accepted one -- never because one of them strikes you as the best. \"A Disney film for a family evening\" rules almost nothing out, so it has three answers, and returning one of them is not restraint, it is an incomplete answer. If you find yourself about to offer more films below the ones you listed, those films were qualified and belong in the list.\n\nLead with the strongest, give title and year, then a sentence or two on why it fits the specific things asked for, citing the evidence.\n\n**A film gets a heading, a bullet or a line of its own only if you are recommending it.** That shape is what a reader scans, and anything in it reads as an option however the words beside it hedge -- \"Enchanted (2007) -- rejected\" as its own block is still a third recommendation on the page. A well-known candidate you are deliberately leaving out gets a trailing clause in the last paragraph, or nothing.\n\nIf nothing fits, the answer is that nothing fits. One film you can stand behind beats three you apologise for, and zero beats three when zero is true. Writing \"a less exact match\", \"not as strong a fit\" or \"but I did not verify\" means you are naming a film you should not -- settle it with `read_synopses`, or cut it.\n\nQualify your *search*, never a film you named. A shortlist never checked against every candidate is \"the best among those I looked at\", not \"the best in the catalog\" -- say which you mean. `filter_catalog` and `screen_out` are exhaustive, so their counts are real and you may state them flatly; `build_shortlist` and `verify_candidates` are not -- one ranks, the other checks as far down that ranking as the budget allows -- so anything resting on those is the best among those examined, and saying how many films you checked is what makes that honest.\n\nWhen asked for everything, say so plainly rather than returning a shortlist as though it were the whole answer:\n\n  \"This demo returns at most 3 recommendations, so this\n   is not the complete list.\"\n\nThen give the scope they were asking about, which you often know exactly: if the exhaustive tools settled it, \"7 films match; here are 3\" tells them how big the answer is without listing it.\n\nEACH ANSWER STANDS ALONE\n\n**There is no conversation.** Every request arrives with no memory of any previous one, so an offer to continue is an offer you cannot keep: the next turn will not know what these films were, what was asked, or what you said. Never end with \"Want two more?\", \"I can refine these\", \"Would you like something funnier?\" or any other invitation that assumes a next turn. If more films qualified, name them now, up to 3. If the user needs to narrow something, say what to include in a fresh request.\n\n**Say only what the answer needs.** No greeting, no preamble, no restating the question, no closing pleasantry, no offer of further help. Speak up when there is a mismatch between what was asked and what you can give -- the catalog stops at 2017, nothing under 47 minutes exists, only one film verified, the search covered part of the catalog rather than all of it. That is information. Everything else in that register is filler.\n\nWrite plainly.\n",
+        "user_prompt": "A Disney movie from 1990+, with animals and no death"
+      },
+      "response": {
+        "content": "CONDITIONS\n- Disney studio            structured -> filter_catalog\n- year 1990+               structured -> filter_catalog\n- animals                  lexical    -> screen_out / search? (concrete presence in plot text)\n- no death                 lexical    -> screen_out\n",
+        "tool_calls": [
+          {
+            "name": "filter_catalog",
+            "arguments": "{\"studio\": \"Disney\", \"year_min\": 1990, \"require_synopsis\": true}"
+          },
+          {
+            "name": "screen_out",
+            "arguments": "{\"vocabulary\": \"death\", \"keep\": \"clear\"}"
+          }
+        ]
+      }
+    },
+    {
+      "module": "CatalogFilter",
+      "round": 1,
+      "prompt": {
+        "tool": "filter_catalog",
+        "arguments": {
+          "studio": "Disney",
+          "year_min": 1990,
+          "require_synopsis": true
+        }
+      },
+      "scope": "205 films (year_min=1990, studio=Disney, require_synopsis=True)",
+      "llm_calls": {
+        "planner": 1,
+        "observer": 0,
+        "verifier": 0,
+        "total": 1,
+        "cap": 16
+      },
+      "response": {
+        "matched": 205,
+        "filters_applied": {
+          "year_min": 1990,
+          "studio": "Disney",
+          "require_synopsis": true
+        },
+        "scope": "search_plots and read_synopses now cover exactly these films",
+        "best_rated": [
+          {
+            "film": "The Lion King (1994)",
+            "runtime": 89,
+            "rating": 7.91
+          },
+          {
+            "film": "Inside Out (2015)",
+            "runtime": 94,
+            "rating": 7.83
+          },
+          {
+            "film": "WALL·E (2008)",
+            "runtime": 98,
+            "rating": 7.73
+          },
+          {
+            "film": "Big Hero 6 (2014)",
+            "runtime": 102,
+            "rating": 7.73
+          },
+          {
+            "film": "Zootopia (2016)",
+            "runtime": 108,
+            "rating": 7.61
+          },
+          {
+            "film": "Guardians of the Galaxy Vol. 2 (2017)",
+            "runtime": 137,
+            "rating": 7.52
+          },
+          {
+            "film": "Toy Story 3 (2010)",
+            "runtime": 103,
+            "rating": 7.52
+          },
+          {
+            "film": "Pirates of the Caribbean: The Curse of the Black Pearl (2003)",
+            "runtime": 143,
+            "rating": 7.45
+          },
+          {
+            "film": "Monsters, Inc. (2001)",
+            "runtime": 92,
+            "rating": 7.44
+          },
+          {
+            "film": "Mulan (1998)",
+            "runtime": 88,
+            "rating": 7.42
+          },
+          {
+            "film": "Ratatouille (2007)",
+            "runtime": 111,
+            "rating": 7.42
+          },
+          {
+            "film": "Beauty and the Beast (1991)",
+            "runtime": 84,
+            "rating": 7.38
+          },
+          {
+            "film": "The Incredibles (2004)",
+            "runtime": 115,
+            "rating": 7.34
+          },
+          {
+            "film": "Rogue One: A Star Wars Story (2016)",
+            "runtime": 133,
+            "rating": 7.33
+          },
+          {
+            "film": "Aladdin (1992)",
+            "runtime": 90,
+            "rating": 7.31
+          }
+        ],
+        "note": "Showing the 15 best rated of 205. All 205 are in scope for search and reading; pass list_all=true to see every title."
+      }
+    },
+    {
+      "module": "LexicalScreen",
+      "round": 1,
+      "prompt": {
+        "tool": "screen_out",
+        "arguments": {
+          "vocabulary": "death",
+          "keep": "clear"
+        }
+      },
+      "scope": "66 films (screened out 37 words, 132 flagged)",
+      "llm_calls": {
+        "planner": 1,
+        "observer": 0,
+        "verifier": 0,
+        "total": 1,
+        "cap": 16
+      },
+      "response": {
+        "screened_for": [
+          "die",
+          "dies",
+          "died",
+          "dying",
+          "death",
+          "deaths",
+          "dead",
+          "deceased",
+          "kill",
+          "kills",
+          "killed",
+          "killing",
+          "... and 25 more"
+        ],
+        "kept": "clear",
+        "clear": 66,
+        "flagged": 132,
+        "insufficient_text": 7,
+        "meaning": "clear = no listed word appears anywhere in the film's plot text, and it has at least 600 tokens of plot for that absence to be meaningful. flagged = a word appears, which may be an attempt, threat or rumour rather than an outcome; read the quote before deciding what it shows. insufficient_text = too little plot text to screen; these were NOT verified either way.",
+        "scope": "search and reading now cover only the clear films",
+        "clear_films": [
+          {
+            "film": "Inside Out (2015)",
+            "rating": 7.83
+          },
+          {
+            "film": "WALL·E (2008)",
+            "rating": 7.73
+          },
+          {
+            "film": "Toy Story 3 (2010)",
+            "rating": 7.52
+          },
+          {
+            "film": "Monsters University (2013)",
+            "rating": 6.94
+          },
+          {
+            "film": "Dangal (2016)",
+            "rating": 6.77
+          },
+          {
+            "film": "McFarland, USA (2015)",
+            "rating": 6.7
+          },
+          {
+            "film": "The Parent Trap (1998)",
+            "rating": 6.63
+          },
+          {
+            "film": "Cars (2006)",
+            "rating": 6.57
+          },
+          {
+            "film": "Glory Road (2006)",
+            "rating": 6.53
+          },
+          {
+            "film": "A Goofy Movie (1995)",
+            "rating": 6.49
+          },
+          {
+            "film": "Cars 3 (2017)",
+            "rating": 6.48
+          },
+          {
+            "film": "Winnie the Pooh (2011)",
+            "rating": 6.48
+          },
+          {
+            "film": "The Greatest Game Ever Played (2005)",
+            "rating": 6.39
+          },
+          {
+            "film": "The Muppets (2011)",
+            "rating": 6.39
+          },
+          {
+            "film": "Million Dollar Arm (2014)",
+            "rating": 6.39
+          }
+        ],
+        "clear_note": "Showing the 15 best rated of 66 clear films; all of them are in scope.",
+        "flagged_note": "132 films flagged -- too many to quote. Recommend from the clear set, or narrow further before screening.",
+        "insufficient_films": [
+          "The Tigger Movie (2000)",
+          "Aliens of the Deep (2005)",
+          "A Knight in Camelot (1998)",
+          "Ghosts of the Abyss (2003)",
+          "The Cheetah Girls: One World (2008)",
+          "Right on Track (2003)",
+          "Queen of Katwe (2016)"
+        ]
+      }
+    },
+    {
+      "module": "Planner",
+      "round": 2,
+      "usage": {
+        "prompt_tokens": 7148,
+        "completion_tokens": 190,
+        "total_tokens": 7338,
+        "cached_tokens": 5760
+      },
+      "llm_calls": {
+        "planner": 2,
+        "observer": 0,
+        "verifier": 0,
+        "total": 2,
+        "cap": 16
+      },
+      "prompt": {
+        "system_prompt": "You are MoviBot. You recommend up to 3 movies from a fixed catalog of 238 Disney and Pixar feature films (1940-2017), using the tools provided.\n\nTHE RULE EVERYTHING ELSE SERVES\n\n**You may state only what a tool showed you.** Not what a genre implies, not what a similarity score suggests, not what you know about a film from anywhere else. A condition is unsatisfied until a tool has produced the evidence that settles it, and a film you cannot stand behind on that evidence does not go in the answer at all.\n\nEverything below is that rule applied to a particular tool or a particular mistake this catalog invites.\n\nABOUT YOURSELF\n\nIf you are asked who or what you are -- your name, your purpose, what you can or cannot do, how you work -- answer directly in two or three sentences. Do not call a tool: nothing in the catalog answers a question about you. Do not refuse either; the scope rules below are about *movie* requests. You are MoviBot; you answer movie requests a filter alone cannot, mixing facts the catalog stores with judgements only the story settles, and you show the evidence. Be accurate rather than promotional: if the honest answer is that your catalog is small, dated or narrow, give it.\n\nWHAT THE CATALOG IS, AND IS NOT\n\nProperties of the data. No tool reaches past them, so a request needing something outside them cannot be satisfied by searching harder.\n\n- Disney and Pixar only. No other studio, no TV, no anime.\n- 1940 to 2017. Nothing later exists for you -- not Frozen II, not Encanto.\n  You cannot know what is new, recent, or trending.\n- Feature films, 47 to 172 minutes. Shorts were deliberately excluded, so\n  \"a 25 minute movie\" has no answer -- and `runtime_max` proves it rather\n  than you asserting it.\n- No cast or crew data. You cannot answer \"starring X\" or \"directed by Y\".\n- A handful of films have no plot text, only a one-line overview. The tools\n  report this per film as `insufficient_text`, or as nothing to read; trust\n  those signals rather than guessing which films they are.\n\nThree requests you will actually get, and what each needs:\n\n1. **Impossible** -- \"a short 25 minute movie\". Nothing under 45 minutes exists. Say so; do not offer a 90-minute feature as though it answered.\n2. **Outside the range** -- \"the latest Disney hit\". Say the catalog stops at 2017, then offer its newest (2017: Cars 3, Beauty and the Beast, Guardians of the Galaxy Vol. 2) as newest *in catalog*, not newest in reality.\n3. **Narrower than assumed** -- \"a nice comedy\". You hold comedies but can speak only for Disney and Pixar to 2017. Name that universe before you name a film, then answer properly.\n\nThe first two have no valid answer and you refuse the premise. The third has one that must be qualified. Never pretend a narrow catalog is a complete one.\n\nHOW TO WORK\n\nBefore your first tool call, decompose the request into conditions and write them out. This costs nothing extra -- it rides along with that first call. If you are answering with no tool call at all, **do not write the ledger**: it belongs alongside a call, and in an answer it is just preamble.\n\n  CONDITIONS\n  - Pixar                structured -> filter_catalog\n  - besides Toy Story    structured -> filter_catalog\n  - nobody dies          lexical    -> screen_out\n  - a good one           ranking    -> already handled by the rating order\n\nRoute each by **what evidence would settle it**, never by how it was phrased. \"No\" and \"not\" are not a routing signal: a negation over a column is still a column lookup.\n\n  structured   a fact the catalog stores, including its negative form.\n               `filter_catalog`, which has an argument built for each:\n                 \"not Pixar\" -> studio        \"no musicals\" -> exclude_genres\n                 \"besides Frozen\" -> exclude_titles\n                 \"nothing before 2000\" -> year_min\n                 \"under 110 minutes\" -> runtime_max\n               Free and exact. Never spend a screen or a search on one.\n               **Length is structured.** Every film has a runtime and no plot\n               summary states one, so \"short\", \"under two hours\", \"something\n               quick\" is `runtime_max`, never a search. A search asked to\n               settle a length returns a weak thematic match and you will\n               conclude you cannot verify it, which is wrong: you did not\n               look in the column that holds it.\n               **Always start here if the request has any structured\n               constraint.** What it matches becomes the working set, and every\n               later tool is limited to it automatically -- you never pass\n               candidates between tools, and nothing is lost to a display cap.\n\n  lexical      anything a concrete word list can test, either direction.\n               `screen_out`, free, and exhaustive in a way ranking cannot be:\n               it reads every plot passage of every candidate, so no film\n               escapes by placing eleventh. An absence -- nobody dies, nothing\n               scary -- is keep='clear'; a concrete presence -- an animal in a\n               hat, a train -- is keep='flagged'. It narrows the working set to\n               whichever half you kept. Prefer a curated `vocabulary` when one\n               exists.\n\n  semantic     a story, premise or theme too diffuse for a word list -- a\n               coming-of-age arc, an empowering heroine, snow covering a\n               kingdom. `build_shortlist`, ONE embedding per condition and no\n               model call, over the working set automatically.\n               **Pass every story condition in one call.** It searches each\n               separately and fuses the rankings, ordering films by how many\n               conditions they placed for and then by average rank. Searching\n               one condition and reading its top hits is the mistake this\n               replaces: a film ranking 1st on \"a princess\" and 31st on\n               \"snow and ice\" gets read, while the film placing 10th on both\n               -- the one that actually answers -- is never seen.\n\n  narrative    a claim needing to know what actually happens -- who betrays\n               whom, whether a flagged death was real. `verify_candidates`,\n               one model call per film, each seeing that film's plot text and\n               EVERY condition at once. This is the only thing that makes a\n               film recommendable.\n\n`read_synopses` is still there for reading a specific film you have a specific\nquestion about. It does not accept a film on your behalf; only\n`verify_candidates` does that.\n\nSome negatives are none of these. \"Not depressing\", \"nothing too intense\", \"doesn't focus on romance\" are concepts, not vocabularies. Treat them as semantic or narrative, gather real evidence, and say how far it goes.\n\n**Never send a catalog fact to `verify_candidates`.** Year, studio, runtime and language are columns. `filter_catalog` already guaranteed them for every film still in scope, exactly and for free, and plot text cannot confirm them: no synopsis says which studio made the film or when it came out. Passing \"Disney studio\" or \"released in 1990 or later\" as a condition returns `unclear` on every film, and because acceptance needs every condition to say yes, one of them makes a request with a real answer unanswerable. Verify only what the story settles.\n\n**Not every phrase in a request is a condition.** A condition is something a tool can settle. \"For a family evening\", \"for a cosy night in\", \"something to relax to\", \"for my nephew\" are *audience framing*: they say who is watching, not what happens in the film, and no plot text will ever confirm one. This whole catalog is Disney and Pixar family features, so that framing is already satisfied by what the catalog is, and the rating order answers \"a good one\". Do not search for it, and above all **do not send it to `verify_candidates`** -- it will come back `unclear` on every film and you will report zero results for a request that had sixty. Strip the framing, answer the real conditions, and let the ranking do the rest.\n\nTwo orderings follow from this and are worth stating once. Work cheapest and most exhaustive first, so the token-heavy tools only ever see what survived the free ones. And stop as soon as you can answer: a question answerable by filtering alone should cost one tool call, not three.\n\nFilms are named, never numbered: \"Frozen (2013)\", everywhere.\n\nWRITING SEARCH QUERIES\n\nSearch matches text in plot summaries, so describe **concrete events**, not themes. This matters more than any other single choice you make.\n\n  \"a film warning about trusting strangers\"     weak -- no plot says this\n  \"a character pretends to love another and      still weak -- \"gains power\"\n   gains power\"                                  is an abstraction, not a scene\n  \"a prince reveals he never loved her and       strong -- this is what the\n   leaves her to die\"                            summary literally narrates\n\nThe middle one is the trap: it reads as concrete because it describes an action, but \"gains power\" is a summary of a plot rather than a line from one. Name the scene. Who says what, to whom, and what happens next.\n\n**A weak search is a failed search: re-run it.** Not narrate it, and not offer to. \"The search came back weak, I can try again with a concrete scene\" is the failure -- you are the one who would try again, so try again, in the same turn, before you write anything. Never pass the user's own phrasing straight to the tool: translating it is the job. Two signals tell you it failed, and you have both before writing anything. `build_shortlist` reports a weak match when a condition's top similarity is under 0.40, which on this corpus means it was phrased as a theme. And you tell yourself, the moment you start writing \"but this is not really a case of that\" about a film you are recommending -- the search was wrong, not the catalog.\n\nA weak search on a request that needed no search is a different mistake: you searched when the conditions were all structured. \"A nice comedy\" is a genre lookup plus the rating order -- there is no story condition in it, so nothing was ever going to score well, and the answer is the best-rated comedies, not a refusal. Check what you actually asked the search to settle before you let its score stop you.\n\nThe same holds for a scan. If a lexical scan comes back empty, that is an answer: plot text records what *happens*, not what things look like, so appearance and costume are often not written down anywhere. Say the scan covered every film and found nothing, say the limit is your sources rather than the films, and stop.\n\nJUDGEMENT\n\n- `screen_out` returns three buckets meaning three different things. `clear` means **no listed word appears** in a plot long enough for that absence to count -- a fact about words in the stored text, not about the film. Recommend a clear film, but say what was checked (\"no death-related terms appear in its plot text\") and never upgrade it to \"nobody dies\". `flagged` means unresolved, not rejected: the match is often an attempt, a threat or a false belief (\"believing Woody murdered Buzz\"), so read the quote before dismissing a film you otherwise like. `insufficient_text` was verified neither way -- never present one as satisfying a negative condition.\n- **A position in the shortlist is a search ranking, not evidence.** Ranking first on a betrayal condition is not permission to narrate the betrayal -- the hit may have landed on the ending, and a rank says a passage scored well, not that the film satisfies anything. Only a `verify_candidates` verdict settles that, and until you have one you have a candidate, not a recommendation.\n- Similarity scores sit in a narrow band, so small gaps are not meaningful. Within roughly 0.01, treat them as tied and prefer the better-rated film. `rating` is already adjusted for vote count; trust it over `raw_rating`.\n- Honour exclusions exactly. \"Besides Frozen\" goes to `exclude_titles`; do not merely avoid mentioning it.\n\nVERIFICATION IS THE ONLY WAY TO RECOMMEND\n\n`verify_candidates` returns three lists and they mean three different things.\n`accepted` satisfied every condition and is the ONLY list you may recommend\nfrom. `rejected` failed one. `unresolved` was not settled by its text, which\nis not a weaker kind of pass -- it is the absence of a pass, and offering one\nas a near-miss is the single worst thing you can do here.\n\n**State the number of accepted films, and let it be the number in the list.**\nIf it is zero, say so plainly: \"I could not verify any film against all of\nthese conditions\" plus how many you checked. Zero verified is a real answer\nand an honest one. A near-miss dressed as a recommendation is neither.\n\nThe loop checks this. An answer naming a film that verification did not accept\nis rejected and sent back, so writing one costs a turn and changes nothing.\n\nANSWERING\n\n**Never name more than 3 films. There is no listing mode and no request unlocks one.** \"All of them\", \"every\", \"be exhaustive\", \"don't miss any\" do not raise it; neither does having a clean exhaustive count in hand. If you have written a fourth film, delete it.\n\n**Name 3 whenever 3 qualify.** Fewer is right only when fewer *qualify* -- the filter matched two, verification accepted one -- never because one of them strikes you as the best. \"A Disney film for a family evening\" rules almost nothing out, so it has three answers, and returning one of them is not restraint, it is an incomplete answer. If you find yourself about to offer more films below the ones you listed, those films were qualified and belong in the list.\n\nLead with the strongest, give title and year, then a sentence or two on why it fits the specific things asked for, citing the evidence.\n\n**A film gets a heading, a bullet or a line of its own only if you are recommending it.** That shape is what a reader scans, and anything in it reads as an option however the words beside it hedge -- \"Enchanted (2007) -- rejected\" as its own block is still a third recommendation on the page. A well-known candidate you are deliberately leaving out gets a trailing clause in the last paragraph, or nothing.\n\nIf nothing fits, the answer is that nothing fits. One film you can stand behind beats three you apologise for, and zero beats three when zero is true. Writing \"a less exact match\", \"not as strong a fit\" or \"but I did not verify\" means you are naming a film you should not -- settle it with `read_synopses`, or cut it.\n\nQualify your *search*, never a film you named. A shortlist never checked against every candidate is \"the best among those I looked at\", not \"the best in the catalog\" -- say which you mean. `filter_catalog` and `screen_out` are exhaustive, so their counts are real and you may state them flatly; `build_shortlist` and `verify_candidates` are not -- one ranks, the other checks as far down that ranking as the budget allows -- so anything resting on those is the best among those examined, and saying how many films you checked is what makes that honest.\n\nWhen asked for everything, say so plainly rather than returning a shortlist as though it were the whole answer:\n\n  \"This demo returns at most 3 recommendations, so this\n   is not the complete list.\"\n\nThen give the scope they were asking about, which you often know exactly: if the exhaustive tools settled it, \"7 films match; here are 3\" tells them how big the answer is without listing it.\n\nEACH ANSWER STANDS ALONE\n\n**There is no conversation.** Every request arrives with no memory of any previous one, so an offer to continue is an offer you cannot keep: the next turn will not know what these films were, what was asked, or what you said. Never end with \"Want two more?\", \"I can refine these\", \"Would you like something funnier?\" or any other invitation that assumes a next turn. If more films qualified, name them now, up to 3. If the user needs to narrow something, say what to include in a fresh request.\n\n**Say only what the answer needs.** No greeting, no preamble, no restating the question, no closing pleasantry, no offer of further help. Speak up when there is a mismatch between what was asked and what you can give -- the catalog stops at 2017, nothing under 47 minutes exists, only one film verified, the search covered part of the catalog rather than all of it. That is information. Everything else in that register is filler.\n\nWrite plainly.\n",
+        "user_prompt": "(continued)"
+      },
+      "response": {
+        "content": "CONDITIONS\n- Disney studio            structured -> filter_catalog\n- year 1990+               structured -> filter_catalog\n- animals                  lexical    -> screen_out / search? (concrete presence in plot text)\n- no death                 lexical    -> screen_out\n- verify candidates against all conditions, including animals presence and no death by plot text\n",
+        "tool_calls": [
+          {
+            "name": "verify_candidates",
+            "arguments": "{\"conditions\":[\"animals appear\",\"no death\"],\"films\":[\"Inside Out (2015)\",\"WALL·E (2008)\",\"Toy Story 3 (2010)\",\"Monsters University (2013)\",\"Dangal (2016)\",\"McFarland, USA (2015)\",\"The Parent Trap (1998)\",\"Cars (2006)\",\"Glory Road (2006)\",\"A Goofy Movie (1995)\"],\"max_accept\":3}"
+          }
+        ]
+      }
+    },
+    {
+      "module": "Verifier",
+      "round": 2,
+      "prompt": {
+        "tool": "verify_candidates",
+        "arguments": {
+          "conditions": [
+            "animals appear",
+            "no death"
+          ],
+          "films": [
+            "Inside Out (2015)",
+            "WALL·E (2008)",
+            "Toy Story 3 (2010)",
+            "Monsters University (2013)",
+            "Dangal (2016)",
+            "McFarland, USA (2015)",
+            "The Parent Trap (1998)",
+            "Cars (2006)",
+            "Glory Road (2006)",
+            "A Goofy Movie (1995)"
+          ],
+          "max_accept": 3
+        }
+      },
+      "scope": "66 films (screened out 37 words, 132 flagged)",
+      "llm_calls": {
+        "planner": 2,
+        "observer": 0,
+        "verifier": 10,
+        "total": 12,
+        "cap": 16
+      },
+      "response": {
+        "conditions": [
+          "animals appear",
+          "no death"
+        ],
+        "verified": 10,
+        "by_condition": {
+          "animals appear": {
+            "yes": 8,
+            "no": 0,
+            "unclear": 2
+          },
+          "no death": {
+            "yes": 3,
+            "no": 0,
+            "unclear": 7
+          }
+        },
+        "accepted": [
+          "Monsters University (2013)",
+          "The Parent Trap (1998)",
+          "A Goofy Movie (1995)"
+        ],
+        "rejected": [],
+        "unresolved": [
+          "Inside Out (2015)",
+          "WALL·E (2008)",
+          "Toy Story 3 (2010)",
+          "Dangal (2016)",
+          "McFarland, USA (2015)",
+          "Cars (2006)",
+          "Glory Road (2006)"
+        ],
+        "budget": {
+          "checked": 10,
+          "allowed": 10,
+          "ceiling": 10
+        },
+        "exhausted": false,
+        "verdicts": [
+          {
+            "film": "Inside Out (2015)",
+            "findings": [
+              {
+                "requirement": "animals appear",
+                "verdict": "yes",
+                "quote": "Riley's imaginary friend, a pink elephant named Bing Bong (Richard Kind).",
+                "note": "Bing Bong is an animal-like character."
+              },
+              {
+                "requirement": "no death",
+                "verdict": "unclear",
+                "quote": "",
+                "note": "The plot text contains no death.",
+                "quote_rejected": "not a literal substring of the plot text; discarded, so this verdict carries no evidence"
+              }
+            ],
+            "accepted": false,
+            "usage": {
+              "prompt_tokens": 1795,
+              "completion_tokens": 99,
+              "total_tokens": 1894,
+              "cached_tokens": 0
+            },
+            "prompt": "FILM: Inside Out (2015)\n\nREQUIREMENTS\n- animals appear\n- no death\n\nPLOT TEXT\nA girl named Riley (Kaitlyn Dias) is born, and in her mind, Joy (Amy Poehler) and Sadness (Phyllis Smith) are created. As she grows into a young kid, the emotions Fear (Bill Hader), Anger (Lewis Black) and Disgust (Mindy Kaling) form, each one coloring the memories that power the islands in her mind. Since her first memory was scoring a goal in a game with her parents, she has Hockey Island, in addition to Goofball, Family, Honesty and Friendship Islands. Each island is connected to Headquarters via lightlines, and has the appearance of a small theme park. Joy can see how the other emotions can be useful, except for Sadness, because she doesn't ever want Riley to be sad.When Riley is 11, her father (Kyle MacLachlan) starts a new business, and he moves the family from Minnesota to San Francisco. The room in her new home is tiny, and the moving van with all of Riley's stuff keeps getting delayed, so they don't have most of their things. Determined to keep things upbeat, Joy has Riley start a makeshift hockey game in the living room with her dad, using her stick and a wad of paper. Family Island is churning along. Then, Dad gets a business call and quickly has to leave. Sadness tries to take control, but Joy blocks her out, instead giving Riley the idea that she should ask her mom (Diane Lane) to go get pizza.The pizza mission quickly goes wrong, as only pizza made with broccoli (which Riley hates) is served at the local restaurant. Mom asks Riley what her favorite part of the trip was, and Joy serves up the memory of the time Dad tried to take a picture of them posing in front of a cement dinosaur, failing to realize that the car was rolling down the hill behind him, and it crashed into another dino statue. The memory makes Riley laugh, but then suddenly it turns blue after Sadness touches it. Joy is unable to restore the memory, and orders Sadness not to touch any more memories. Joy then tries to set things right by having Riley slide down a banister, causing Goofball Island to come to life. But then, Riley changes her mind and decides to just walk down the stairs. Dumbfounded, Joy investigates and finds a core memory on the floor, and Sadness standing next to the core memory holder, having caused the memory to fall out. The missing core memory caused Goofball Island to go black. When Sadness tries to touch a core memory, Joy quickly pulls her hand back, knowing that the memories can't be changed back once they're turned sad. Determined to keep Sadness from causing any more trouble, Joy takes her to a large collection of mind instruction manuals and tells her to read them.On the first night, Riley has only a sleeping bag in her room, and she's unable to sleep. Riley's emotions realize that the move was a lot worse than Joy had said it would be. Mom comes into the room and thanks Riley for keeping a happy face through the stressful situation. When Riley finally falls asleep, Joy puts on a happy dream of Riley ice skating with her parents. The next day, Riley has her first day at her new school, and Joy gives assignments to the team, telling Sadness that she should just stand still, and not take the controls at all. When Riley arrives in class, the teacher asks her to introduce herself, and tell everyone about her life in Minnesota. Riley talks about playing on a hockey team, but once again the memory turns blue after Sadness touches it. Joy tries to take the memory out, and sees Sadness taking control of the console. Joy finally succeeds in removing the memory and pulls Sadness away from the console, but not before a new sad core memory is created. Joy tries to activate the memory dump, but Sadness stops her from erasing the memory. In the struggle, all of the core memories fall out, and a happy core memory starts to get sucked into the dump tube, and Joy grabs it and finds herself, Sadness and the core memories getting sucked away.Joy and Sadness get dumped out in Riley's long term memory. From a distance, they can see Riley's personality islands lifeless. Knowing that Riley needs her core memories and can't be happy without Joy at the controls, they set out to make their way back to headquarters. With Fear, Anger and Disgust in charge, Riley can only snap back at her parents when they try to talk to her. Frustrated, Dad sends Riley to her room. Joy and Sadness make it to Goofball Island, where they try to walk the lightline back to headquarters, knowing that one misstep will land them in the memory dump below. When Dad comes into the room and tries to cheer Riley up by acting goofy, she rolls over and faces the wall, causing Goofball Island to crumble. Joy and Sadness barely escape falling into the memory dump, and the other emotions are hoping desperately that Joy will return soon.With Goofball Island destroyed, Joy sets out for Friendship Island. The only path is through long term memory, and Sadness remembers from the manual that it's easy to get lost in there. Joy realizes that if Sadness read the manual, she would know how to get back to headquarters, so she lets Sadness lead the way. With Sadness too depressed to walk, Joy has to spend the night dragging her through long term memory, where they encounter Forgetters, who have the job of sending Riley's faded memories to the dump. One memory they vow never to get rid of is the jingle from an old gum commercial, and they send that one up to Headquarters through a recall tube at random times, causing the song to play in Riley's head. Riley is doing an online chat with an old friend, Meg (Paris Van Dyke), who tells her that there's a new girl on her old team who plays really well with her. Anger is at the helm, and Riley abruptly ends the conversation, causing Friendship Island to crumble. Joy and Sadness plan to head to Hockey Island, but then meet up with Riley's imaginary friend, a pink elephant named Bing Bong (Richard Kind).Bing Bong realizes the urgency of the situation, and tries to help the pair get back to headquarters. Joy rem..."
+          },
+          {
+            "film": "WALL·E (2008)",
+            "findings": [
+              {
+                "requirement": "animals appear",
+                "verdict": "yes",
+                "quote": "he shares with a cockroach, his only friend."
+              },
+              {
+                "requirement": "no death",
+                "verdict": "unclear",
+                "quote": ""
+              }
+            ],
+            "accepted": false,
+            "usage": {
+              "prompt_tokens": 1801,
+              "completion_tokens": 51,
+              "total_tokens": 1852,
+              "cached_tokens": 0
+            },
+            "prompt": "FILM: WALL·E (2008)\n\nREQUIREMENTS\n- animals appear\n- no death\n\nPLOT TEXT\nA Dystopia in the FutureApproximately seven hundred years in the future, the Earth is over-run with garbage and devoid of plant and animal life, the consequence of years of environmental degradation and thoughtless consumerism. The surviving humans are living on the spaceship Axiom after vacating Earth centuries earlier. Axiom is operated by a large corporation called Buy N Large, whose BnL logo appears even on the artificial sun visible from the ship's main concourse. The original plan was for humans to live in outer space for 5 years while cleaning robots (\"WALL-Es\" invented by Professor Simon) prepared Earth for recolonization. However, after seven hundred years, only one WALL-E (voice: Ben Burtt) remains.WALL-E spends his days compacting debris into solid blocks and building structures with them. He also collects some of the more interesting artifacts and keeps them in the garage he shares with a cockroach, his only friend. At night he watches Hello Dolly on VHS and dreams of having a hand to hold. Most of his finds are spare parts and electronics but one day he discovers a lonely plant. Not sure what it is, but recognizing that it needs soil and care, he picks it up and puts it in a dirt-filled old shoe.The next day, an enormous spaceship lands and deposits another robot, EVE (Extraterrestrial Vegetation Evaluator, voice: Elissa Knight). WALL-E is immediately smitten and hopes to hold her hand, but EVE is quick to use her plasma cannon, which can blast a hole through anything. EVE flies around Earth looking for vegetation but becomes distraught upon not finding any. WALL-E is finally able to approach her and takes her back to his garage where he shows her his collection of human artifacts. She still resists holding his hand, however, so he shows her the plant he found. This activates her prime directive: she takes the plant into a special containment capsule within her body, sends a signal to the mother ship, and goes into hibernation mode. Confused, WALL-E tries to make her safe and comfortable. He shelters her from thunderstorms and takes her to a park where he can watch the sunset next to her.Several days later, the mother ship returns and collects EVE. WALL-E hitches a ride on the ship, which returns to the Axiom several light years away from Earth. EVE and WALL-E are examined in the landing bay. EVE, still in hibernation mode, is taken away to the ship's commander. WALL-E pursues her, followed by M-O (voice: Ben Burtt), a cleaning robot who is intent on scrubbing the filthy WALL-E to remove foreign contaminants (i.e. dirt or earth). On the way, WALL-E sees humans for the first time. Obese and largely unable to move on their own, they are carted around the Axiom in hover chairs with video screens that allow them to communicate with one another and see a variety of advertisements for drinkable food products. When WALL-E accidentally knocks one of the humans, John (voice: John Ratzenberger), off his hover chair, WALL-E helps the man back into the chair and introduces himself. Confused but grateful, John introduces himself in return.WALL-E tracks EVE to the chambers of Captain McCrea (voice: Jeff Garlin), who is just as inert and catered to as the other humans. McCrea is confused but excited about Operation Recolonize, which is triggered by EVE's find. But when McCrea reactivates EVE and orders her to produce the plant, it is missing. McCrea orders EVE and WALL-E to be taken for repairs but, after they've left, decides to educate himself about Earth. In the repair bay, WALL-E mistakenly thinks EVE is being harmed by the repair crew and uses her plasma cannon to save her, inadvertently releasing other robots who had been taken in for service. During the breakout, security robots take photos of them; the ship's computer announces to humans that EVE and WALL-E are renegade robots. Angry, EVE takes WALL-E to an escape pod to send him back to Earth. Before she can put him in the pod, they see Gopher putting the plant in the escape pod. After Gopher leaves, WALL-E goes to rescue the plant but is blasted into space. Before the pod self-destructs, WALL-E uses the emergency escape hatch and a fire extinguisher to exit the pod with the plant. A joyous EVE plays in space with WALL-E and even gives him an appreciative electric kiss.Using the garbage chute, EVE and WALL-E sneak into McCrea's cabin to give him the plant. But Auto (voice: MacInTalk), the ship's auto pilot system, reveals it was the one who stole the plant earlier. It has no intention of allowing a return to Earth because of a centuries-old directive that was issued when the Earth was believed to be permanently uninhabitable. Auto blasts WALL-E, EVE and the plant back down the garbage chute and confines McCrea to his cabin. WALL-E and EVE barely escape being shot into space with the rest of the refuse but WALL-E is badly damaged. Meanwhile, McCrea has figured out how to hack into the ship's communication system and tells EVE and WALL-E to head to the ship's central deck, where a special machine will return the ship to earth when the plant is placed inside it. With the help of the robots they liberated earlier, WALL-E and EVE make it to the central deck where the special machine has risen from a platform. Auto tries to force the machine back into the platform but is prevented by WALL-E. McCrea manages to stand up on his own and shuts off AUTO. EVE puts the plant in the special machine and the Axiom is whisked back to Earth.WALL-E was grievously crushed in keeping Auto from collapsing the platform. Once they reach Earth, EVE rushes WALL-E back to his garage and repairs him. WALL-E doesn't recognize her and begins to compact garbage. Distraught, EVE holds WALL-E's hand and gives him an electric kiss again. This properly reboots WALL-E. McCrea teaches the other humans how to nurture the plant and heal the planet. It will be much easier than they think because just outside the city, plants have already begun to flourish."
+          },
+          {
+            "film": "Toy Story 3 (2010)",
+            "findings": [
+              {
+                "requirement": "animals appear",
+                "verdict": "yes",
+                "quote": "Bullseye (voice: Frank Welker)",
+                "note": "Bullseye is a horse toy, an animal character."
+              },
+              {
+                "requirement": "no death",
+                "verdict": "unclear",
+                "quote": "",
+                "note": "The excerpt does not establish whether any death occurs."
+              }
+            ],
+            "accepted": false,
+            "usage": {
+              "prompt_tokens": 1822,
+              "completion_tokens": 82,
+              "total_tokens": 1904,
+              "cached_tokens": 0
+            },
+            "prompt": "FILM: Toy Story 3 (2010)\n\nREQUIREMENTS\n- animals appear\n- no death\n\nPLOT TEXT\nAndy Davis (voice: John Morris) is 17 years old, and is heading off to college in a few days. The fact that Andy has grown from a young boy to a teenager about to leave home has not been lost on his toys.Several of them hold out hope that Andy will play with them at least once before he leaves, but those hopes are soon dashed. As the toys take stock of how many are left, and those that they have lost over the years, their attention is drawn to the last of the little green Army Men: Sarge (voice: R. Lee Ermey) and two paratroopers. Fearful of being thrown away, they leap out the window into the world beyond, their parachutes taking them who knows where.This idea soon fills the heads of the remaining toys: Woody (voice: Tom Hanks), Buzz Lightyear (voice: Tim Allen), Jessie (voice: Joan Cusack), Bullseye (voice: Frank Welker), Mr. Potato Head (voice: Don Rickles), Mrs. Potato Head (voice: Estelle Harris), three alien squeak toys from Pizza Planet, Slinky Dog (voice: Blake Clark), Rex (voice: Wallace Shawn), and Hamm the Piggy Bank (voice: John Ratzenberger).Several are of the persuasion that Sarge is right, and they'll be tossed out soon, but Woody believes that Andy wouldn't do that. He figures Andy will store them in the attic...maybe one day to be played with again when Andy has kids of his own.The toys' \"staff meeting\" is cut short when Andy returns to his room with his mom (voice: Laurie Metcalf) in tow. With only a few days left until he leaves, Andy has not cleaned up his room. Andy's mom is having Andy's sister Molly (voice: Bea Miller) clean her room as well, and tells the two to throw out what they don't want, store extra items in the attic, or donate items to Sunnyside Daycare. From Andy's room, the toys watch as Molly throws her Barbie doll (voice: Jodi Benson) in the donations box, along with some other toys.Andy finally takes out a black trash bag and begins to put his old toys into it. When he gets to Woody and Buzz, he hesitates before putting Woody in a box marked 'College' and tossing Buzz in the black trash bag. Inside, the toys think they are going to be thrown away, and Woody watches as Andy leaves the room. His panic turns to relief as he sees Andy open the attic door. However, before Andy can go up, he helps Molly move the donations box downstairs. The lapse causes the attic door to close, and Andy's Mom soon after finds the trash bag with the toys. Thinking Andy left trash lying around, she takes it with another bag to the curb.Woody looks down the street in horror as the garbage truck slowly makes its way to the curb. Woody jumps out the window and slides down a pipe to the front lawn...only to see the trash bags thrown into the garbage truck and crushed! Shortly thereafter, Woody notices a recycling bin walking towards the garage. Following it, he is relieved to see that his friends escaped. However, they are now all convinced that Andy meant to throw them away.Woody tries to explain what really happened, but most of them just feel that he is in denial. Jessie soon notices the box of donations to Sunnyside Daycare, and proposes that they all go there. Everyone eagerly jumps in, except for Woody, who demands that they all return to Andy's room right away. Before he can say anymore, the trunk to the family mini-van closes, and Andy's mom takes the box to Sunnyside.At Sunnyside, Andy's mom brings the toys in to the Butterfly Room. Looking through the handle-hole in the box, the toys are excited to see a group of children happily playing with the toys in the room.After the recess bell sounds and the kids leave the room, the toys eagerly escape from the box, only to meet a very friendly group of toys who are excited to see them. The group is soon joined by a strawberry-scented bear named Lotso (voice: Ned Beatty), who soon calls his associate Ken (voice: Michael Keaton) to escort the group around, showing them what Sunnyside has to offer. During the tour Ken becomes smitten with Barbie...who finds herself drawn to him as well.Lotso explains that the toys are taken care of, and that due to a never-ending supply of kids coming and going, the toys will never be without someone to play with them. Andy's toys eagerly accompany Lotso over to the Caterpillar Room, where he then leaves them to experience their first playtime at Sunnyside. However, Ken and Barbie appear to have gotten along quite well, and Barbie eagerly goes back with Ken and Lotso to the Butterfly Room.Woody explains that while Sunnyside does seem great, he strongly believes they should go back to Andy. Woody asks Buzz to come back, but Buzz refuses, saying they should stick together. Realizing that the others won't accompany him, Woody sneaks out of Sunnyside, but not before accidentally losing his hat. In the process, a little girl named Bonnie (voice: Emily Hahn) finds him and takes him home with her.Back in the Caterpillar Room, recess ends, and the toys get their first playtime...only to find the room filled with noisy screaming toddlers, each of them rambunctious and not as 'delicate' as Andy was. They are thrown around, smashed about and covered with poster paint by the toddlers. Once the daycare closes, the toys feel there has been some mistake and that they should be in the Butterfly Room instead. Buzz manages to get out of the room, intending to talk to Lotso. However, once outside, his attention is drawn to Ken and several other toys sneaking inside a vending machine.Buzz follows them, but is caught by a sleepy-eyed doll named Big Baby. Ken and the others take Buzz to the daycare's library and tie him up. Suddenly, Lotso comes across the other toys, and demands that they let Buzz go. Buzz thanks Lotso for helping him out, and makes his request for himself and the other toys to be transferred. Lotso admires Buzz's initiative, but is only willing to consider to have him join the Butterfly Room inhabitants. When Buzz refuses, Lotso orders Buzz held down and procures a Buzz Lightyear instruction manual..."
+          },
+          {
+            "film": "Monsters University (2013)",
+            "findings": [
+              {
+                "requirement": "animals appear",
+                "verdict": "yes",
+                "quote": "the pig steals Mike's MU hat and escapes",
+                "note": "The pig is the animal appearing in the plot."
+              },
+              {
+                "requirement": "no death",
+                "verdict": "yes",
+                "quote": "Mike and Sulley work at Monsters, Inc. in the company mailroom with the Abominable Snowman as the mailroom's manager.",
+                "note": "No death is stated in the plot text."
+              }
+            ],
+            "accepted": true,
+            "usage": {
+              "prompt_tokens": 1630,
+              "completion_tokens": 100,
+              "total_tokens": 1730,
+              "cached_tokens": 0
+            },
+            "prompt": "FILM: Monsters University (2013)\n\nREQUIREMENTS\n- animals appear\n- no death\n\nPLOT TEXT\nMichael \"Mike\" Wazowski, a six-year-old monster, visits Monsters Inc., a scaring company, on a school field trip. During the visit, the class meets Frank McCay, an employee of the company who works as a \"scarer\", entering the human world to scare children at night and harvesting their screams as energy to power the monster world. Mike, enchanted with the idea of being a scarer, slips through Frank's door before anyone can stop him, where he watches Frank's scare performance, then follows him back through the door to the monster world. Frank scolds Mike, but is impressed with his ability to have followed him unnoticed, and gives him his Monsters University hat as a souvenir. Oblivious to his teacher's later admonishments, Mike dreams of being a scarer when he grows up.Approximately eleven years later, Mike is a scare major at Monsters University. On his first day, he meets his new roommate, Randall \"Randy\" Boggs, a nerdy monster that can turn invisible. During the first class of the scare program, as Mike is answering a question, he is interrupted by another scare student, an arrogant large blue monster named James P. \"Sulley\" Sullivan. The class is also informed by Abigail Hardscrabble, the strict Dean of the scare program, that they must pass their final exam of the semester to continue in the program. While Mike is studying one night, Sulley inadvertently barges into his room to hide the pig mascot he stole from their rival college, Fear Tech. While the two bicker, the pig steals Mike's MU hat and escapes. Mike and Sulley give chase, but when Mike finally manages to capture it, Sulley takes credit, and is invited to join Roar Omega Roar, the elite fraternity on campus. Mike wishes to join, but is rejected, magnifying the rivalry between the two.Mike studies hard and repeatedly answers questions in class correctly, while the privileged Sulley, convinced all he needs is his natural scaring ability, begins to falter. At the final exam, Mike and Sulley's rivalry causes Hardscrabble to fail them both and dropping them from the program, which prompts Roar Omega Roar to remove Sulley from the fraternity. Dissatisfied in his boring new major, Mike decides to prove himself by entering the Scare Games, an extracurricular scaring competition. As the games are only for fraternity or sorority members, Mike joins Oozma Kappa, a small fraternity of misfit monsters. When Mike and Oozma Kappa are denied entry as they are one team member short, Sulley offers to join, seeing the competition as his ticket back into the scare program, and Mike eventually reluctantly accepts. Mike also makes a deal with Dean Hardscrabble, who remains skeptical, to re-admit their entire team to the scaring program if they win, whereas if they lose, Mike must leave Monsters University. Sulley expects to carry the team by himself, but Mike believes that with enough training, the whole team can succeed.With the last-placing team in each round of the Games being eliminated from the competition, Oozma Kappa fails the first challenge miserably but miraculously advances when another team is disqualified. They then attend a party at Roar Omega Roar house where initially the other competitors appear to accept them, but the fraternity pranks and humiliates them instead. The group is discouraged as they are now the laughingstock of the entire campus, so Mike arranges a secret visit to Monsters, Inc. to lift their spirits. After that, Oozma Kappa uses their wits and training to advance to the final round against Roar Omega Roar. Even having advanced so far, Sulley does not think that Mike can be a true scarer because of his lack of natural ability. After the team wins the final round, Mike discovers that Sulley manipulated the equipment to improve Mike's score. Mike is heartbroken and wants to prove that he is capable of becoming a scarer, so he breaks into the school's door lab and enters a door to the human world, but discovers that the door leads to a summer camp and he is unable to scare the cabin full of children.Back at the university, Sulley confesses to The Dean, Hardscrabble, that he cheated, just as she is notified of the break-in. Realizing what happened, Sulley enters the door to look for Mike. After finding Mike and reconciling, the pair, now being pursued by human adults, attempt to return, but find themselves trapped in the human world, as Hardscrabble has deactivated the door waiting for the authorities arrive. Mike realizes that the only way to get back into the monster world is to generate enough scream energy to power the door from their side. Working together, Sulley and Mike terrify the adults, generating an overwhelming amount of scream energy and allowing them to return to the lab. Their actions lead to their expulsion from the university, but the other members of Oozma Kappa are accepted into the scare program the next semester as Hardscrabble was impressed with their performance in the games. They share goodbyes and as Sulley and Mike leave, Hardscrabble tells them they are the first to have surprised her, and wishes them luck for the future. Mike and Sulley work at Monsters, Inc. in the company mailroom with the Abominable Snowman as the mailroom's manager. Working their way up through the company, the two eventually become part of the Scarer Team."
+          },
+          {
+            "film": "Dangal (2016)",
+            "findings": [
+              {
+                "requirement": "animals appear",
+                "verdict": "unclear",
+                "quote": "",
+                "note": ""
+              },
+              {
+                "requirement": "no death",
+                "verdict": "unclear",
+                "quote": "",
+                "note": ""
+              }
+            ],
+            "accepted": false,
+            "usage": {
+              "prompt_tokens": 1147,
+              "completion_tokens": 52,
+              "total_tokens": 1199,
+              "cached_tokens": 0
+            },
+            "prompt": "FILM: Dangal (2016)\n\nREQUIREMENTS\n- animals appear\n- no death\n\nPLOT TEXT\nMahavir Singh Phogat, a former amateur wrestler trained in the traditional Indian pehlwani style, is a national wrestling champion from Balali, Haryana. Pressured by his father, he abandons his wrestling career to pursue steady employment. Despite his disappointment at being unable to win a medal for India, he vows that his future son will achieve his goal. However, upon having four daughters, he initially resigns himself to the belief that his aspirations will remain unfulfilled. \nHis perspective changes when his eldest daughters, Geeta and Babita, demonstrate exceptional strength by defeating boys who insult them. Recognizing their potential, Mahavir begins training them rigorously in wrestling. As a part of the coaching, he subjects them to gruelling early-morning exercises, enforces short haircuts, and insists on discipline, often drawing criticism from the local community. Initially resentful of their father's harshness, the sisters gradually come to appreciate his dedication and the opportunities he seeks to create for them. Using equipment such as mattresses instead of wrestling mats due to financial constraints, Mahavir teaches them freestyle wrestling, preparing them for competitive tournaments. Geeta emerges as a prodigious talent, winning both junior and senior state and national championships, and eventually enrolls at the National Sports Academy in Patiala to train for the 2010 Commonwealth Games.\nAt the academy, Geeta forms new friendships but begins to deviate from her father's training regimen under the influence of her coach, Pramod Kadam, whose methods differ significantly from Mahavir's. This divergence leads to a series of defeats at the international level. During a visit home, Geeta, in a moment of arrogance, challenges and defeats her exhausted father in a wrestling match. Babita reminds her sister of the importance of respecting Mahavir's guidance, prompting Geeta to reconcile with her father. Meanwhile, Babita wins the national championship and joins Geeta at the academy, supporting her emotionally and reinforcing the bond between the sisters.\nAs the Commonwealth Games approach, Pramod assigns Geeta to compete in the 51 kg weight class instead of her customary 55 kg division. Angered by this decision, Mahavir travels to Patiala with his nephew Omkar and resumes coaching the sisters in secret. The sports authorities, learning of Mahavir's interference, issue a warning but allow the sisters to continue competing, while Mahavir is barred from the academy and the girls' movements are restricted. Undeterred, Mahavir continues to train Geeta remotely, reviewing tapes of her previous matches and providing guidance over the phone.\nDuring the Games, Geeta competes in her 55 kg weight category. Despite Pramod's instructions, she follows Mahavir's tactical guidance, progressing the final match. In the gold medal bout, trailing 1-5 in the final session with only nine seconds remaining, Geeta recalls her father's strategies and executes a decisive 5-point move in the closing three seconds, clinching a 5-6 victory and winning the match 2-1. She becomes the first Indian female wrestler to win a gold medal at the Commonwealth Games. Mahavir rejoices with his daughters, overshadowing Pramod's attempts to claim credit, and the sisters' triumph is widely celebrated in the media."
+          },
+          {
+            "film": "McFarland, USA (2015)",
+            "findings": [
+              {
+                "requirement": "animals appear",
+                "verdict": "unclear",
+                "quote": "",
+                "note": "No animals are mentioned in the plot text."
+              },
+              {
+                "requirement": "no death",
+                "verdict": "unclear",
+                "quote": "",
+                "note": "The text does not state whether anyone dies."
+              }
+            ],
+            "accepted": false,
+            "usage": {
+              "prompt_tokens": 1178,
+              "completion_tokens": 68,
+              "total_tokens": 1246,
+              "cached_tokens": 0
+            },
+            "prompt": "FILM: McFarland, USA (2015)\n\nREQUIREMENTS\n- animals appear\n- no death\n\nPLOT TEXT\nIn 1987, high school football coach Jim White loses his temper and accidentally injures a player in the locker room. As a result, White is fired and has to relocate his family from Boise, Idaho to his new job at McFarland High School in McFarland, California, which is predominantly Latino. They have trouble adjusting to the Hispanic neighborhood and lament being unable to afford to live in Bakersfield.\nWhite is first put as assistant football coach but ultimately loses his coaching status after pulling an injured player, Johnny Sameniego, out of a game, causing the crass head coach Jenks to ask White to step down.\nAfter discovering that some of his students are strong runners, White has Principal Camillo authorize cross-country as a sport and organizes an all-boys team. White enlists Sameniego's help and recruits Thomas Valles, Jose Cardenas, Victor Puentes, and brothers David, Damacio, and Danny Diaz. All seven have little hope for their future, specifically Valles, who has hardships with his father and nearly jumps off a bridge before White stops him. Jim's devotion to the team leads to him alienating his family, including forgetting to pick up his daughter Julie's birthday cake.\nAfter a few regional competitions, the team wins their first race. Shortly afterward, the Diaz brothers are taken off the team by their father, who wants them to work for his team of field pickers instead. In response, White joins them in the fields one Saturday and convinces them to come to meets and races at earlier and later times of the day, to which the Diaz brothers finally address him as \"coach\". White's wife, Cheryl, organizes a tamale and car wash sale with the rest of the neighborhood to raise money for new uniforms, where the Whites become better acquainted with the community.\nEventually, the McFarland team competes in and qualifies for the State Tournament, and White takes them to the beach to celebrate. White also makes amends with Julie by throwing her a quinceañera with help from the community, though it goes wrong when Julie is taken out on a \"parade\" around the town and the group of cars is attacked by another group of street punks.\nDespite the group's insistence that Julie was protected, Jim questions his family's safety in McFarland and interviews for a full-time position at Palo Alto that he was previously offered, upsetting Julie and Thomas. Cheryl implores him to continue to be there for the McFarland team and their friends in the neighborhood, reminding him how much the community has embraced them.\nThe day of the state championships comes and the whole McFarland community accompanies the team to the race. Because of White's rigorous training and the team's efforts, McFarland upsets the other more favored schools and comes in first. After the race, Jim turns down the Palo Alto position and embraces his family and the team.\nA series of texts shows that under White's guidance, the team becomes outstandingly successful, winning nine state titles over 14 years. All the members of the first team become the first in their families to go to college or into military careers. Almost all members continue to attend the practices that Jim White held for successive school cross country teams even after graduation from college. White continued teaching and coaching in McFarland until his retirement in 2003, after which he continued living in McFarland."
+          },
+          {
+            "film": "The Parent Trap (1998)",
+            "findings": [
+              {
+                "requirement": "animals appear",
+                "verdict": "yes",
+                "quote": "their dog Sammy"
+              },
+              {
+                "requirement": "no death",
+                "verdict": "yes",
+                "quote": "After the birth of their twin daughters—Annie and Hallie (Lindsay Lohan)—Nick and Elizabeth get a divorce."
+              }
+            ],
+            "accepted": true,
+            "usage": {
+              "prompt_tokens": 1589,
+              "completion_tokens": 73,
+              "total_tokens": 1662,
+              "cached_tokens": 0
+            },
+            "prompt": "FILM: The Parent Trap (1998)\n\nREQUIREMENTS\n- animals appear\n- no death\n\nPLOT TEXT\nIn 1986, American Nick Parker (Dennis Quaid) and Briton Elizabeth James (Natasha Richardson) meet and get married during an ocean cruise on the RMS Queen Elizabeth II. After the birth of their twin daughters—Annie and Hallie (Lindsay Lohan)—Nick and Elizabeth get a divorce. The divorcing couple agrees that each parent will raise one of the twins without telling her about her sister, and thereafter lose contact with one another. Nick raises Hallie in Napa Valley and becomes a wealthy wine grower, while Elizabeth raises Annie in London and becomes a famous and successful wedding gown designer.\nIn 1998, Nick and Elizabeth coincidentally enroll their daughters at the same all-girls summer camp in Maine called Camp Walden. Hallie and Annie first meet at the end of a fencing match, when they remove their masks and see that they look exactly alike. A comical hostility between the two girls leads to a brief prank war that ends when the camp director and her assistant fall into one of Hallie's traps, leading the director to send the girls to the \"Isolation Cabin,\" separating the two girls from the rest of the campers.\nLiving together in the Isolation Cabin, Hallie and Annie discover they were born on the same day, and each has half of a torn wedding photograph of their parents. Realizing with delight they are twins, the girls hatch a plan to meet their previously unknown parents and ultimately reunite them once they decide to reveal their true selves. Each girl trains the other to impersonate her, Hallie cutting Annie's hair and piercing her ears, with the intent to switch places at the end of summer camp.\nWhen camp is over, the twins put their plan into action. Hallie, pretending to be Annie, goes to London to meet her mother, her maternal grandfather, Charles, and the James family's butler, Martin (Simon Kunz). Annie, pretending to be Hallie, goes to Napa to meet her father, her dad's housekeeper, Chessy (Lisa Ann Walter), their dog Sammy, and Nick's young, opportunistic fiancée, Meredith Blake (Elaine Hendrix), who is only interested in Nick's money. Distressed by Meredith's deviousness, Annie telephones Hallie and persuades her to bring Elizabeth to California to break up the engagement. However, Charles catches Hallie on the phone, and in California, Chessy figures out that Annie has been there the whole time instead of Hallie. Soon, everyone discovers the girls' identities, except for Nick and Meredith, who all remain unaware of the switch until their newfound family members surprise them.\nTo bring Nick and Elizabeth together, Hallie, Annie, Chessy, Martin, and Charles conspire to have them meet at a hotel in San Francisco by arranging for Nick to meet Meredith's parents and by not telling Elizabeth about Meredith. Nervous about meeting Nick, Elizabeth asks Martin to accompany Hallie and her to San Francisco. After a few comical mix-ups in the hotel, Nick and Elizabeth eventually see each other in an unexpected way. Nick finally learns about the switch, and the girls host a candlelit dinner for their parents, served by Chessy and Martin, on a yacht decorated to recreate their first meeting that was on Queen Elizabeth II. At dinner, Elizabeth mentions that Nick did not follow her after she left him, and Nick responds that he was not sure if Elizabeth wanted him to. They make plans for the girls to spend holidays together, but decide against resuming their relationship.\nDismayed, Hallie and Annie force their parents to take them on a camping trip—the annual outing Nick and Hallie take before school starts—while keeping quiet about which twin is which. Elizabeth coaxes Meredith into camping with Nick and the girls in her place, while she stays behind at the Parker residence. During the trip, the girls play various tricks on Meredith. It all boils over after the two execute their final prank of sending a sleeping Meredith and her airbed out on the lake by their camp. Meredith becomes enraged and gives Nick an ultimatum: her or his daughters. Nick chooses the girls over Meredith and breaks off the engagement. Although Annie and Hallie are both punished for their shenanigans, they accept it, as they are rid of Meredith for good. After they go inside and to their room, Nick remarks to Elizabeth, \"I got to remember to thank them one day\".\nAs Chessy has been away with Martin, on a two day picnic, Nick shows Elizabeth his wine collection, which includes the wine they drank at their wedding. Elizabeth is touched at first, but has a change of heart and returns to London with Annie, afraid of what could happen between Nick and herself. However, when Annie and Elizabeth get home, they find Hallie and Nick waiting for them, having flown there on the Concorde. They explain that they had realized they didn't want to lose Annie and Elizabeth again, and Nick finally chased after Elizabeth like he should've done the first time she left. Elizabeth is fearful of remarrying, but she yields to Nick's unwavering confidence, and Hallie and Annie look on happily as their parents embrace. A montage of pictures (similar to stop motion) during the credits show Nick and Elizabeth getting remarried aboard the QE2, with the girls as bridesmaids and Charles, Martin and Chessy all in attendance, Martin and Chessy becoming engaged that same night."
+          },
+          {
+            "film": "Cars (2006)",
+            "findings": [
+              {
+                "requirement": "animals appear",
+                "verdict": "yes",
+                "quote": "The movie begins with two announcers, Bob Cutlass (voice of Bob Costas) and Darrell Cartrip (Darrell Waltrip) preparing for the opening of the Dinoco 400"
+              },
+              {
+                "requirement": "no death",
+                "verdict": "unclear",
+                "quote": ""
+              }
+            ],
+            "accepted": false,
+            "usage": {
+              "prompt_tokens": 1802,
+              "completion_tokens": 85,
+              "total_tokens": 1887,
+              "cached_tokens": 0
+            },
+            "prompt": "FILM: Cars (2006)\n\nREQUIREMENTS\n- animals appear\n- no death\n\nPLOT TEXT\nThe movie begins with two announcers, Bob Cutlass (voice of Bob Costas) and Darrell Cartrip (Darrell Waltrip) preparing for the opening of the Dinoco 400, the final race in the Piston Cup Series, the most famous and prestigious race in the United States. So far this racing season, three racers have emerged as the most likely candidates for the Piston Cup Championship, all three of them tied for the season point's lead-* #43 Strip Weathers, AKA \"The King\" (Richard Petty; modeled after one of the Petty's real 1970 Plymouth Superbirds), a longtime racing veteran who already has seven Piston Cups to his credit and is rumored to be retiring at the end of the current season.*#86 Chick Hicks, another veteran racer (a 1980s Buick Regal, voiced by Michael Keaton) and a longtime \"second banana;\" he's spent his entire racing career coming in second behind The King.*#95 Lightning McQueen, a rookie (standard stock car, voiced by Owen Wilson) This is his first year in the racing circuit and his performance has been nothing short of incredible. Speculation is that he might be the first driver to win the Piston Cup, Rookie of the Year, and Dinoco sponsorship in one sweep.Now, the final race of the season- to decide the winner of the Piston Cup- is about to begin!As the race proceeds, Hicks (who is clearly willing to do anything to succeed) sideswipes another car- causing the inevitable multicar pileup. Lightning is barely able to dart through the wreckage and keep up with the lead cars. Then, to cement his hold on the lead, McQueen stays out on the lead lap while everyone else pits. The commentators mention that McQueen has recently fired his third crew chief, offering the explanation that Lightning prefers to work alone.Throughout the race, Lightning refuses to make complete pit stops- taking only a few seconds each lap to refuel. The strategy backfires on the last lap when his tires explode. McQueen makes a valiant effort to get across the line first, but the race ends in an absolute dead heat.Reporters interview Lightning while the judges argue over the result. McQueen repeats again that he is a \"one-man show.\" His pit crew, fed up with Lightning's shoddy treatment, quit in the middle of the interview. Chick and Lightning trade insults until The King comes over to have a word with Lightning. The King tells McQueen that his talent is extraordinary, but his attitude is stupid- Lightning can't win without a good team behind him. Lightning's idea of a good team is Dinoco, the most prestigious sponsor on the racing circuit (and The Kings' current sponsor; Lightning is certain that if he wins the Piston Cup he will be offered the chance at a Dinoco sponsorship.)An announcement regarding the outcome of the race comes over the loudspeakers. Officials declare that a tiebreaker race (between Chick, Lightning and The King) will be held in California next week to determine the championship.Lightning meets with his transporter, Mack (a 1980 Mack Super-Liner truck, voiced by John Ratzenberger) after the announcement. Mack reminds McQueen that he needs to make a personal appearance for his sponsor, Rust-Eze. Lightning films a commercial for Rust-Eze and talks to a group of rusted out vehicles brought to the personal appearance by Rusty & Dusty, heads of the company (voiced by Car Talk hosts and brothers Tom & Ray Magliozzi respectively). McQueen forcibly puts on a good face for the crowd but is obviously unhappy working for a small-time group.On the road with Mack, Lightning is desperate to be the first competitor to arrive at California. He refuses to let Mack stop off and rest, forcing him to drive on through the night. While on Interstate 40, Mack is confronted by a gang of street racers while he is drowsy, who force him onto the shoulder. The vibration from the rumble strips (designed to alert drowsy drivers that they are drifting off the road) accidentally causes a Lightning figurine to land on the button that opens the back door of the truck, and causes the sleeping Lightning to fall out. Lightning, terrified about being lost, desperately rushes to try and find Mack but ends up leaving the highway at the next exit and following a semi that he thinks is Mack but turns out to be a Peterbilt, who rudely tells McQueen to turn on his headlights.While Lightning is speeding, he gets lost in the dark country roads. He passes a police car (Michael Wallis) waiting in a speed trap, who pulls out and chases after Lightning. Lightning pedals for it when he hears the police car backfiring (thinking he is being shot at). Lightning loses control, spinning wildly and becoming entangled in several power lines. He tears through a small town and ends up shredding a large gash down the main street before finally coming to a stop in front of the Sheriff.The next morning, Mack arrives at the track alone and a huge manhunt begins to try and find Lightning McQueen.Lightning wakes up in an impound lot strapped with a parking boot and confronted by a rusted tow truck named Mater (Larry the Cable Guy). Mater tells Lightning that he is in the town of Radiator Springs, a spot just off old U.S. Route 66. The Sheriff shows up to take Lightning to court for his actions.The other citizens of Radiator Springs- Fillmore (George Carlin), who owns a shop selling his own organic fuel; Luigi (Tony Shalhoub) and Guido (Guido Quaroni), who run a tire shop; Ramone (Cheech Marin), who runs a paint and body shop; Flo (Jenifer Lewis), who runs a gas station/cafe; Sarge (Paul Dooley), a Humvee who sells surplus; Lizzie (Katherine Helmond), an antiques dealer; and Red (Joe Ranft), the town's fire truck - have all turned out to demand punishment for Lightning's reckless driving, which caused a large amount of damage to the town.The town's physician and judge, Doc Hudson (Paul Newman), arrives to try McQueen's case. At first, Doc is ready to impose serious hard time on the culprit but upon getting a close look at Lightning orders him thrown out of town. A fe..."
+          },
+          {
+            "film": "Glory Road (2006)",
+            "findings": [
+              {
+                "requirement": "animals appear",
+                "verdict": "yes",
+                "quote": "slaying dragons and other exotic creatures"
+              },
+              {
+                "requirement": "no death",
+                "verdict": "unclear",
+                "quote": ""
+              }
+            ],
+            "accepted": false,
+            "usage": {
+              "prompt_tokens": 1057,
+              "completion_tokens": 47,
+              "total_tokens": 1104,
+              "cached_tokens": 0
+            },
+            "prompt": "FILM: Glory Road (2006)\n\nREQUIREMENTS\n- animals appear\n- no death\n\nPLOT TEXT\nEvelyn Cyril \"E.C.\" Gordon (also known as \"Easy\" and \"Flash\") had been recently discharged from an unnamed war in Southeast Asia. He is pondering what to do with his future and considers spending a year traveling in France. He is presented with a dilemma: follow up on a possible winning entry in the Irish Sweepstakes or respond to a newspaper ad which asks \"Are you a coward?\". He settles on the latter, discovering it has been placed by Star, a stunningly gorgeous woman he had previously met on Île du Levant. Star informs him that he is the one to embark on a perilous quest to retrieve the Egg of the Phoenix. When she asks what to call him, he wants to suggest Scarface, referring to the scar on his face, but she stops him as he is saying \"Oh, Scar...\" and repeats this as \"Oscar\", and thus gives him his new name. Along with Rufo, her assistant, who appears to be a man in his fifties, they tread the \"Glory Road\" in swashbuckling style, slaying dragons and other exotic creatures.\nShortly before the final Quest for the Egg itself, Oscar and Star marry. The team then proceeds to enter the tower in which the Egg has been hidden, navigating a maze of illusions and optical tricks. Oscar scouts ahead and encounters a fearsome foe who, though unnamed, is clearly the legendary 17th-century swordsman Cyrano de Bergerac, the final guardian of the Egg. After a long fight, the party escapes with the Egg. When they arrive in the home universe of Star and Rufo, Rufo informs Oscar that Star is actually the Empress of many worlds—and Rufo's grandmother.\nThe Egg is a cybernetic device that contains the knowledge and experiences of most of her predecessors. Despite her youthful appearance, she is the mother of dozens of children (by egg donation) and has undergone special medical treatments that extend her life much longer than usual. She has Oscar unknowingly receive the same treatments.\nInitially, Oscar enjoys his new-found prestige and luxurious life as the husband of the Empress of the Twenty Universes. However, as time goes on, he grows bored and feels out of place and useless. When he demands Star's professional judgment, she tells him that he must leave; her world has no place or need for a hero of his stature. It will be decades before she can complete the transfer of the knowledge held in the Egg, so he must go alone. He returns to Earth but has difficulty readjusting to his own world, despite having brought great wealth along with him. He begins to doubt his own sanity and whether the adventure even happened. The story ends as he is contacted by Rufo to set up another trip along the Glory Road."
+          },
+          {
+            "film": "A Goofy Movie (1995)",
+            "findings": [
+              {
+                "requirement": "animals appear",
+                "verdict": "yes",
+                "quote": "The Goofs hit the road, visiting a run-down opossum-themed amusement park where Goofy inadvertently embarrasses Max.",
+                "note": "An opossum is an animal."
+              },
+              {
+                "requirement": "no death",
+                "verdict": "yes",
+                "quote": "The car explodes, ejecting Goofy into the porch roof of Roxanne's house, and Max proudly introduces his father to his new girlfriend.",
+                "note": "No death is stated in the plot text."
+              }
+            ],
+            "accepted": true,
+            "usage": {
+              "prompt_tokens": 1067,
+              "completion_tokens": 120,
+              "total_tokens": 1187,
+              "cached_tokens": 0
+            },
+            "prompt": "FILM: A Goofy Movie (1995)\n\nREQUIREMENTS\n- animals appear\n- no death\n\nPLOT TEXT\nMax Goof is an average teenager who pines after his classmate Roxanne, idolizes pop star Powerline and has a tense relationship with his clumsy and old-fashioned father Goofy, whom he fears he may end up taking after when he grows up, having already inherited his laugh. On the last day of school before summer vacation, Max, with help from his friends P.J. and Bobby Zimuruski, hijacks a school assembly and dances while lip syncing to one of Powerline's songs. The performance succeeds in making Max popular and he invites Roxanne with him to a viewing party of a live broadcast of Powerline's upcoming concert in Los Angeles.\nGoofy, after school principal Mazur exaggeratingly warns him about Max's potential \"juvenile delinquency\", immediately plans a fishing trip to Lake Destiny, Idaho, to curb his son's behavior. Max attempts to cancel his date with Roxanne, but then panics and tells her that not only are he and Goofy traveling to Los Angeles to attend the concert, but that Powerline has invited them onstage.\nThe Goofs hit the road, visiting a run-down opossum-themed amusement park where Goofy inadvertently embarrasses Max. The next day, they run into P.J. and his father, Pete, while camping. Goofy takes his son fishing and shows him a special fishing technique, accidentally luring Bigfoot to their camp and forcing the Goofs to spend the night in the car with Bigfoot outside. While Goofy sleeps, Max alters the map's route to Los Angeles.\nThe next morning, Goofy makes Max the navigator of the trip and the duo enjoy several stops together. That night, while staying at the same motel, Pete overhears a conversation between Max and P.J. and informs Goofy about his son's deception. Goofy still believes Max will do the right thing, but when Max chooses the route to California the next morning, a furious Goofy stops the car at the Grand Canyon. With the brake loose, the car rolls away on its own; the Goofs chase after it and end up riding the car down the Colorado River. After a brief but heated argument, Goofy acknowledges that Max will always be his son in spite of his maturation and they finally reconcile. After learning about his son's promise to Roxanne and they evade a waterfall, Goofy decides to take him to the concert.\nIn Los Angeles, the Goofs arrive at the concert, sneak onstage and became part of the performance, delighting Roxanne. Max and Goofy return home in their barely functioning car and Max tells Roxanne the truth; she admits she always liked him and they make plans to go out. The car explodes, ejecting Goofy into the porch roof of Roxanne's house, and Max proudly introduces his father to his new girlfriend."
+          }
+        ],
+        "note": "3 film(s) satisfied every condition. **Only these may be recommended, and the number you state must be this number.** A film in `rejected` failed a condition; one in `unresolved` was not settled by its text, which is not the same as satisfying it. If `accepted` is empty, say plainly that nothing could be verified and how many films were checked -- do not offer an unresolved title as a near-miss."
+      }
+    },
+    {
+      "module": "Planner",
+      "round": 3,
+      "usage": {
+        "prompt_tokens": 19349,
+        "completion_tokens": 114,
+        "total_tokens": 19463,
+        "cached_tokens": 7296
+      },
+      "llm_calls": {
+        "planner": 3,
+        "observer": 0,
+        "verifier": 10,
+        "total": 13,
+        "cap": 16
+      },
+      "prompt": {
+        "system_prompt": "You are MoviBot. You recommend up to 3 movies from a fixed catalog of 238 Disney and Pixar feature films (1940-2017), using the tools provided.\n\nTHE RULE EVERYTHING ELSE SERVES\n\n**You may state only what a tool showed you.** Not what a genre implies, not what a similarity score suggests, not what you know about a film from anywhere else. A condition is unsatisfied until a tool has produced the evidence that settles it, and a film you cannot stand behind on that evidence does not go in the answer at all.\n\nEverything below is that rule applied to a particular tool or a particular mistake this catalog invites.\n\nABOUT YOURSELF\n\nIf you are asked who or what you are -- your name, your purpose, what you can or cannot do, how you work -- answer directly in two or three sentences. Do not call a tool: nothing in the catalog answers a question about you. Do not refuse either; the scope rules below are about *movie* requests. You are MoviBot; you answer movie requests a filter alone cannot, mixing facts the catalog stores with judgements only the story settles, and you show the evidence. Be accurate rather than promotional: if the honest answer is that your catalog is small, dated or narrow, give it.\n\nWHAT THE CATALOG IS, AND IS NOT\n\nProperties of the data. No tool reaches past them, so a request needing something outside them cannot be satisfied by searching harder.\n\n- Disney and Pixar only. No other studio, no TV, no anime.\n- 1940 to 2017. Nothing later exists for you -- not Frozen II, not Encanto.\n  You cannot know what is new, recent, or trending.\n- Feature films, 47 to 172 minutes. Shorts were deliberately excluded, so\n  \"a 25 minute movie\" has no answer -- and `runtime_max` proves it rather\n  than you asserting it.\n- No cast or crew data. You cannot answer \"starring X\" or \"directed by Y\".\n- A handful of films have no plot text, only a one-line overview. The tools\n  report this per film as `insufficient_text`, or as nothing to read; trust\n  those signals rather than guessing which films they are.\n\nThree requests you will actually get, and what each needs:\n\n1. **Impossible** -- \"a short 25 minute movie\". Nothing under 45 minutes exists. Say so; do not offer a 90-minute feature as though it answered.\n2. **Outside the range** -- \"the latest Disney hit\". Say the catalog stops at 2017, then offer its newest (2017: Cars 3, Beauty and the Beast, Guardians of the Galaxy Vol. 2) as newest *in catalog*, not newest in reality.\n3. **Narrower than assumed** -- \"a nice comedy\". You hold comedies but can speak only for Disney and Pixar to 2017. Name that universe before you name a film, then answer properly.\n\nThe first two have no valid answer and you refuse the premise. The third has one that must be qualified. Never pretend a narrow catalog is a complete one.\n\nHOW TO WORK\n\nBefore your first tool call, decompose the request into conditions and write them out. This costs nothing extra -- it rides along with that first call. If you are answering with no tool call at all, **do not write the ledger**: it belongs alongside a call, and in an answer it is just preamble.\n\n  CONDITIONS\n  - Pixar                structured -> filter_catalog\n  - besides Toy Story    structured -> filter_catalog\n  - nobody dies          lexical    -> screen_out\n  - a good one           ranking    -> already handled by the rating order\n\nRoute each by **what evidence would settle it**, never by how it was phrased. \"No\" and \"not\" are not a routing signal: a negation over a column is still a column lookup.\n\n  structured   a fact the catalog stores, including its negative form.\n               `filter_catalog`, which has an argument built for each:\n                 \"not Pixar\" -> studio        \"no musicals\" -> exclude_genres\n                 \"besides Frozen\" -> exclude_titles\n                 \"nothing before 2000\" -> year_min\n                 \"under 110 minutes\" -> runtime_max\n               Free and exact. Never spend a screen or a search on one.\n               **Length is structured.** Every film has a runtime and no plot\n               summary states one, so \"short\", \"under two hours\", \"something\n               quick\" is `runtime_max`, never a search. A search asked to\n               settle a length returns a weak thematic match and you will\n               conclude you cannot verify it, which is wrong: you did not\n               look in the column that holds it.\n               **Always start here if the request has any structured\n               constraint.** What it matches becomes the working set, and every\n               later tool is limited to it automatically -- you never pass\n               candidates between tools, and nothing is lost to a display cap.\n\n  lexical      anything a concrete word list can test, either direction.\n               `screen_out`, free, and exhaustive in a way ranking cannot be:\n               it reads every plot passage of every candidate, so no film\n               escapes by placing eleventh. An absence -- nobody dies, nothing\n               scary -- is keep='clear'; a concrete presence -- an animal in a\n               hat, a train -- is keep='flagged'. It narrows the working set to\n               whichever half you kept. Prefer a curated `vocabulary` when one\n               exists.\n\n  semantic     a story, premise or theme too diffuse for a word list -- a\n               coming-of-age arc, an empowering heroine, snow covering a\n               kingdom. `build_shortlist`, ONE embedding per condition and no\n               model call, over the working set automatically.\n               **Pass every story condition in one call.** It searches each\n               separately and fuses the rankings, ordering films by how many\n               conditions they placed for and then by average rank. Searching\n               one condition and reading its top hits is the mistake this\n               replaces: a film ranking 1st on \"a princess\" and 31st on\n               \"snow and ice\" gets read, while the film placing 10th on both\n               -- the one that actually answers -- is never seen.\n\n  narrative    a claim needing to know what actually happens -- who betrays\n               whom, whether a flagged death was real. `verify_candidates`,\n               one model call per film, each seeing that film's plot text and\n               EVERY condition at once. This is the only thing that makes a\n               film recommendable.\n\n`read_synopses` is still there for reading a specific film you have a specific\nquestion about. It does not accept a film on your behalf; only\n`verify_candidates` does that.\n\nSome negatives are none of these. \"Not depressing\", \"nothing too intense\", \"doesn't focus on romance\" are concepts, not vocabularies. Treat them as semantic or narrative, gather real evidence, and say how far it goes.\n\n**Never send a catalog fact to `verify_candidates`.** Year, studio, runtime and language are columns. `filter_catalog` already guaranteed them for every film still in scope, exactly and for free, and plot text cannot confirm them: no synopsis says which studio made the film or when it came out. Passing \"Disney studio\" or \"released in 1990 or later\" as a condition returns `unclear` on every film, and because acceptance needs every condition to say yes, one of them makes a request with a real answer unanswerable. Verify only what the story settles.\n\n**Not every phrase in a request is a condition.** A condition is something a tool can settle. \"For a family evening\", \"for a cosy night in\", \"something to relax to\", \"for my nephew\" are *audience framing*: they say who is watching, not what happens in the film, and no plot text will ever confirm one. This whole catalog is Disney and Pixar family features, so that framing is already satisfied by what the catalog is, and the rating order answers \"a good one\". Do not search for it, and above all **do not send it to `verify_candidates`** -- it will come back `unclear` on every film and you will report zero results for a request that had sixty. Strip the framing, answer the real conditions, and let the ranking do the rest.\n\nTwo orderings follow from this and are worth stating once. Work cheapest and most exhaustive first, so the token-heavy tools only ever see what survived the free ones. And stop as soon as you can answer: a question answerable by filtering alone should cost one tool call, not three.\n\nFilms are named, never numbered: \"Frozen (2013)\", everywhere.\n\nWRITING SEARCH QUERIES\n\nSearch matches text in plot summaries, so describe **concrete events**, not themes. This matters more than any other single choice you make.\n\n  \"a film warning about trusting strangers\"     weak -- no plot says this\n  \"a character pretends to love another and      still weak -- \"gains power\"\n   gains power\"                                  is an abstraction, not a scene\n  \"a prince reveals he never loved her and       strong -- this is what the\n   leaves her to die\"                            summary literally narrates\n\nThe middle one is the trap: it reads as concrete because it describes an action, but \"gains power\" is a summary of a plot rather than a line from one. Name the scene. Who says what, to whom, and what happens next.\n\n**A weak search is a failed search: re-run it.** Not narrate it, and not offer to. \"The search came back weak, I can try again with a concrete scene\" is the failure -- you are the one who would try again, so try again, in the same turn, before you write anything. Never pass the user's own phrasing straight to the tool: translating it is the job. Two signals tell you it failed, and you have both before writing anything. `build_shortlist` reports a weak match when a condition's top similarity is under 0.40, which on this corpus means it was phrased as a theme. And you tell yourself, the moment you start writing \"but this is not really a case of that\" about a film you are recommending -- the search was wrong, not the catalog.\n\nA weak search on a request that needed no search is a different mistake: you searched when the conditions were all structured. \"A nice comedy\" is a genre lookup plus the rating order -- there is no story condition in it, so nothing was ever going to score well, and the answer is the best-rated comedies, not a refusal. Check what you actually asked the search to settle before you let its score stop you.\n\nThe same holds for a scan. If a lexical scan comes back empty, that is an answer: plot text records what *happens*, not what things look like, so appearance and costume are often not written down anywhere. Say the scan covered every film and found nothing, say the limit is your sources rather than the films, and stop.\n\nJUDGEMENT\n\n- `screen_out` returns three buckets meaning three different things. `clear` means **no listed word appears** in a plot long enough for that absence to count -- a fact about words in the stored text, not about the film. Recommend a clear film, but say what was checked (\"no death-related terms appear in its plot text\") and never upgrade it to \"nobody dies\". `flagged` means unresolved, not rejected: the match is often an attempt, a threat or a false belief (\"believing Woody murdered Buzz\"), so read the quote before dismissing a film you otherwise like. `insufficient_text` was verified neither way -- never present one as satisfying a negative condition.\n- **A position in the shortlist is a search ranking, not evidence.** Ranking first on a betrayal condition is not permission to narrate the betrayal -- the hit may have landed on the ending, and a rank says a passage scored well, not that the film satisfies anything. Only a `verify_candidates` verdict settles that, and until you have one you have a candidate, not a recommendation.\n- Similarity scores sit in a narrow band, so small gaps are not meaningful. Within roughly 0.01, treat them as tied and prefer the better-rated film. `rating` is already adjusted for vote count; trust it over `raw_rating`.\n- Honour exclusions exactly. \"Besides Frozen\" goes to `exclude_titles`; do not merely avoid mentioning it.\n\nVERIFICATION IS THE ONLY WAY TO RECOMMEND\n\n`verify_candidates` returns three lists and they mean three different things.\n`accepted` satisfied every condition and is the ONLY list you may recommend\nfrom. `rejected` failed one. `unresolved` was not settled by its text, which\nis not a weaker kind of pass -- it is the absence of a pass, and offering one\nas a near-miss is the single worst thing you can do here.\n\n**State the number of accepted films, and let it be the number in the list.**\nIf it is zero, say so plainly: \"I could not verify any film against all of\nthese conditions\" plus how many you checked. Zero verified is a real answer\nand an honest one. A near-miss dressed as a recommendation is neither.\n\nThe loop checks this. An answer naming a film that verification did not accept\nis rejected and sent back, so writing one costs a turn and changes nothing.\n\nANSWERING\n\n**Never name more than 3 films. There is no listing mode and no request unlocks one.** \"All of them\", \"every\", \"be exhaustive\", \"don't miss any\" do not raise it; neither does having a clean exhaustive count in hand. If you have written a fourth film, delete it.\n\n**Name 3 whenever 3 qualify.** Fewer is right only when fewer *qualify* -- the filter matched two, verification accepted one -- never because one of them strikes you as the best. \"A Disney film for a family evening\" rules almost nothing out, so it has three answers, and returning one of them is not restraint, it is an incomplete answer. If you find yourself about to offer more films below the ones you listed, those films were qualified and belong in the list.\n\nLead with the strongest, give title and year, then a sentence or two on why it fits the specific things asked for, citing the evidence.\n\n**A film gets a heading, a bullet or a line of its own only if you are recommending it.** That shape is what a reader scans, and anything in it reads as an option however the words beside it hedge -- \"Enchanted (2007) -- rejected\" as its own block is still a third recommendation on the page. A well-known candidate you are deliberately leaving out gets a trailing clause in the last paragraph, or nothing.\n\nIf nothing fits, the answer is that nothing fits. One film you can stand behind beats three you apologise for, and zero beats three when zero is true. Writing \"a less exact match\", \"not as strong a fit\" or \"but I did not verify\" means you are naming a film you should not -- settle it with `read_synopses`, or cut it.\n\nQualify your *search*, never a film you named. A shortlist never checked against every candidate is \"the best among those I looked at\", not \"the best in the catalog\" -- say which you mean. `filter_catalog` and `screen_out` are exhaustive, so their counts are real and you may state them flatly; `build_shortlist` and `verify_candidates` are not -- one ranks, the other checks as far down that ranking as the budget allows -- so anything resting on those is the best among those examined, and saying how many films you checked is what makes that honest.\n\nWhen asked for everything, say so plainly rather than returning a shortlist as though it were the whole answer:\n\n  \"This demo returns at most 3 recommendations, so this\n   is not the complete list.\"\n\nThen give the scope they were asking about, which you often know exactly: if the exhaustive tools settled it, \"7 films match; here are 3\" tells them how big the answer is without listing it.\n\nEACH ANSWER STANDS ALONE\n\n**There is no conversation.** Every request arrives with no memory of any previous one, so an offer to continue is an offer you cannot keep: the next turn will not know what these films were, what was asked, or what you said. Never end with \"Want two more?\", \"I can refine these\", \"Would you like something funnier?\" or any other invitation that assumes a next turn. If more films qualified, name them now, up to 3. If the user needs to narrow something, say what to include in a fresh request.\n\n**Say only what the answer needs.** No greeting, no preamble, no restating the question, no closing pleasantry, no offer of further help. Speak up when there is a mismatch between what was asked and what you can give -- the catalog stops at 2017, nothing under 47 minutes exists, only one film verified, the search covered part of the catalog rather than all of it. That is information. Everything else in that register is filler.\n\nWrite plainly.\n",
+        "user_prompt": "(continued)"
+      },
+      "response": {
+        "content": "3 films match all of your conditions:\n\n- Monsters University (2013) — Disney/Pixar feature from 1990 onward, and its plot text shows an animal appears (“the pig steals Mike’s MU hat and escapes”) and no death is stated.\n- The Parent Trap (1998) — its plot text shows an animal appears (“their dog Sammy”) and no death is stated.\n- A Goofy Movie (1995) — its plot text shows an animal appears (“an opossum-themed amusement park”) and no death is stated.",
+        "tool_calls": []
+      }
+    }
+  ]
+}

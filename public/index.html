@@ -144,6 +144,22 @@
     }
     .error-text { color: #d32f2f; font-weight: 600; }
     .ok-text { color: #2e7d32; }
+    .answer-aside { margin-top: 1.1rem; padding-top: 0.9rem; border-top: 1px solid #eee; }
+    .aside-head { font-size: 0.82rem; font-weight: 600; color: #444; margin-bottom: 0.55rem; }
+    .aside-body { font-size: 0.86rem; color: #444; line-height: 1.65; }
+    .aside-body .sum-row { display: flex; gap: 0.55rem; align-items: baseline; padding: 0.14rem 0; }
+    .aside-body .sum-ico { flex: 0 0 1.25rem; text-align: center; }
+    .aside-body .sum-sub { margin-left: 1.8rem; color: #777; font-size: 0.82rem; padding: 0.05rem 0; }
+    .aside-body .sum-sub .yes { color: #2e7d32; }
+    .aside-body .sum-sub .no { color: #b3261e; }
+    .aside-body .sum-foot { margin-top: 0.5rem; color: #8a9099; font-size: 0.8rem; }
+    .aside-body b { color: #222; }
+    .ledger-line { padding: 0.1rem 0; }
+    .steps-summary { cursor: pointer; font-size: 0.85rem; color: #555; padding: 0.35rem 0;
+                     list-style: none; user-select: none; }
+    .steps-summary::-webkit-details-marker { display: none; }
+    .steps-summary::before { content: "▸ "; color: #999; }
+    details[open] > .steps-summary::before { content: "▾ "; }
     .success-text { color: #2e7d32; font-weight: 600; }
 
     .examples { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem; }
@@ -649,33 +665,38 @@
           <button class="copy-btn" id="copy-response">&#128203; Copy response</button>
         </div>
         <div class="response-text" id="response-text"></div>
+
+        <div id="plan-block" class="answer-aside" style="display:none;">
+          <div class="aside-head">🧭 How I read your request</div>
+          <div class="aside-body" id="plan-text"></div>
+        </div>
+
+        <div id="summary-block" class="answer-aside" style="display:none;">
+          <div class="aside-head">🔍 What I did to answer it</div>
+          <div class="aside-body" id="summary-text"></div>
+        </div>
       </div>
 
       <div class="card" id="steps-card">
-        <div id="summary-block" style="display:none;">
-          <label>What it did &mdash; plan to result</label>
-          <div class="arch-diagram" id="summary-text" style="margin-top:0.5rem;"></div>
-        </div>
-        <div id="plan-block" style="display:none;">
-          <label>Condition ledger &mdash; written on turn 1, at no extra cost</label>
-          <div class="prompt-box" id="plan-text" style="max-height:220px;"></div>
-        </div>
         <div id="narrowing-block" style="display:none;">
           <label style="margin-top:1rem;">Narrowing &mdash; how the working set shrank</label>
           <div class="arch-diagram" id="narrowing-text" style="margin-top:0.5rem;"></div>
         </div>
-        <div class="card-head" style="margin-top:1rem;">
-          <label>Steps trace (Reason → Act → Observe)</label>
-          <button class="copy-btn" id="copy-trace">&#128203; Copy trace JSON</button>
-        </div>
-        <div id="steps-list"></div>
+        <details id="steps-details" style="margin-top:1rem;">
+          <summary class="steps-summary">🔬 Full steps trace &mdash; every call, verbatim</summary>
+          <div class="card-head" style="margin-top:0.8rem;">
+            <label>Reason &rarr; act &rarr; verify &rarr; answer</label>
+            <button class="copy-btn" id="copy-trace">&#128203; Copy trace JSON</button>
+          </div>
+          <div id="steps-list"></div>
+        </details>
         <div id="run-cost" style="display:none;"></div>
       </div>
 
       <div class="card">
         <label>Test bed</label>
         <p style="color:#666;font-size:0.85rem;margin-bottom:0.8rem;">
-          Thirteen cases covering each tool, both directions of the screen, each scope limit, and the ways the agent can
+          Fourteen cases covering each tool, both directions of the screen, each scope limit, and the ways the agent can
           plausibly go wrong. Click one to load it, then <b>Run Agent</b> and compare the
           answer against what it should have done. Every answer names at most three
           films (<code>MAX_RECOMMENDATIONS</code>) &mdash; a hard ceiling that no request
@@ -1654,6 +1675,11 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
     const TEST_CASES = [
       {
         kind: 'answer',
+        q: 'A Disney movie from 1990+, with animals and no death',
+        expect: 'The headline case: three conditions of three different kinds in one sentence. Studio and year are columns and go to CatalogFilter; "no death" is an absence no search can rank for, so it is screened; "animals" is a story fact the Verifier settles per film. Every recommendation must quote the plot text that shows the animal, and the count must equal what verification accepted. Sending "Disney studio" or "1990 or later" to the Verifier is the failure — plot text cannot confirm a studio, and one unsettleable condition makes a request with a real answer return nothing.'
+      },
+      {
+        kind: 'answer',
         q: 'A Disney movie from the 1990s for a family evening',
         expect: 'One CatalogFilter call and nothing else — no search, no reading. Best-rated first gives The Lion King (1994). The cost test: a request answerable from columns alone should cost one tool call, not three.'
       },
@@ -1724,10 +1750,14 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
     function renderTestCases() {
       const host = document.getElementById('test-cases');
       if (!host) return;
+      // The prompt and its kind, and nothing else. Each case used to carry a
+      // paragraph explaining what to look for, which made a list of thirteen
+      // one-line prompts into a wall of text nobody read before clicking.
+      // The reasoning still exists -- it moves to the box below, on the one
+      // case actually selected.
       host.innerHTML = TEST_CASES.map((c, i) => `
         <button class="test-case" data-i="${i}">
           <span class="test-q"><span class="kind kind-${c.kind}">${KIND_LABEL[c.kind]}</span>${escapeHtml(c.q)}</span>
-          <span class="test-expect">${escapeHtml(c.expect)}</span>
         </button>
       `).join('');
 
@@ -1739,8 +1769,11 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
         host.querySelectorAll('.test-case').forEach(b => b.classList.remove('loaded'));
         btn.classList.add('loaded');
 
+        // The lead sentence carries the claim; the rest is the argument for it,
+        // which belongs in the repo rather than above the input box.
+        const gist = String(c.expect).split(/(?<=[.?!])\s+/)[0];
         const box = document.getElementById('expected-box');
-        box.innerHTML = '<b>Expected — ' + KIND_LABEL[c.kind] + '</b>' + escapeHtml(c.expect);
+        box.innerHTML = '<b>Expect</b> ' + escapeHtml(gist);
         box.style.display = 'block';
         document.getElementById('prompt').scrollIntoView({ behavior: 'smooth', block: 'center' });
       });
@@ -2159,7 +2192,15 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
       const first = steps.find(s => s.module === 'Planner' && (s.response || {}).content);
       const plan = first ? String(first.response.content).trim() : '';
       if (plan) {
-        document.getElementById('plan-text').textContent = plan;
+        // The ledger is the planner's own decomposition, written on turn 1.
+        // It was rendered as a monospace blob; as part of the answer it reads
+        // as what it is -- how the request was understood -- so the lines get
+        // to be lines.
+        document.getElementById('plan-text').innerHTML = plan
+          .split('\n')
+          .filter(l => l.trim())
+          .map(l => `<div class="ledger-line">${escapeHtml(l.replace(/^[-*\u2022]\s*/, '• '))}</div>`)
+          .join('');
         planBlock.style.display = 'block';
       } else {
         planBlock.style.display = 'none';
@@ -2180,65 +2221,80 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
       }
     }
 
-    // The TL;DR. Everything below it -- the ledger, the narrowing trace, the
-    // full steps -- is the same story at increasing magnification, and a reader
-    // who wants to know whether the answer is trustworthy should not have to
-    // start at the deepest zoom. Built entirely from `steps`, so it cannot
-    // drift from what actually ran: there is no summary field to keep in sync.
+    // The TL;DR, written for a person rather than for an auditor. It lives
+    // inside the answer because that is where someone is already looking, and
+    // the question it settles -- should I believe this? -- is part of the
+    // answer rather than an appendix to it. The full trace is still below,
+    // collapsed, for anyone who wants every call verbatim.
+    //
+    // Built entirely from `steps`, so it cannot drift from what actually ran:
+    // there is no summary field to keep in sync.
     function renderSummary(data, elapsedMs) {
       const block = document.getElementById('summary-block');
       const steps = data.steps || [];
-      const lines = [];
-      const num = (n) => (n === undefined || n === null) ? '?' : n.toLocaleString();
+      const rows = [];
+      const n = (v) => (v === undefined || v === null) ? '?' : Number(v).toLocaleString();
+      const row = (ico, text) =>
+        `<div class="sum-row"><span class="sum-ico">${ico}</span><span>${text}</span></div>`;
+      const sub = (text, cls) => `<div class="sum-sub ${cls || ''}">${text}</div>`;
 
-      for (const s of steps) {
-        const r = s.response || {};
-        const a = (s.prompt || {}).arguments || {};
-        if (s.module === 'CatalogFilter') {
-          const applied = (r.filters_applied && r.filters_applied !== 'none')
-            ? Object.entries(r.filters_applied).map(([k, v]) => `${k}=${v}`).join(', ')
+      for (const st of steps) {
+        const r = st.response || {};
+        const a = (st.prompt || {}).arguments || {};
+        if (st.module === 'CatalogFilter') {
+          const f = r.filters_applied;
+          const how = (f && f !== 'none')
+            ? Object.entries(f).map(([k, v]) => `${escapeHtml(k)} ${escapeHtml(String(v))}`).join(', ')
             : 'no filter';
-          lines.push(`Catalog filter    238 → ${num(r.matched)}   (${applied})`);
-        } else if (s.module === 'LexicalScreen') {
-          lines.push(`Word screen       “${a.vocabulary || a.words || '?'}”, keeping `
-            + `${a.keep || 'clear'} → ${num(r[a.keep] ?? r.kept)} `
-            + `(${num(r.flagged)} flagged, ${num(r.insufficient_text)} unreadable)`);
-        } else if (s.module === 'ShortlistFusion') {
-          lines.push(`Shortlist         ${num((r.conditions || []).length)} conditions `
-            + `searched separately → ${num(r.candidates)} candidates, `
-            + `${num(r.matching_every_condition)} matching every one`);
-          for (const c of (r.conditions || [])) lines.push(`                    · ${c}`);
-        } else if (s.module === 'SynopsisReader') {
-          lines.push(`Read synopses     ${num((a.films || []).length)} films, about `
-            + `“${a.about || 'the whole plot'}”`);
-        } else if (s.module === 'Verifier') {
-          lines.push(`Verified          ${num(r.verified)} films checked of `
-            + `${num((r.budget || {}).allowed)} allowed → `
-            + `${num((r.accepted || []).length)} accepted, `
-            + `${num((r.rejected || []).length)} rejected, `
-            + `${num((r.unresolved || []).length)} unresolved`);
-          for (const row of (r.verdicts || [])) {
-            const cells = (row.findings || [])
-              .map(f => `${f.requirement}=${f.verdict}`).join(', ');
-            lines.push(`                    ${row.accepted ? '✓' : '✗'} ${row.film}`
-              + (cells ? `  [${cells}]` : ''));
+          rows.push(row('🗂️', `Filtered the catalog to <b>${n(r.matched)} films</b> &mdash; ${how}`));
+        } else if (st.module === 'LexicalScreen') {
+          const what = escapeHtml(String(a.vocabulary || (a.words || []).join(', ') || '?'));
+          rows.push(row('🚫', `Scanned every plot for <b>${what}</b>, keeping the `
+            + `${escapeHtml(a.keep || 'clear')} half &mdash; <b>${n(r[a.keep] ?? r.kept)} left</b>, `
+            + `${n(r.flagged)} flagged, ${n(r.insufficient_text)} with too little text`));
+        } else if (st.module === 'ShortlistFusion') {
+          const cs = r.conditions || [];
+          rows.push(row('🔎', `Searched <b>${n(cs.length)} conditions separately</b> and merged the `
+            + `rankings &mdash; ${n(r.candidates)} candidates, `
+            + `<b>${n(r.matching_every_condition)} matched every one</b>`));
+          for (const c of cs) rows.push(sub('· ' + escapeHtml(c)));
+        } else if (st.module === 'SynopsisReader') {
+          rows.push(row('📖', `Read ${n((a.films || []).length)} plots about `
+            + `&ldquo;${escapeHtml(String(a.about || 'the whole story'))}&rdquo;`));
+        } else if (st.module === 'Verifier') {
+          rows.push(row('✅', `Read <b>${n(r.verified)} films</b> in full (of ${n((r.budget || {}).allowed)} `
+            + `allowed) and checked every condition on each &mdash; `
+            + `<b>${n((r.accepted || []).length)} passed</b>, ${n((r.rejected || []).length)} failed, `
+            + `${n((r.unresolved || []).length)} unsettled`));
+          for (const v of (r.verdicts || [])) {
+            const cells = (v.findings || []).map(f => {
+              const cls = f.verdict === 'yes' ? 'yes' : (f.verdict === 'no' ? 'no' : '');
+              return `<span class="${cls}">${escapeHtml(f.requirement)}: ${escapeHtml(f.verdict)}</span>`;
+            }).join(' &middot; ');
+            rows.push(sub(`${v.accepted ? '✓' : '✗'} <b>${escapeHtml(v.film)}</b>`
+              + (cells ? ` &mdash; ${cells}` : '')));
           }
-        } else if (s.module === 'Planner' && (r.rejected)) {
-          // A correction turn is part of the story, not an embarrassment to
-          // hide: it is the loop refusing an answer the model wanted to give.
-          lines.push(`Answer rejected   ${r.rejected}`);
+          for (const c of (r.unsettleable || [])) {
+            rows.push(sub(`⚠️ &ldquo;${escapeHtml(c)}&rdquo; could not be judged from plot text at all`));
+          }
+          for (const c of (r.not_verifiable || [])) {
+            rows.push(sub(`ℹ️ &ldquo;${escapeHtml(c)}&rdquo; is a catalog fact, already guaranteed by the filter`));
+          }
+        } else if (st.module === 'Planner' && r.rejected) {
+          rows.push(row('↩️', `Rejected its own first answer &mdash; ${escapeHtml(String(r.rejected))}`));
         }
       }
 
-      if (!lines.length) {
-        block.style.display = 'none';
-        return;
-      }
-      const ledger = steps.filter(s => s.module === 'Planner').length;
-      lines.push('');
-      lines.push(`Result            ${ledger} planner round${ledger === 1 ? '' : 's'}`
-        + `, ${(elapsedMs / 1000).toFixed(1)}s`);
-      document.getElementById('summary-text').textContent = lines.join('\n');
+      if (!rows.length) { block.style.display = 'none'; return; }
+
+      const planner = steps.filter(x => x.module === 'Planner').length;
+      const ledger = [...steps].reverse().find(x => x.llm_calls);
+      const calls = ledger ? ledger.llm_calls.total : planner;
+      rows.push(`<div class="sum-foot">⏱️ ${planner} planning round${planner === 1 ? '' : 's'}`
+        + ` &middot; ${calls} model call${calls === 1 ? '' : 's'}`
+        + ` &middot; ${(elapsedMs / 1000).toFixed(1)}s</div>`);
+
+      document.getElementById('summary-text').innerHTML = rows.join('');
       block.style.display = 'block';
     }
 

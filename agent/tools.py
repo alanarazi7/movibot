@@ -38,6 +38,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import re
 from dataclasses import dataclass, field
 
 from agent import catalog, shortlist, verifier
@@ -718,6 +719,41 @@ MAX_VERIFICATIONS = 10
 MAX_RECOMMENDATIONS_CEILING = 3
 
 
+# Conditions plot text can never settle, because they are catalog columns.
+# Sent to the Verifier they come back `unclear` on every film, and since
+# acceptance needs every condition to say yes, one of them makes the request
+# unanswerable: "Disney studio" and "released in 1990 or later" together
+# verified thirteen candidates to zero on a query with a real answer.
+#
+# Tight on purpose. "released from prison" and "a character counts to 1990"
+# must not match, so each pattern needs the structural context that makes it a
+# catalog fact rather than a story event.
+_STRUCTURED_CONDITION = re.compile(
+    r"""(
+          \breleased?\s+(in|on|after|before|from|no\s+earlier\s+than)\s+(19|20)\d{2}
+        | \b(19|20)\d{2}\s+or\s+(later|earlier|newer|older)
+        | \bfrom\s+(the\s+)?(19|20)\d0s\b
+        | \brelease\s+year\b
+        | ^\s*(a|an|the)?\s*(walt\s+)?(disney|pixar)(\s+(studio|film|movie|production|picture))?\s*$
+        | \bis\s+a\s+(walt\s+)?(disney|pixar)\b
+        | \bproduced\s+by\s+(walt\s+)?(disney|pixar)\b
+        | \bruntime\b
+        | \b(under|over|less\s+than|more\s+than|at\s+most|at\s+least)\s+\d+\s*(minutes|mins)\b
+        | \b\d+\s*minutes\s+(long|or\s+(less|fewer|more))\b
+        | \bspoken\s+language\b
+    )""",
+    re.IGNORECASE | re.VERBOSE,
+)
+
+
+def _drop_structured(conditions: list[str]) -> tuple[list[str], list[str]]:
+    """Split conditions into ones plot text can settle and ones it cannot."""
+    story, structured = [], []
+    for c in conditions:
+        (structured if _STRUCTURED_CONDITION.search(c) else story).append(c)
+    return story, structured
+
+
 def verify_candidates(
     conditions: list[str] | None = None,
     films: list[str] | None = None,
@@ -743,6 +779,19 @@ def verify_candidates(
     if not conditions:
         return {"error": "verify_candidates needs the conditions to check against."}
 
+    conditions, structured = _drop_structured(conditions)
+    if not conditions:
+        return {
+            "error": "Every condition given was a catalog fact, not a story fact.",
+            "not_verifiable": structured,
+            "note": (
+                "Year, studio, runtime and language are columns. filter_catalog "
+                "already guaranteed them for every film in scope -- plot text cannot "
+                "confirm them and the Verifier would return `unclear` on all of them. "
+                "Pass only conditions the story settles."
+            ),
+        }
+
     # Named films go FIRST, they do not replace the walk. Letting them replace
     # it reopened the exact hole this tool was built to close: the planner named
     # three candidates it liked, the tool checked those three, and a request
@@ -753,7 +802,20 @@ def verify_candidates(
     # order, and the walk continues down that order until it accepts enough or
     # runs out of budget.
     named = [i for i in (catalog.resolve(f) for f in (films or [])) if i is not None]
-    tail = [i for i in (ctx.shortlist if ctx is not None else []) if i not in set(named)]
+
+    # The tail is the fused shortlist when there is one, and the working set
+    # in rating order when there is not. Without that fallback a request that
+    # never needed a semantic search -- everything settled by filter and
+    # screen -- could only ever check the films the planner happened to name,
+    # so thirteen survivors got six verifications and the budget went unspent.
+    if ctx is not None and ctx.shortlist:
+        rest = list(ctx.shortlist)
+    elif ctx is not None and ctx.working_set:
+        rest = sorted(ctx.working_set,
+                      key=lambda i: -(catalog.rating_of(i) or 0.0))
+    else:
+        rest = []
+    tail = [i for i in rest if i not in set(named)]
     order = named + tail
     if not order:
         return {"error": "no candidates: call build_shortlist first, or name films."}
@@ -807,6 +869,12 @@ def verify_candidates(
 
     return {
         "conditions": conditions,
+        **({"not_verifiable": structured,
+            "not_verifiable_note": (
+                "Dropped before checking: these are catalog facts, not story facts, and "
+                "filter_catalog already guaranteed them for every film in scope. They "
+                "were NOT ignored -- they were enforced earlier and exactly."
+            )} if structured else {}),
         "verified": checked,
         "by_condition": tally,
         **({"unsettleable": unsettleable,

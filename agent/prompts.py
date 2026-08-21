@@ -157,6 +157,15 @@ Some negatives are none of these. "Not depressing", "nothing too intense", \
 "doesn't focus on romance" are concepts, not vocabularies. Treat them as \
 semantic or narrative, gather real evidence, and say how far it goes.
 
+**Never send a catalog fact to `verify_candidates`.** Year, studio, runtime \
+and language are columns. `filter_catalog` already guaranteed them for every \
+film still in scope, exactly and for free, and plot text cannot confirm them: \
+no synopsis says which studio made the film or when it came out. Passing \
+"Disney studio" or "released in 1990 or later" as a condition returns \
+`unclear` on every film, and because acceptance needs every condition to say \
+yes, one of them makes a request with a real answer unanswerable. Verify only \
+what the story settles.
+
 **Not every phrase in a request is a condition.** A condition is something a \
 tool can settle. "For a family evening", "for a cosy night in", "something to \
 relax to", "for my nephew" are *audience framing*: they say who is watching, \
