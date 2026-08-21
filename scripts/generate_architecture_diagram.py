@@ -35,7 +35,7 @@ final size and resampled down. Nothing here is sized for a slide; it is sized
 for that column.
 
 There is deliberately no data layer. Drawing one meant either a store per tool,
-which is false -- PlotScan and PlotSearch read the same passage index --
+which is false -- LexicalScan and PlotSearch read the same passage index --
 or a shared bus, which implies every tool reads every store and is equally
 false. The counts live in the Architecture tab and /api/rag/info instead.
 
@@ -63,7 +63,7 @@ SS = 2
 
 BG = (255, 255, 255)
 INK = (24, 28, 34)
-MUTED = (110, 117, 126)
+MUTED = (88, 95, 104)
 FAINT = (174, 181, 190)
 ARROW = (128, 134, 142)
 
@@ -239,12 +239,12 @@ def main() -> None:
         (MAYBE_FILL, MAYBE_LINE, "embedding call"),
         (FREE_FILL, FREE_LINE, "Python"),
     ]
-    lw = max(_width(draw, label, 14) for _, _, label in entries)
+    lw = max(_width(draw, label, 16) for _, _, label in entries)
     lx = WIDTH - 36 - lw - 20
     for i, (fill, line, label) in enumerate(entries):
-        ly = 30 + i * 22
+        ly = 30 + i * 25
         _swatch(draw, lx, ly, fill, line)
-        _text(draw, (lx + 20, ly - 2), label, MUTED, 14)
+        _text(draw, (lx + 20, ly - 3), label, MUTED, 16)
 
     # ---- the agent -----------------------------------------------------
     # Drawn as a choice, not a chain. The operations sit in a box the
@@ -254,58 +254,58 @@ def main() -> None:
     # and said something about the agent that is not true.
     request = (30, 196, 178, 286)
     decomp  = (212, 176, 392, 306)
-    ops     = (432, 142, 700, 340)
+    ops     = (432, 140, 708, 350)
     verify  = (212, 420, 480, 550)
     answer  = (528, 420, 728, 550)
     reply   = (762, 420, 888, 550)
 
-    _box(draw, request, "Request", ("in natural language",), title_size=20, sub_size=13)
+    _box(draw, request, "Request", (), title_size=23, sub_size=16)
     _box(draw, decomp, "Decomposer", ("decides what it needs",),
-         fill=PAID_FILL, line=PAID_LINE, title_size=21, sub_size=14)
+         fill=PAID_FILL, line=PAID_LINE, title_size=24, sub_size=16)
 
     _dashed_rect(draw, ops)
-    tools_icon = _emoji("\U0001F9F0", 19)
+    tools_icon = _emoji("\U0001F9F0", 21)
     tx = 448
     if tools_icon is not None:
         img.paste(tools_icon, (_s(tx), _s(154)), tools_icon)
         tx += 26
-    _text(draw, (tx, 155), "Tools", MUTED, 17, bold=True)
-    _text(draw, (tx + _width(draw, "Tools", 17, True) + 12, 158),
-          "any, some twice", FAINT, 12)
+    _text(draw, (tx, 153), "Tools", MUTED, 19, bold=True)
+    _text(draw, (tx + _width(draw, "Tools", 19, True) + 12, 158),
+          "any, some twice", MUTED, 14)
 
     for k, (name, glyph, fill, line) in enumerate([
         ("CatalogFilter", "\U0001F5C2", FREE_FILL, FREE_LINE),
-        ("PlotScan", "\U0001F50E", FREE_FILL, FREE_LINE),
-        ("PlotRetrieval", "\U0001F9E0", MAYBE_FILL, MAYBE_LINE),
+        ("LexicalScan", "\U0001F50E", FREE_FILL, FREE_LINE),
+        ("SemanticRetrieval", "\U0001F9E0", MAYBE_FILL, MAYBE_LINE),
     ]):
-        y0 = 190 + k * 48
-        draw.rounded_rectangle(_st((448, y0, 684, y0 + 40)), radius=_s(7),
+        y0 = 192 + k * 50
+        draw.rounded_rectangle(_st((448, y0, 692, y0 + 42)), radius=_s(7),
                                fill=fill, outline=line, width=_s(1))
         ix = 462
-        icon = _emoji(glyph, 19)
+        icon = _emoji(glyph, 21)
         if icon is not None:
-            img.paste(icon, (_s(ix), _s(y0) + int((_s(40) - _s(19)) / 2)), icon)
+            img.paste(icon, (_s(ix), _s(y0) + int((_s(42) - _s(21)) / 2)), icon)
             ix += 28
-        _text(draw, (ix, y0 + 10), name, INK, 17, bold=True)
+        _text(draw, (ix, y0 + 9), name, INK, 19, bold=True)
 
     _box(draw, verify, "Verifier", ("one film at a time",),
-         fill=PAID_FILL, line=PAID_LINE, title_size=21, sub_size=13)
-    _box(draw, answer, "Answerer", ("drafts the reply",),
-         fill=PAID_FILL, line=PAID_LINE, title_size=21, sub_size=13)
-    _box(draw, reply, "Reply", ("with its evidence",), title_size=19, sub_size=13)
+         fill=PAID_FILL, line=PAID_LINE, title_size=24, sub_size=16)
+    _box(draw, answer, "Answerer", (),
+         fill=PAID_FILL, line=PAID_LINE, title_size=24, sub_size=16)
+    _box(draw, reply, "Reply", ("with its evidence",), title_size=22, sub_size=15)
 
     _arrow(draw, (180, 241), (208, 241))
     _arrow(draw, (394, 241), (428, 241), fill=CYCLE, width=3)
     # candidates fall out of the operations box into verification
-    _elbow(draw, [(566, 342), (566, 376), (346, 376), (346, 416)],
+    _elbow(draw, [(570, 352), (570, 380), (346, 380), (346, 416)],
            fill=CYCLE, width=3)
-    _label(draw, 420, 382, "candidates", colour=MUTED, size=13)
+    _label(draw, 420, 382, "candidates", colour=MUTED, size=15)
     # The Verifier reads one film, then the next, until enough have passed or
     # the candidates run out. Drawn as a loop because that is what it is, and
     # because it is where a verifying request spends nearly all of its money.
     _elbow(draw, [(300, 552), (300, 582), (186, 582), (186, 470), (208, 470)],
            fill=CYCLE, width=3)
-    _text(draw, (196, 596), "next candidate, until enough pass", MUTED, 12)
+    _text(draw, (196, 596), "next candidate, until enough pass", MUTED, 14)
     _arrow(draw, (482, 485), (524, 485), fill=CYCLE, width=3)
     _arrow(draw, (730, 485), (758, 485), fill=CYCLE, width=3)
 

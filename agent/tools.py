@@ -1326,13 +1326,13 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
 TRACE_NAMES = {
     "filter_catalog": "CatalogFilter",
     # Both of these read plot text, and the old names described how rather
-    # than what: "PlotScan" and "PlotRetrieval" put a word scan and a
+    # than what: "LexicalScan" and "SemanticRetrieval" put a word scan and a
     # vector search at arm's length from each other when the useful
     # distinction is exact versus approximate over the same corpus. Fusing
-    # several conditions' rankings is something PlotRetrieval does, not a
+    # several conditions' rankings is something SemanticRetrieval does, not a
     # thing of its own.
-    "screen_out": "PlotScan",
-    "build_shortlist": "PlotRetrieval",
+    "screen_out": "LexicalScan",
+    "build_shortlist": "SemanticRetrieval",
     # The TOOL, not the module it calls. read_synopses/Observer already made
     # this distinction and verify_candidates did not, so a tool step was
     # logged under a subagent's name and the Verifier looked like something

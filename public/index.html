@@ -636,7 +636,6 @@
 
       <span class="tab-group-label" title="Everything beyond the assignment's requirements">Extras</span>
       <button class="tab-button" onclick="switchTab('datanav')">🗃️ Data</button>
-      <button class="tab-button" onclick="switchTab('prompts-tab')">📋 Prompts</button>
       <button class="tab-button" onclick="switchTab('budget-tab')">💰 Budget</button>
     </div>
 
@@ -784,7 +783,7 @@
         <h3>What it can ask for</h3>
         <p>
           Any of these, in any combination, and some more than once. None involves a
-          text-model call; only <code>PlotRetrieval</code> reaches a model at all, one
+          text-model call; only <code>SemanticRetrieval</code> reaches a model at all, one
           embedding per condition, and a condition is a short phrase.
         </p>
         <div class="data-table">
@@ -793,9 +792,9 @@
             <tbody>
               <tr><td><code>CatalogFilter</code></td>
                   <td>Facts the catalog stores &mdash; year, runtime, genre, studio, language, title exclusions. Exact, and it sees every film.</td></tr>
-              <tr><td><code>PlotScan</code></td>
+              <tr><td><code>LexicalScan</code></td>
                   <td>Words, across every candidate&rsquo;s plot text. The only thing that can address an <em>absence</em>: &ldquo;nobody dies&rdquo; cannot be retrieved for, since retrieval returns the films where somebody does. For an absence it puts the clean films first rather than removing the rest &mdash; a word is not an event, and a threat reads the same as an outcome.</td></tr>
-              <tr><td><code>PlotRetrieval</code></td>
+              <tr><td><code>SemanticRetrieval</code></td>
                   <td>Meaning, over the same plot text. Each story condition is retrieved separately and the rankings merged, so a film answering every condition moderately comes above one answering a single condition perfectly.</td></tr>
             </tbody>
           </table>
@@ -832,31 +831,23 @@
           <code>agent/loop.py</code> rather than asked for in a prompt.
         </p>
         <div id="guardrails-body"><p class="pending">Loading&hellip;</p></div>
-        <p class="fineprint">
-          Every prompt and tool description, served live from the source, is on the
-          <b>Prompts</b> tab.
-        </p>
       </div>
 
-    </div>
-
-    <!-- TAB 5: Prompts -->
-    <div id="prompts-tab" class="tab-content">
       <div class="card">
-        <h2>Prompts</h2>
+        <h2>The prompts, as they run</h2>
         <p class="lede">
-          Every instruction the agent actually runs on, read from
-          <code>agent/prompts.py</code>, <code>agent/verifier.py</code>,
-          <code>agent/observer.py</code> and the tool schemas at request time &mdash;
-          not copied into this page. A prompt pasted into HTML is a prompt that quietly
-          stops matching the one the agent runs on.
+          Read from <code>agent/decomposer.py</code>, <code>agent/verifier.py</code>,
+          <code>agent/answerer.py</code> and the tool schemas at request time, not copied
+          into this page &mdash; a prompt pasted into HTML is a prompt that quietly stops
+          matching the one the agent runs on.
         </p>
         <div id="prompts-status"></div>
         <div id="prompts-body"></div>
       </div>
+
     </div>
 
-    <!-- TAB 6: Data -->
+    <!-- TAB 5: Data -->
     <div id="datanav" class="tab-content">
       <div class="card">
         <h2>Data</h2>
@@ -1021,9 +1012,7 @@
       // Refetched on every visit, not cached like the others: the whole point
       // of the number is that it is current.
       if (tabName === 'budget-tab') loadBudget();
-      // The Architecture tab shows the live guardrail values, which arrive with
-      // the prompts, so it loads them too even though it renders none of them.
-      if (tabName === 'prompts-tab') fetchPrompts();
+      // The prompts live on the Architecture tab now, under the diagram.
       if (tabName === 'arch') { fetchPrompts(); fetchArchitecture(); }
     }
 
@@ -1164,7 +1153,7 @@
       {
         kind: 'answer',
         q: 'Best empowering princess movie besides Frozen and Moana',
-        expect: 'Both titles must reach exclude_titles as a real filter, visible as a drop in the narrowing trace, not merely left unmentioned. "Empowering" is the open condition: keywords cannot settle a theme, so expect a PlotRetrieval or Verifier step and a rationale that quotes it. Observed: CatalogFilter → PlotRetrieval → Mulan (1998), citing the plot text.'
+        expect: 'Both titles must reach exclude_titles as a real filter, visible as a drop in the narrowing trace, not merely left unmentioned. "Empowering" is the open condition: keywords cannot settle a theme, so expect a SemanticRetrieval or Verifier step and a rationale that quotes it. Observed: CatalogFilter → SemanticRetrieval → Mulan (1998), citing the plot text.'
       },
       {
         kind: 'answer',
@@ -1713,12 +1702,12 @@
             ? Object.entries(f).map(([k, v]) => `${escapeHtml(k)} ${escapeHtml(String(v))}`).join(', ')
             : 'no filter';
           rows.push(row('🗂️', `Filtered the catalog to <b>${n(r.matched)} films</b> &mdash; ${how}`));
-        } else if (st.module === 'PlotScan') {
+        } else if (st.module === 'LexicalScan') {
           const what = escapeHtml(String(a.vocabulary || (a.words || []).join(', ') || '?'));
           rows.push(row('🚫', `Scanned every plot for <b>${what}</b>, keeping the `
             + `${escapeHtml(a.keep || 'clear')} half &mdash; <b>${n(r[a.keep] ?? r.kept)} left</b>, `
             + `${n(r.flagged)} flagged, ${n(r.insufficient_text)} with too little text`));
-        } else if (st.module === 'PlotRetrieval') {
+        } else if (st.module === 'SemanticRetrieval') {
           const cs = r.conditions || [];
           rows.push(row('🔎', `Searched <b>${n(cs.length)} conditions separately</b> and merged the `
             + `rankings &mdash; ${n(r.candidates)} candidates, `
@@ -1857,8 +1846,8 @@
 
         const costs = {
           CatalogFilter: 'free',
-          PlotScan: 'free',
-          PlotRetrieval: '~$0.0000002 per condition',
+          LexicalScan: 'free',
+          SemanticRetrieval: '~$0.0000002 per condition',
           CandidateWalk: 'free \u00b7 sends the Verifier'
         };
 

@@ -144,7 +144,7 @@ def execute(prompt: str) -> dict[str, Any]:
             screen_args = dict(plan["screen"])
             screen_args.setdefault("keep", "clear")
             result = tools.screen_out(ctx=ctx, **screen_args)
-            steps.append(_tool_step("PlotScan", screen_args, ctx, result, budget))
+            steps.append(_tool_step("LexicalScan", screen_args, ctx, result, budget))
             evidence["screen"] = {k: result.get(k) for k in
                                   ("screened_for", "kept", "clear", "flagged",
                                    "insufficient_text", "thin_word_list")
@@ -152,7 +152,7 @@ def execute(prompt: str) -> dict[str, Any]:
 
         if plan["search"] and (ctx.working_set is None or ctx.working_set):
             result = tools.build_shortlist(conditions=plan["search"], ctx=ctx)
-            steps.append(_tool_step("PlotRetrieval",
+            steps.append(_tool_step("SemanticRetrieval",
                                     {"conditions": plan["search"]}, ctx, result, budget))
             evidence["shortlist"] = {k: result.get(k) for k in
                                      ("candidates", "matching_every_condition")}
