@@ -57,7 +57,7 @@ OUTPUT_PATH = os.path.join(_ROOT, "assets", "architecture.png")
 # actually gets. SS only buys resampling quality: the image is drawn SS times
 # larger and shrunk back down at save time, so curves and small type stay clean
 # on a retina display and survive the browser's own scaling.
-WIDTH, HEIGHT = 900, 1108
+WIDTH, HEIGHT = 900, 1150
 SS = 2
 
 BG = (255, 255, 255)
@@ -345,7 +345,7 @@ def main() -> None:
     # SynopsisReader sends the Observer; CandidateWalk sends the Verifier, once
     # per film. Naming them here is the difference between five tools and five
     # tools plus two readers, which is what the trace actually shows.
-    rpanel = (36, 971, 864, 1092)
+    rpanel = (36, 971, 864, 1131)
     draw.rounded_rectangle(_st(rpanel), radius=_s(11), fill=PANEL_FILL,
                            outline=PANEL_LINE, width=_s(2))
     _text(draw, (60, 990), "READERS", MUTED, 15, bold=True)
