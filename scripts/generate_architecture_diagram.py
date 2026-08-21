@@ -48,7 +48,8 @@ import sys
 from PIL import Image, ImageDraw, ImageFont
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from agent import loop, tools  # noqa: E402
+from agent import catalog, loop, tools  # noqa: E402
+from rag import store  # noqa: E402
 
 _ROOT = os.path.join(os.path.dirname(__file__), "..")
 OUTPUT_PATH = os.path.join(_ROOT, "assets", "architecture.png")
@@ -57,7 +58,7 @@ OUTPUT_PATH = os.path.join(_ROOT, "assets", "architecture.png")
 # actually gets. SS only buys resampling quality: the image is drawn SS times
 # larger and shrunk back down at save time, so curves and small type stay clean
 # on a retina display and survive the browser's own scaling.
-WIDTH, HEIGHT = 912, 1150
+WIDTH, HEIGHT = 918, 836
 SS = 2
 
 BG = (255, 255, 255)
@@ -66,13 +67,13 @@ MUTED = (110, 117, 126)
 FAINT = (174, 181, 190)
 ARROW = (128, 134, 142)
 
-# Three states, and the middle one is the point of the picture now. Blue is a
-# step that ALWAYS costs a model call. Violet is one that costs a model call
-# only sometimes -- Observe runs the Observer when a tool returned plot text to
-# read, and is a plain context append otherwise. White is never: local Python.
-PAID_FILL, PAID_LINE = (233, 240, 253), (48, 92, 176)
-MAYBE_FILL, MAYBE_LINE = (242, 236, 250), (114, 71, 168)
-FREE_FILL, FREE_LINE = (233, 246, 237), (46, 125, 80)
+# Four kinds of work, because "costs money" was hiding a real difference: a
+# text-model call and an embedding call differ by about four orders of
+# magnitude, and neither is the same as reading a CSV off disk.
+PAID_FILL, PAID_LINE = (233, 240, 253), (48, 92, 176)      # text model
+MAYBE_FILL, MAYBE_LINE = (242, 236, 250), (114, 71, 168)   # embedding model
+FREE_FILL, FREE_LINE = (233, 246, 237), (46, 125, 80)      # pure Python
+IO_FILL, IO_LINE = (252, 246, 233), (176, 122, 30)         # local data
 PLAIN_FILL, PLAIN_LINE = (255, 255, 255), (150, 157, 165)
 PANEL_FILL, PANEL_LINE = (250, 251, 252), (219, 224, 230)
 
@@ -234,9 +235,10 @@ def main() -> None:
     # Top right, stacked, so it clears the title and reads downward the way the
     # boxes it explains are stacked.
     entries = [
-        (PAID_FILL, PAID_LINE, "always a model call"),
-        (MAYBE_FILL, MAYBE_LINE, "a model call for some tools, not others"),
-        (FREE_FILL, FREE_LINE, "never \u2014 local Python, free"),
+        (PAID_FILL, PAID_LINE, "text-model call"),
+        (MAYBE_FILL, MAYBE_LINE, "embedding call \u00b7 ~$0.0000002 each"),
+        (FREE_FILL, FREE_LINE, "pure Python \u00b7 free"),
+        (IO_FILL, IO_LINE, "local data \u00b7 read from disk once"),
     ]
     lw = max(_width(draw, label, 14) for _, _, label in entries)
     lx = WIDTH - 36 - lw - 20
@@ -245,156 +247,94 @@ def main() -> None:
         _swatch(draw, lx, ly, fill, line)
         _text(draw, (lx + 20, ly - 2), label, MUTED, 14)
 
-    # ---- the loop ------------------------------------------------------
-    # Boxes carry MODULE names, not the ReAct vocabulary. "Reason / Act /
-    # Observe / Stop?" described the shape but named nothing a reader could
-    # find again: the trace says Planner, the tools say CatalogFilter, and the
-    # assignment asks for the diagram and the steps to use the same words. It
-    # also left out the one step that now decides whether an answer is
-    # returned at all, which made the picture flattering as well as vague.
-    frame = (210, 130, 680, 555)
-    _dashed_rect(draw, frame)
+    # ---- the pipeline --------------------------------------------------
+    # A fixed route, drawn as one. Which stages run depends only on which
+    # fields the plan filled in, so two runs of the same request produce the
+    # same shape of trace; what varies is what the films turn out to say.
+    request = (30, 196, 190, 286)
+    decomp  = (222, 176, 410, 306)
+    stages  = (445, 150, 690, 332)
+    walk    = (222, 396, 410, 526)
+    answer  = (445, 396, 690, 526)
+    reply   = (725, 396, 882, 526)
 
-    reason = (235, 175, 425, 300)
-    act = (490, 175, 655, 300)
-    observe = (490, 385, 655, 510)
-    stop = (235, 385, 425, 510)
+    _box(draw, request, "Request", ("natural language,", "mixed constraints"),
+         title_size=21, sub_size=14)
 
-    _box(draw, reason, "Planner", ("one model call,", "every round"),
-         fill=PAID_FILL, line=PAID_LINE, title_size=27, sub_size=15)
-    _box(draw, act, "Tools", ("the five below,", "any order, any round"),
-         title_size=27, sub_size=15)
-    _box(draw, observe, "Readers", ("a tool sends one", "when it reads plots"),
-         fill=MAYBE_FILL, line=MAYBE_LINE, title_size=27, sub_size=15)
-    _box(draw, stop, "Asked for", ("a tool this round?", ""),
-         title_size=25, sub_size=15)
-    # The exit condition is the model's own output: a round that requests a
-    # tool continues the loop, and a round that requests none is its attempt at
-    # an answer. Whether that attempt is returned is the next box's decision,
-    # not the model's.
+    _box(draw, decomp, "QueryDecomposer", ("reads it once,", "returns a plan"),
+         fill=PAID_FILL, line=PAID_LINE, title_size=19, sub_size=14)
 
-    # Clockwise, with the return edge closing it. Without that edge the same
-    # four boxes read as four stages.
-    _arrow(draw, (427, 237), (486, 237), fill=CYCLE, width=3)
-    _arrow(draw, (572, 302), (572, 381), fill=CYCLE, width=3)
-    _arrow(draw, (488, 447), (429, 447), fill=CYCLE, width=3)
-    _arrow(draw, (320, 383), (320, 304), fill=CYCLE, width=3)
-    _label(draw, 390, 343, "Yes  →  loop again", colour=CYCLE, size=16, bold=True)
+    # The three stages share a frame because they are one pass, not three
+    # decisions: the plan says which of them have anything to do.
+    _dashed_rect(draw, stages)
+    _text(draw, (462, 164), "PLAN DRIVES THESE", MUTED, 13, bold=True)
+    for k, (name, sub, fill, line) in enumerate([
+        ("CatalogFilter", "columns \u00b7 exact", FREE_FILL, FREE_LINE),
+        ("LexicalScreen", "word scan \u00b7 every plot", FREE_FILL, FREE_LINE),
+        ("ShortlistFusion", "one embedding per condition", MAYBE_FILL, MAYBE_LINE),
+    ]):
+        y0 = 188 + k * 46
+        draw.rounded_rectangle(_st((462, y0, 673, y0 + 38)), radius=_s(7),
+                               fill=fill, outline=line, width=_s(1))
+        _text(draw, (474, y0 + 4), name, INK, 16, bold=True)
+        _text(draw, (474, y0 + 21), sub, MUTED, 12)
 
-    # ---- request in, answer out ----------------------------------------
-    # The check is a box because it is a step, and the only one that can stop
-    # an answer reaching the user. Drawing it as an edge said the loop falls
-    # out into a reply, which was true before the gates and is the single most
-    # misleading thing the old picture said.
-    request = (20, 187, 185, 287)
-    check = (705, 175, 878, 300)
-    answer = (705, 385, 878, 510)
+    _box(draw, walk, "CandidateWalk", ("best first, until 3 pass", "or 10 are read"),
+         fill=FREE_FILL, line=FREE_LINE, title_size=21, sub_size=14)
+    _box(draw, answer, "Answerer", ("writes the reply from", "what was accepted"),
+         fill=PAID_FILL, line=PAID_LINE, title_size=21, sub_size=14)
+    _box(draw, reply, "Reply", ("with the evidence", "it checked"),
+         title_size=20, sub_size=13)
 
-    _box(draw, request, "User request",
-         ("natural language,", "mixed constraints"), title_size=20, sub_size=14)
-    _box(draw, check, "Answer check",
-         ("every film verified?", "count right? no offer?"),
-         fill=FREE_FILL, line=FREE_LINE, title_size=20, sub_size=13)
-    _box(draw, answer, "Final answer",
-         ("with the evidence", "it actually checked"), title_size=20, sub_size=14)
+    # The Verifier hangs off the walk: one call per film, which is where a
+    # verifying request spends nearly all of its money.
+    verifier = (222, 578, 690, 646)
+    draw.rounded_rectangle(_st(verifier), radius=_s(9),
+                           fill=PAID_FILL, outline=PAID_LINE, width=_s(2))
+    _text(draw, (244, 592), "Verifier", INK, 21, bold=True)
+    _text(draw, (244 + _width(draw, "Verifier", 21, True) + 16, 598),
+          "one film \u00b7 every condition \u00b7 quotes what decides it",
+          MUTED, 14)
 
-    _arrow(draw, (187, 237), (231, 237))
-
-    # "No" leaves the loop from the decision box, under the frame, and comes up
-    # into the check rather than into the answer. Right of x=390 so the tool
-    # connector, which drops on the left, has nothing to cross.
-    # Right of the answer box, not through it. Routed at x=892 because the
-    # obvious path -- straight up at x=791 -- crossed "Final answer" on its way
-    # to the check, drawing a line that said the attempt reaches the reader
-    # before anything has looked at it.
-    _elbow(draw, [(390, 512), (390, 600), (892, 600), (892, 237), (882, 237)],
+    _arrow(draw, (192, 241), (218, 241))
+    _arrow(draw, (412, 241), (441, 241), fill=CYCLE, width=3)
+    # down the right of the stage frame and back left into the walk
+    _elbow(draw, [(567, 334), (567, 360), (316, 360), (316, 392)],
            fill=CYCLE, width=3)
-    _label(draw, 520, 600, "No  →  this round is an attempt",
-           colour=CYCLE, size=16, bold=True)
-
-    # Pass, and it is the reply. Fail, and the planner gets one turn to fix it,
-    # which is why this edge goes back into the frame instead of ending here.
-    _arrow(draw, (791, 302), (791, 381), fill=CYCLE, width=3)
-    _label(draw, 800, 343, "passes", colour=CYCLE, size=15, bold=True)
-
-    _elbow(draw, [(705, 237), (692, 237), (692, 118), (330, 118), (330, 172)],
+    _arrow(draw, (316, 528), (316, 574), fill=CYCLE, width=3)
+    _elbow(draw, [(690, 612), (706, 612), (706, 500), (688, 500)],
            fill=CYCLE, width=3)
-    _label(draw, 430, 118, "fails  →  one correction round",
-           colour=CYCLE, size=15, bold=True)
+    _label(draw, 400, 366, "candidates", colour=MUTED, size=13)
+    _label(draw, 250, 552, "one call per film", colour=MUTED, size=13)
+    _label(draw, 620, 552, "verdicts", colour=MUTED, size=13)
+    _arrow(draw, (692, 461), (721, 461), fill=CYCLE, width=3)
 
-    # ---- tools ---------------------------------------------------------
-    # An inventory, not a chain: every tool is available on every turn. Left to
-    # right is cheapest to dearest, which is the order the prompt recommends and
-    # the planner usually adopts -- a preference, not a path, so nothing here
-    # connects one tool to the next. The connector leaves the frame rather than
-    # the Act box for the same reason: any turn may call any tool.
-    panel = (36, 645, 864, 956)
+    # The check sits on the last edge because it is the last thing that
+    # happens, and it is the only thing that can stop a reply.
+    _label(draw, 694, 434, "answer check", colour=FREE_LINE, size=12, bold=True)
+
+    # ---- what the stages read -----------------------------------------
+    # The data layer, which every earlier picture left out. It is not a step
+    # and nothing calls it; it is what the stages are reading when they look
+    # free, and the reason they are.
+    panel = (36, 690, 882, 806)
     draw.rounded_rectangle(_st(panel), radius=_s(11), fill=PANEL_FILL,
                            outline=PANEL_LINE, width=_s(2))
-    _text(draw, (60, 664), "TOOLS", MUTED, 15, bold=True)
-    _text(draw, (60 + _width(draw, "TOOLS", 15, True) + 12, 665),
-          "any order, any turn · violet reaches a model", FAINT, 14)
-
-    # Left of x=390, so the "Yes" elbow above has nothing to knock out.
-    _arrow(draw, (280, 557), (280, 641), both=True)
-    _label(draw, 188, 599, "call · result", colour=MUTED, size=14)
-
-    specs = [
-        ("filter_catalog", "structured facts", "\U0001F5C2", False),
-        ("screen_out", "exhaustive scan", "\U0001F6AB", False),
-        ("build_shortlist", "one embedding per condition \u00b7 fused", "\U0001F50E", True),
-        ("read_synopses", "plot text, on request", "\U0001F4D6", False),
-        ("verify_candidates", "walks the shortlist \u00b7 calls the Verifier",
-         "\u2705", True),
-    ]
-    row_h, row_gap, row_y = 44, 7, 694
-    for i, (key, sub, glyph, calls_model) in enumerate(specs):
-        y0 = row_y + i * (row_h + row_gap)
-        fill, line = ((MAYBE_FILL, MAYBE_LINE) if calls_model
-                      else (FREE_FILL, FREE_LINE))
-        draw.rounded_rectangle(_st((60, y0, 840, y0 + row_h)), radius=_s(8),
-                               fill=fill, outline=line, width=_s(1))
-        tx = 76
-        icon = _emoji(glyph, 20)
-        if icon is not None:
-            img.paste(icon, (_s(tx), _s(y0) + int((_s(row_h) - _s(20)) / 2)), icon)
-            tx += 30
-        _text(draw, (tx, y0 + 11), tools.TRACE_NAMES[key], INK, 19, bold=True)
-        _text(draw, (824 - _width(draw, sub, 15), y0 + 15), sub, MUTED, 15)
-
-    # ---- readers ------------------------------------------------------
-    # The two modules that call a model without the planner asking them to.
-    # They were missing, and the Verifier had been sitting in the tools row
-    # above, which said it was something the planner invokes -- it is not.
-    # SynopsisReader sends the Observer; CandidateWalk sends the Verifier, once
-    # per film. Naming them here is the difference between five tools and five
-    # tools plus two readers, which is what the trace actually shows.
-    rpanel = (36, 971, 864, 1131)
-    draw.rounded_rectangle(_st(rpanel), radius=_s(11), fill=PANEL_FILL,
-                           outline=PANEL_LINE, width=_s(2))
-    _text(draw, (60, 990), "READERS", MUTED, 15, bold=True)
-    _text(draw, (60 + _width(draw, "READERS", 15, True) + 12, 991),
-          "model calls a tool makes on your behalf \u00b7 never called directly",
+    _text(draw, (60, 709), "LOCAL DATA", MUTED, 15, bold=True)
+    _text(draw, (60 + _width(draw, "LOCAL DATA", 15, True) + 12, 710),
+          "committed to the repo \u00b7 loaded once \u00b7 nothing fetched at request time",
           FAINT, 14)
 
-    readers = [
-        ("Observer", "one question, many films",
-         "sent by SynopsisReader", "\U0001F50D"),
-        ("Verifier", "one film, every condition",
-         "sent by CandidateWalk, once per film", "\u2696"),
-    ]
-    for i, (name, what, sent, glyph) in enumerate(readers):
-        y0 = 1020 + i * 51
-        draw.rounded_rectangle(_st((60, y0, 840, y0 + 44)), radius=_s(8),
-                               fill=MAYBE_FILL, outline=MAYBE_LINE, width=_s(1))
-        tx = 76
-        icon = _emoji(glyph, 20)
-        if icon is not None:
-            img.paste(icon, (_s(tx), _s(y0) + int((_s(44) - _s(20)) / 2)), icon)
-            tx += 30
-        _text(draw, (tx, y0 + 11), name, INK, 19, bold=True)
-        _text(draw, (tx + _width(draw, name, 19, True) + 14, y0 + 15), what, MUTED, 15)
-        _text(draw, (824 - _width(draw, sent, 14), y0 + 16), sent, FAINT, 14)
+    for k, (name, sub) in enumerate([
+        ("Catalog", f"{len(catalog.movies())} films \u00b7 columns, ratings, runtimes"),
+        ("Passage index", f"{store.coverage()['chunks']:,} vectors of plot text "
+                          f"\u00b7 {store.coverage()['dim']}-dim"),
+    ]):
+        x0 = 60 + k * 420
+        draw.rounded_rectangle(_st((x0, 736, x0 + 396, 786)), radius=_s(8),
+                               fill=IO_FILL, outline=IO_LINE, width=_s(1))
+        _text(draw, (x0 + 16, 746), name, INK, 17, bold=True)
+        _text(draw, (x0 + 16, 766), sub, MUTED, 13)
 
     # Saved at full SS resolution rather than resampled back down. The browser
     # caps it at the container width either way, so the layout sizes above are
@@ -406,9 +346,10 @@ def main() -> None:
           f"laid out as {WIDTH}x{HEIGHT} at {SS}x)")
     # Reported, not drawn: the bound is a cost guard rather than something
     # a reader needs in order to follow the picture.
-    print(f"  loop bound: {loop.MAX_ROUNDS} model turns (not shown)")
-    print(f"  modules: Planner, Observer, "
-          f"{', '.join(tools.TRACE_NAMES[k] for k, *_ in specs)}")
+    print(f"  call cap: {loop.MAX_TOTAL_LLM_CALLS} model calls, "
+          f"{tools.MAX_VERIFICATIONS} verifications (not shown)")
+    print(f"  roles: QueryDecomposer, Verifier, Answerer")
+    print(f"  stages: {', '.join(sorted(tools.TRACE_NAMES.values()))}")
 
 
 if __name__ == "__main__":

@@ -1,122 +1,48 @@
-"""MoviBot's agent loop: native tool calling, bounded, fully traced.
+"""MoviBot's pipeline: decompose, execute, verify, answer, check.
 
-    plan -> call tools -> observe -> (repeat) -> answer, gated on evidence
+    request -> QueryDecomposer -> [ filter -> screen -> shortlist -> walk ]
+            -> Verifier x N -> Answerer -> answer check -> reply
 
-The model chooses which tools to call and when to stop. What it cannot choose
-is how long to keep going.
+Three model roles, and everything between them is ordinary Python. The
+QueryDecomposer reads the request once and returns a plan; the stages run in a
+fixed order driven by that plan's fields; the Verifier settles one film at a
+time against every condition; the Answerer writes the reply from what was
+accepted, and cannot reach anything else.
 
-**Two bounds, and they are different quantities.** MAX_ROUNDS bounds the
-planner's turns. It does not bound spend, because the planner is not the only
-thing that calls a model: every read_synopses that returns text sends the
-Observer, so one round can cost two calls. A cap on rounds was therefore being
-quoted as a cap on cost, which it never was -- five rounds could be eleven
-calls, and nothing in the code said otherwise.
+**The route is fixed and the evidence is not.** Which stages run depends only
+on which fields the plan filled in, so two runs of the same request produce
+the same shape of trace. What varies is what the films turn out to say.
 
-MAX_TOTAL_LLM_CALLS is the real budget. It counts planner and Observer calls
-together, is enforced here rather than asked for in a prompt, and reserves its
-last call for the planner so a request runs out of budget holding an answer
-instead of a timeout.
+Cost per request:
 
-Cost per request, worst case:
+    1 model call    QueryDecomposer
+    <= MAX_VERIFICATIONS   one per candidate film, stopping early once enough
+                           are accepted
+    1 model call    Answerer, plus at most one more if the check rejects it
+    <= MAX_TOTAL_LLM_CALLS in total, enforced here rather than requested
 
-    <= MAX_ROUNDS rounds               (planner turns)
-    <= MAX_TOTAL_LLM_CALLS model calls (paid -- planner + Verifier + Observer)
-    unlimited tool calls               (free, except the two that call out)
-
-Most tool calls are free, which inverts the usual tuning problem: there is no
-reason to skimp on them, only on model calls, which is exactly what this loop
-bounds. Two are not free and both are counted -- build_shortlist spends one
-embedding per condition, and verify_candidates spends one text call per film
-it checks, which is why the remaining budget is threaded into the tool rather
-than checked only between calls.
-
-**The exit is gated on evidence.** Two checks stand between the model's final
-message and the caller: the answer may not name more films than the ceiling,
-and it may not name a film that verification did not accept. Both are checked
-rather than requested, and each costs one correction turn. The second is what
-makes a greedy shortcut pointless: skipping verification produces films with
-no verdicts, and no answer can be built out of them.
+The last thing that happens is a check, not a model call. An answer may not
+name a film verification did not accept, omit one it did, name more films than
+the ceiling, or offer a follow-up this API cannot honour. Each failure costs
+one correction call. The Answerer decides how the reply reads; it does not
+decide what counts as checked.
 """
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
-from agent import catalog, llm_client, observer, prompts, tools, verifier
+from agent import answerer, catalog, decomposer, llm_client, tools, verifier
 
-# Enough for filter -> search -> read -> answer, with one round spare for a
-# correction. Queries needing more than this are usually a sign the model is
-# thrashing, and cutting it off is cheaper than letting it continue.
-MAX_ROUNDS = 5
-
-# The one that bounds spend. Sized against the busiest request actually
-# observed, which spent six calls (three planner rounds and three Observer
-# reads), so there is real headroom rather than a bound that binds at the
-# worst case already seen.
-#
-# One Observer call adjudicates a whole read, up to MAX_SYNOPSES films, so
-# this is not the limit on how much text gets inspected -- at 12 the worst
-# case still leaves seven reads, which is 56 films, against a catalog of 316
-# and a shortlist that is never more than a few dozen. What actually bounds
-# inspection is MAX_SYNOPSES, per read.
-#
-# The pool is shared, which means a planner that thrashes through five rounds
-# leaves less for the Observer. That is a real tradeoff and it is the reason
-# the number is 12 rather than 8: the slack absorbs a thrashing planner
-# without starving the reader.
-#
-# Raising MAX_ROUNDS without raising this does nothing, which is the right way
-# round -- rounds are a thinking budget, calls are the bill.
+# The whole request's budget, counting every role. Enforced here and threaded
+# into the stages that spend inside a single call, so a walk cannot overrun it
+# between checks.
 MAX_TOTAL_LLM_CALLS = 16
 
-
-class _Budget:
-    """Counts the two kinds of model call, so neither can hide inside the other.
-
-    Kept as an object rather than two ints because the reserve rule -- never
-    spend the last call on an Observer -- is a question about the pair, and
-    written inline it would be an off-by-one waiting to happen.
-    """
-
-    def __init__(self) -> None:
-        self.planner = 0
-        self.observer = 0
-        self.verifier = 0
-
-    @property
-    def total(self) -> int:
-        return self.planner + self.observer + self.verifier
-
-    @property
-    def remaining(self) -> int:
-        return MAX_TOTAL_LLM_CALLS - self.total
-
-    def can_observe(self) -> bool:
-        """Only when a planner call would still be affordable afterwards.
-
-        An Observer call that consumes the last of the budget buys evidence
-        nobody can spend: the planner never gets another turn to write it up,
-        so the user pays for a read and receives a timeout.
-        """
-        return self.remaining >= 2
-
-    def as_dict(self) -> dict[str, int]:
-        return {"planner": self.planner, "observer": self.observer,
-                "verifier": self.verifier, "total": self.total,
-                "cap": MAX_TOTAL_LLM_CALLS}
-
-
-# Closing offers, as literal phrasings. Checked rather than asked for, because
-# the ceiling taught this lesson already: a rule the model can read past twice
-# is not a rule. Two of these -- "If you want, I can give you two more 1990s
-# Disney options" -- were produced by a prompt that already forbade them.
-#
-# Deliberately narrow. Each pattern is an OFFER of future work, not merely a
-# first-person verb: "I can only stand behind one title" is an honest report
-# and must survive, while "I can give you two more" is the failure. When in
-# doubt the pattern is left out -- a missed offer costs a little polish, and a
-# false positive costs a correction turn on a good answer.
+# Closing offers, as literal phrasings. Checked rather than asked for: the
+# prompt forbids them and produced "If you want, I can give you two more"
+# anyway. Narrow on purpose -- "I can only stand behind one title" is an honest
+# report and must survive, while "I can give you two more" is the failure.
 FOLLOW_UP_OFFERS = (
     "if you want", "if you'd like", "if you would like", "if you like",
     "want me to", "want two more", "want another", "want a few more",
@@ -127,16 +53,31 @@ FOLLOW_UP_OFFERS = (
 )
 
 
-def _closing_offer(answer: str) -> str | None:
-    """The phrase that turns a finished answer into an unkeepable promise.
+class _Budget:
+    """Counts every model call, so no role can hide inside another."""
 
-    Returns the matched phrase, or None. There is no conversation here: the
-    next request arrives with no memory of this one, so "want two more?" is a
-    promise the agent cannot keep -- and it is usually evidence of a second
-    failure, because films it offers to name later were films it could have
-    named now.
-    """
-    lowered = answer.lower()
+    def __init__(self) -> None:
+        self.decomposer = 0
+        self.verifier = 0
+        self.answerer = 0
+
+    @property
+    def total(self) -> int:
+        return self.decomposer + self.verifier + self.answerer
+
+    @property
+    def remaining(self) -> int:
+        return MAX_TOTAL_LLM_CALLS - self.total
+
+    def as_dict(self) -> dict[str, int]:
+        return {"decomposer": self.decomposer, "verifier": self.verifier,
+                "answerer": self.answerer, "total": self.total,
+                "cap": MAX_TOTAL_LLM_CALLS}
+
+
+def _closing_offer(text: str) -> str | None:
+    """The phrase that turns a finished answer into a promise nothing can keep."""
+    lowered = text.lower()
     for phrase in FOLLOW_UP_OFFERS:
         if phrase in lowered:
             return phrase
@@ -144,34 +85,16 @@ def _closing_offer(answer: str) -> str | None:
 
 
 def execute(prompt: str) -> dict[str, Any]:
-    """Answer one user request.
+    """Answer one request.
 
-    Returns the /api/execute contract, which fixes the top-level fields
-    exactly -- four, no more:
-        {"status": "ok"|"error", "error": str|None,
-         "response": str|None, "steps": [...]}
-
-    Everything diagnostic therefore lives inside a step, where the spec only
-    requires that module, prompt and response be present. Token usage rides on
-    the Planner step that spent it; the working set after each tool call rides
-    on that tool's step as `scope`. The condition ledger needs no field of its
-    own: it is the content of the first Planner step's response.
-
-    `steps` traces every model turn and tool call in order, so the whole
-    decision path is inspectable from the API response alone.
+    Returns the /api/execute contract, whose top-level fields are fixed at
+    four. Everything diagnostic therefore lives inside a step: every model
+    call is one step carrying its own system and user prompt, and every
+    deterministic stage is one step carrying its arguments and its result, so
+    the whole path is inspectable from the response alone.
     """
     steps: list[dict[str, Any]] = []
-    # The candidate set for this request. filter_catalog fills it; search and
-    # read scope themselves to it. It never enters the prompt, and it dies with
-    # the request, so there is no cross-request state to reason about.
-    ctx = tools.ToolContext()
     budget = _Budget()
-    corrected = False
-    # What verification actually accepted, and what it looked at. Held here, in
-    # Python, because the exit gate below compares the answer against it: a
-    # film the model names is recommendable only if it is in this set.
-    verified: dict[str, set[str] | bool] = {"accepted": set(), "seen": set(),
-                                            "ran": False}
 
     if not prompt or not prompt.strip():
         return _error("The 'prompt' field is required.", steps)
@@ -179,476 +102,216 @@ def execute(prompt: str) -> dict[str, Any]:
     if not llm_client.is_configured():
         return _error(
             "MoviBot cannot compose an answer: OPENAI_API_KEY is unset or "
-            "still a placeholder value. The catalog and search tools run "
-            "locally and are unaffected.",
+            "still a placeholder value. The catalog and screen run locally "
+            "and are unaffected.",
             steps,
         )
-
-    messages: list[dict[str, Any]] = [
-        {"role": "system", "content": prompts.SYSTEM_PROMPT},
-        {"role": "user", "content": prompt.strip()},
-    ]
 
     try:
-        for round_index in range(MAX_ROUNDS):
-            # Two ways to be on the last turn, and the budget is the one that
-            # can arrive early: an Observer-heavy request exhausts calls before
-            # it exhausts rounds. Either way the tools are withheld, so the
-            # model has to answer with what it already has instead of
-            # requesting a call we would have to discard.
-            last_affordable = budget.remaining <= 1
-            final_round = round_index == MAX_ROUNDS - 1 or last_affordable
+        # ---- decompose -------------------------------------------------
+        got = decomposer.decompose(prompt)
+        budget.decomposer += 1
+        plan = got.get("plan")
+        steps.append({
+            "module": "QueryDecomposer",
+            "usage": got.get("usage"),
+            "llm_calls": budget.as_dict(),
+            "prompt": {"system_prompt": decomposer.DECOMPOSER_PROMPT,
+                       "user_prompt": prompt.strip()},
+            "response": plan if plan else {"error": got.get("error"),
+                                           "raw": got.get("raw", "")},
+        })
+        if not plan:
+            return _error(got.get("error") or "The request could not be read.", steps)
 
-            message, usage = llm_client.complete(
-                messages, tools=None if final_round else tools.TOOL_SCHEMAS
-            )
-            budget.planner += 1
-            tool_calls = getattr(message, "tool_calls", None) or []
+        # A refusal and a question about the agent both skip every stage: the
+        # decomposer already wrote what there is to say, and running a filter
+        # to confirm a film does not exist would be theatre.
+        if plan["outcome"] in ("refuse", "about_self") and plan["message"]:
+            return {"status": "ok", "error": None,
+                    "response": plan["message"], "steps": steps}
 
-            steps.append({
-                "module": "Planner",
-                "round": round_index + 1,
-                "usage": usage,
-                # Both counts, on every planner step. The distinction between
-                # rounds and calls is exactly what was being blurred, so the
-                # trace states it rather than leaving a reader to infer it.
-                "llm_calls": budget.as_dict(),
-                "prompt": {
-                    "system_prompt": prompts.SYSTEM_PROMPT,
-                    "user_prompt": prompt.strip() if round_index == 0 else "(continued)",
-                },
-                "response": {
-                    "content": message.content,
-                    "tool_calls": [
-                        {"name": c.function.name, "arguments": c.function.arguments}
-                        for c in tool_calls
-                    ],
-                },
-            })
+        # ---- execute ---------------------------------------------------
+        ctx = tools.ToolContext()
+        evidence: dict[str, Any] = {"conditions": plan["conditions"]}
 
-            if not tool_calls:
-                answer = (message.content or "").strip()
-                if not answer:
-                    return _error(
-                        "The model returned an empty answer.", steps
-                    )
+        result = tools.filter_catalog(ctx=ctx, **plan["filter"])
+        steps.append(_tool_step("CatalogFilter", plan["filter"], ctx, result, budget))
+        evidence["filtered_to"] = result.get("matched")
+        if not result.get("matched"):
+            evidence["note"] = "No film matches the catalog constraints."
 
-                # The ceiling is checked, not requested. Two rounds of prompt
-                # wording failed on it: one answer listed six films and then
-                # quoted the "at most three" line underneath them, which is
-                # what an instruction looks like when it has become boilerplate.
-                # Counting is exact -- every film is named "Title (Year)" and
-                # the catalog knows all 316 -- so the loop can simply refuse to
-                # return an over-long answer, and pay one turn to fix it.
-                named = catalog.labels_in(answer)
+        if plan["screen"] and result.get("matched"):
+            screen_args = dict(plan["screen"])
+            screen_args.setdefault("keep", "clear")
+            result = tools.screen_out(ctx=ctx, **screen_args)
+            steps.append(_tool_step("LexicalScreen", screen_args, ctx, result, budget))
+            evidence["screen"] = {k: result.get(k) for k in
+                                  ("screened_for", "kept", "clear", "flagged",
+                                   "insufficient_text", "thin_word_list")
+                                  if result.get(k) is not None}
 
-                # The exit gate. A film may be named only if verification
-                # accepted it, and this is checked rather than requested for
-                # the same reason the ceiling below is: an instruction the
-                # model can read past is not a guarantee. It is what makes
-                # greed self-defeating -- a shortcut that skips verification
-                # produces films with no verdicts, and no answer can be built
-                # out of them, so the cheap route stops being a route at all.
-                #
-                # Only armed once verification has run. A request that never
-                # needed it -- "who are you", "what can you do", an impossible
-                # premise -- has nothing to gate, and gating it would be the
-                # loop refusing an answer for not citing evidence it was never
-                # supposed to gather.
-                unverified = ([f for f in named if f not in verified["accepted"]]
-                              if verified["ran"] else [])
-                if unverified and not corrected:
-                    corrected = True
-                    messages.append(message)
-                    messages.append({
-                        "role": "user",
-                        "content": (
-                            f"You named {', '.join(unverified)}, which "
-                            f"verification did not accept. "
-                            + (f"Accepted: {', '.join(sorted(verified['accepted']))}. "
-                               if verified["accepted"] else
-                               "Nothing was accepted. ")
-                            + "Only accepted films may be recommended, and the "
-                            "count you state must match how many there are. "
-                            "Rewrite the answer using only accepted films; if "
-                            "there are none, say plainly that nothing could be "
-                            "verified and how many films were checked. Do not "
-                            "present an unresolved title as a near-miss."
-                        ),
-                    })
-                    steps.append({
-                        "module": "Planner",
-                        "round": round_index + 1,
-                        "llm_calls": budget.as_dict(),
-                        "prompt": {"system_prompt": prompts.SYSTEM_PROMPT,
-                                   "user_prompt": "(unverified films named, answer rejected)"},
-                        "response": {"content": answer,
-                                     "rejected": f"named {unverified}, "
-                                                 f"accepted was "
-                                                 f"{sorted(verified['accepted'])}"},
-                    })
-                    continue
+        if plan["search"] and (ctx.working_set is None or ctx.working_set):
+            result = tools.build_shortlist(conditions=plan["search"], ctx=ctx)
+            steps.append(_tool_step("ShortlistFusion",
+                                    {"conditions": plan["search"]}, ctx, result, budget))
+            evidence["shortlist"] = {k: result.get(k) for k in
+                                     ("candidates", "matching_every_condition")}
 
-                # The hole underneath both of the gates below: they compare the
-                # answer against what verification accepted, and neither can
-                # say anything when verification never ran. Asked for "an
-                # animal that wears a hat" the planner screened, searched, and
-                # then recommended three films straight off the search hits --
-                # no CandidateWalk step in the trace, so every check passed on
-                # an empty record and the greedy route was open after all.
-                #
-                # A search happening means the request had a condition the
-                # catalog cannot settle. Films named on that basis have to be
-                # verified; ranking is not evidence, and a passage that scored
-                # well is not a passage that says the thing.
-                searched = bool(ctx.shortlist)
-                if searched and not verified["ran"] and named and not corrected:
-                    corrected = True
-                    messages.append(message)
-                    messages.append({
-                        "role": "user",
-                        "content": (
-                            f"You named {', '.join(named)} without calling "
-                            "verify_candidates. A search ranks passages, it "
-                            "does not establish that a film satisfies "
-                            "anything, so you have candidates and no "
-                            "evidence. Call verify_candidates with every "
-                            "condition of the request, then answer from its "
-                            "accepted list alone."
-                        ),
-                    })
-                    steps.append({
-                        "module": "Planner",
-                        "round": round_index + 1,
-                        "llm_calls": budget.as_dict(),
-                        "prompt": {"system_prompt": prompts.SYSTEM_PROMPT,
-                                   "user_prompt": "(films named without verification, answer rejected)"},
-                        "response": {"content": answer,
-                                     "rejected": f"named {named} after a search but "
-                                                 f"never called verify_candidates"},
-                    })
-                    continue
-
-                # The inverse failure, and the worse one. Verification accepted
-                # Peter Pan and the answer said "I could not verify any Disney
-                # film" -- a claim contradicted by a tool result in the same
-                # request. The gate above could not see it: it asks whether a
-                # named film was accepted, and this answer named none, so every
-                # check passed on an empty set.
-                #
-                # Reporting nothing when something was accepted is worse than
-                # reporting a film that was not, because it is invisible. A
-                # wrong recommendation can be argued with; a suppressed one
-                # looks like an honest "nothing fits".
-                missed = sorted(verified["accepted"] - set(named))
-                if verified["ran"] and verified["accepted"] and not corrected and missed \
-                        and not (set(named) & verified["accepted"]):
-                    corrected = True
-                    messages.append(message)
-                    messages.append({
-                        "role": "user",
-                        "content": (
-                            f"Verification accepted {', '.join(missed)}, and your "
-                            "answer names none of them. An accepted film satisfied "
-                            "every condition you asked about; saying nothing could "
-                            "be verified contradicts your own evidence. Recommend "
-                            f"the accepted film(s), up to "
-                            f"{prompts.MAX_RECOMMENDATIONS}, citing the quote each "
-                            "verdict came with."
-                        ),
-                    })
-                    steps.append({
-                        "module": "Planner",
-                        "round": round_index + 1,
-                        "llm_calls": budget.as_dict(),
-                        "prompt": {"system_prompt": prompts.SYSTEM_PROMPT,
-                                   "user_prompt": "(accepted films omitted, answer rejected)"},
-                        "response": {"content": answer,
-                                     "rejected": f"verification accepted {missed}, "
-                                                 f"the answer named none of them"},
-                    })
-                    continue
-
-                # Under-delivery. "A Disney movie from the 1990s" matched 61
-                # films and came back with one, which is not restraint: the
-                # request ruled almost nothing out, so it had three answers.
-                # Prompt wording did not hold this -- the same failure appeared
-                # after the rule was written -- so it is checked here.
-                #
-                # Armed only when a tool established a pool this size AND
-                # nothing narrowed the field to fewer. If verification ran and
-                # accepted two, two is the honest answer and this must stay
-                # quiet; that is the difference between a short answer and an
-                # incomplete one.
-                pool = len(ctx.working_set) if ctx.working_set is not None else 0
-                enough_verified = (not verified["ran"]
-                                   or len(verified["accepted"]) >= prompts.MAX_RECOMMENDATIONS)
-                if (not corrected and named
-                        and len(named) < prompts.MAX_RECOMMENDATIONS
-                        and pool >= prompts.MAX_RECOMMENDATIONS
-                        and enough_verified):
-                    corrected = True
-                    messages.append(message)
-                    messages.append({
-                        "role": "user",
-                        "content": (
-                            f"You named {len(named)} film(s) from a pool of "
-                            f"{pool}, and nothing ruled the others out. Give "
-                            f"{prompts.MAX_RECOMMENDATIONS}, best first, each "
-                            "with the same kind of evidence. Fewer is right "
-                            "only when fewer qualify, not when one strikes "
-                            "you as best. Do not add an offer to supply more."
-                        ),
-                    })
-                    steps.append({
-                        "module": "Planner",
-                        "round": round_index + 1,
-                        "llm_calls": budget.as_dict(),
-                        "prompt": {"system_prompt": prompts.SYSTEM_PROMPT,
-                                   "user_prompt": "(under-delivered, answer rejected)"},
-                        "response": {"content": answer,
-                                     "rejected": f"named {len(named)} of "
-                                                 f"{prompts.MAX_RECOMMENDATIONS} "
-                                                 f"from a pool of {pool}"},
-                    })
-                    continue
-
-                # An offer to continue is two failures wearing one coat: a
-                # promise no next turn can keep, and proof that qualifying
-                # films were withheld from the list. Both are fixed by the
-                # same correction, so they share a check.
-                offer = _closing_offer(answer)
-                if offer and not corrected:
-                    corrected = True
-                    messages.append(message)
-                    messages.append({
-                        "role": "user",
-                        "content": (
-                            f"Your answer says {offer!r}. There is no next "
-                            "turn: each request arrives with no memory of any "
-                            "other, so that is a promise you cannot keep. If "
-                            "you were holding back films that qualify, name "
-                            f"them now, up to {prompts.MAX_RECOMMENDATIONS} "
-                            "in total, with the same evidence for each. "
-                            "Otherwise send the same answer with the offer "
-                            "deleted and nothing put in its place. No closing "
-                            "pleasantry."
-                        ),
-                    })
-                    steps.append({
-                        "module": "Planner",
-                        "round": round_index + 1,
-                        "llm_calls": budget.as_dict(),
-                        "prompt": {"system_prompt": prompts.SYSTEM_PROMPT,
-                                   "user_prompt": "(follow-up offer, answer rejected)"},
-                        "response": {"content": answer,
-                                     "rejected": f"offered a follow-up ({offer!r}); "
-                                                 f"the interaction is stateless"},
-                    })
-                    continue
-
-                if len(named) > prompts.MAX_RECOMMENDATIONS and not corrected:
-                    corrected = True
-                    messages.append(message)
-                    messages.append({
-                        "role": "user",
-                        "content": (
-                            f"You named {len(named)} films: "
-                            f"{', '.join(named)}. The ceiling is "
-                            f"{prompts.MAX_RECOMMENDATIONS} and it is not "
-                            "negotiable. Send the same answer again keeping "
-                            "only the best "
-                            f"{prompts.MAX_RECOMMENDATIONS}, with the same "
-                            "evidence for each, and say the list is not "
-                            "complete."
-                        ),
-                    })
-                    steps.append({
-                        "module": "Planner",
-                        "round": round_index + 1,
-                        "prompt": {"system_prompt": prompts.SYSTEM_PROMPT,
-                                   "user_prompt": "(ceiling exceeded, answer rejected)"},
-                        "response": {"content": answer,
-                                     "rejected": f"named {len(named)} films, "
-                                                 f"ceiling is {prompts.MAX_RECOMMENDATIONS}"},
-                    })
-                    continue
-                return {
-                    "status": "ok",
-                    "error": None,
-                    "response": answer,
-                    "steps": steps,
-                }
-
-            # The assistant message carrying the tool calls must be replayed
-            # verbatim before the results, or the provider rejects the thread.
-            messages.append(message)
-
-            for call in tool_calls:
-                name = call.function.name
-                pending_verifier_steps: list[dict[str, Any]] = []
-                try:
-                    arguments = json.loads(call.function.arguments or "{}")
-                except json.JSONDecodeError as exc:
-                    arguments = {}
-                    result: dict[str, Any] = {
-                        "error": f"Arguments were not valid JSON: {exc}"
-                    }
-                else:
-                    ctx.calls_remaining = budget.remaining
-                    result = tools.dispatch(name, arguments, ctx)
-
-                if name == "verify_candidates" and not result.get("error"):
-                    verified["ran"] = True
-                    # One step per Verifier call, because that is what the spec
-                    # counts: "steps is an array describing every LLM call the
-                    # agent did in order". A walk that read ten films made ten
-                    # model calls and logged one step, so len(steps) and the
-                    # number of calls had stopped being the same number.
-                    #
-                    # They carry the Verifier's own system/user prompt, so
-                    # every entry in steps has the prompt shape the contract
-                    # asks for.
-                    pending_verifier_steps = [
-                        {
-                            "module": "Verifier",
-                            "round": round_index + 1,
-                            "usage": row.get("usage"),
-                            "prompt": {
-                                "system_prompt": verifier.VERIFIER_PROMPT,
-                                "user_prompt": row.get("prompt", ""),
-                            },
-                            "response": {
-                                "film": row.get("film"),
-                                "accepted": row.get("accepted"),
-                                "findings": row.get("findings"),
-                                **({"error": row["error"]} if row.get("error") else {}),
-                            },
-                        }
-                        for row in (result.get("verdicts") or [])
-                    ]
-                    verified["accepted"] |= set(result.get("accepted") or [])
-                    for bucket in ("accepted", "rejected", "unresolved"):
-                        verified["seen"] |= set(result.get(bucket) or [])
-                    # Each film cost a model call, and they were made inside
-                    # the tool, so the budget has to learn about them here or
-                    # the cap it enforces is a cap on the wrong number.
-                    budget.verifier += int(result.get("verified") or 0)
-
+        # ---- verify ----------------------------------------------------
+        if plan["verify"]:
+            ctx.calls_remaining = budget.remaining - 1   # reserve the Answerer
+            walk = tools.verify_candidates(conditions=plan["verify"],
+                                           max_accept=plan["max_films"], ctx=ctx)
+            budget.verifier += int(walk.get("verified") or 0)
+            steps.append(_tool_step("CandidateWalk",
+                                    {"conditions": plan["verify"],
+                                     "max_accept": plan["max_films"]},
+                                    ctx, {k: v for k, v in walk.items()
+                                          if k != "verdicts"}, budget))
+            for row in walk.get("verdicts") or []:
                 steps.append({
-                    "module": tools.TRACE_NAMES.get(name, name),
-                    "round": round_index + 1,
-                    "prompt": {"tool": name, "arguments": arguments},
-                    "scope": ctx.scope_note,
+                    "module": "Verifier",
+                    "usage": row.get("usage"),
                     "llm_calls": budget.as_dict(),
-                    "response": result,
+                    "prompt": {"system_prompt": verifier.VERIFIER_PROMPT,
+                               "user_prompt": row.get("prompt", "")},
+                    "response": {"film": row.get("film"),
+                                 "accepted": row.get("accepted"),
+                                 "findings": row.get("findings")},
                 })
-                # After the tool step that caused them, in the order they ran.
-                steps.extend(pending_verifier_steps)
-                pending_verifier_steps = []
+            accepted = list(walk.get("accepted") or [])
+            evidence.update({k: walk.get(k) for k in
+                             ("accepted", "rejected", "unresolved", "verified",
+                              "unsettleable", "not_verifiable")
+                             if walk.get(k)})
+            evidence["verdicts"] = _thin_verdicts(walk.get("verdicts") or [])
+        else:
+            # Nothing for a reader to settle, so the ranking is the answer and
+            # the best-rated survivors are what there is to recommend.
+            accepted = _best(ctx, plan["max_films"])
+            evidence["accepted"] = accepted
+            evidence["basis"] = ("no story condition to verify; these are the "
+                                 "best-rated films matching the catalog constraints")
 
-                # Plot text is the one payload worth a reader of its own. A
-                # synopsis read is ~5,000 tokens and would otherwise sit in the
-                # planner's context for the rest of the request, re-sent every
-                # turn, to answer a question a 422-token prompt can answer
-                # better. So the Observer reads it and the planner sees the
-                # findings instead.
-                #
-                # The full text still goes into `steps` above, so the trace
-                # stays completely auditable while the context stays small --
-                # what a reviewer can inspect and what the model must carry are
-                # deliberately different things.
-                payload = result
-                if (name == "read_synopses" and result.get("synopses")
-                        and not budget.can_observe()):
-                    # Out of budget for a second reader. The text still goes to
-                    # the planner -- unadjudicated evidence beats none -- but it
-                    # is labelled as unread, because the note the Observer path
-                    # attaches ("every quote here was checked against the text")
-                    # would be a lie about this payload.
-                    steps.append({
-                        "module": "Observer",
-                        "round": round_index + 1,
-                        "llm_calls": budget.as_dict(),
-                        "prompt": {"system_prompt": observer.OBSERVER_PROMPT,
-                                   "user_prompt": "(skipped: LLM call budget exhausted)"},
-                        "response": {"findings": [],
-                                     "skipped": f"{budget.total} of "
-                                                f"{MAX_TOTAL_LLM_CALLS} calls spent; "
-                                                f"the last is reserved for the answer"},
-                    })
-                    payload = {
-                        **result,
-                        "note": (
-                            "Read but NOT adjudicated -- the call budget was spent, so "
-                            "no Observer checked this text. Quote it only if you can see "
-                            "the words yourself, and say it was unverified."
-                        ),
-                    }
-                elif name == "read_synopses" and result.get("synopses"):
-                    seen = observer.observe(
-                        arguments.get("about") or prompt.strip(),
-                        result["synopses"],
-                    )
-                    budget.observer += 1
-                    steps.append({
-                        "module": "Observer",
-                        "round": round_index + 1,
-                        "usage": seen.get("usage"),
-                        "llm_calls": budget.as_dict(),
-                        "prompt": {
-                            "system_prompt": observer.OBSERVER_PROMPT,
-                            "user_prompt": seen.get("prompt", ""),
-                        },
-                        "response": {"findings": seen["findings"],
-                                     **({"error": seen["error"]} if seen.get("error") else {})},
-                    })
-                    # Only substitute when there is something to substitute. A
-                    # failed Observer must not silently blank the evidence.
-                    if seen["findings"]:
-                        payload = {
-                            "read": [e.get("film") for e in result["synopses"]],
-                            "question": arguments.get("about"),
-                            "findings": seen["findings"],
-                            "note": (
-                                "Read by the Observer. Every quote here is verbatim from "
-                                "the plot text and was checked against it. A verdict of "
-                                "`unclear` means the text does not settle the question -- "
-                                "do not upgrade it. You may cite these quotes; you may not "
-                                "assert anything about these films that is not in one."
-                            ),
-                        }
-
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": call.id,
-                    "content": json.dumps(payload, default=str),
-                })
-
-        # Fell out of the loop without a final answer. Name the bound that
-        # actually stopped it: "five rounds" is a misleading thing to tell
-        # someone whose request ended because it spent eight model calls.
-        return _error(
-            f"Stopped after {budget.planner} planner rounds and "
-            f"{budget.total} model calls "
-            f"(bounds: {MAX_ROUNDS} rounds, {MAX_TOTAL_LLM_CALLS} calls) "
-            "without a final answer. The query may be too open-ended for "
-            "the catalog.",
-            steps,
-        )
+        # ---- answer, then check ----------------------------------------
+        return _compose(prompt, evidence, accepted, plan, steps, budget)
 
     except Exception as exc:  # noqa: BLE001 - surfaced to the caller as JSON
         return _error(f"{type(exc).__name__}: {exc}", steps)
 
 
-def _error(
-    message: str, steps: list[dict[str, Any]]
-) -> dict[str, Any]:
-    """Errors still return the steps gathered so far -- a failed run is often
-    only diagnosable from how far it got."""
-    return {
-        "status": "error",
-        "error": message,
-        "response": None,
-        "steps": steps,
-    }
+def _compose(prompt: str, evidence: dict[str, Any], accepted: list[str],
+             plan: dict[str, Any], steps: list[dict[str, Any]],
+             budget: "_Budget") -> dict[str, Any]:
+    """Write the reply, check it, and pay for at most one correction."""
+    correction: str | None = None
+
+    for attempt in range(2):
+        payload = dict(evidence)
+        if correction:
+            payload["correction"] = correction
+
+        got = answerer.answer(prompt, payload)
+        budget.answerer += 1
+        text = got["text"]
+        steps.append({
+            "module": "Answerer",
+            "usage": got.get("usage"),
+            "llm_calls": budget.as_dict(),
+            "prompt": {"system_prompt": answerer.ANSWERER_PROMPT,
+                       "user_prompt": got.get("prompt", "")},
+            "response": {"content": text,
+                         **({"correction_of": correction} if correction else {})},
+        })
+
+        if not text:
+            return _error("The model returned an empty answer.", steps)
+
+        problem = _check(text, accepted, plan)
+        if problem is None or attempt == 1 or budget.remaining < 1:
+            # Out of attempts or out of budget: return what there is rather
+            # than an error. A flawed answer with its trace beats a timeout.
+            return {"status": "ok", "error": None, "response": text,
+                    "steps": steps,
+                    **({} if problem is None else {})}
+
+        correction = problem
+        steps.append({
+            "module": "AnswerCheck",
+            "llm_calls": budget.as_dict(),
+            "prompt": {"tool": "answer_check", "arguments": {"accepted": accepted}},
+            "response": {"rejected": problem, "content": text},
+        })
+
+    return {"status": "ok", "error": None, "response": text, "steps": steps}
+
+
+def _check(text: str, accepted: list[str], plan: dict[str, Any]) -> str | None:
+    """What is wrong with this answer, or None.
+
+    Checked rather than requested, for the reason the recommendation ceiling
+    taught: an instruction the model can read past is not a guarantee.
+    """
+    named = catalog.labels_in(text)
+    allowed = set(accepted)
+
+    unverified = [f for f in named if f not in allowed]
+    if unverified:
+        return (f"You named {', '.join(unverified)}, which was not accepted. "
+                + (f"Accepted: {', '.join(accepted)}. " if accepted
+                   else "Nothing was accepted. ")
+                + "Only accepted films may be named. If none were, say plainly "
+                  "that nothing could be verified and how many were checked.")
+
+    missed = [f for f in accepted if f not in named]
+    if accepted and not named:
+        return (f"Verification accepted {', '.join(accepted)} and your answer "
+                "names none of them. Recommend the accepted films, citing the "
+                "quote each verdict came with.")
+
+    if len(named) > plan["max_films"]:
+        return (f"You named {len(named)} films and the limit is "
+                f"{plan['max_films']}. Keep the best {plan['max_films']}, with "
+                "the same evidence for each.")
+
+    if len(named) < plan["max_films"] and len(missed) > 0:
+        return (f"You named {len(named)} of {len(accepted)} accepted films and "
+                f"left out {', '.join(missed)}. Every accepted film qualified; "
+                "name them all.")
+
+    offer = _closing_offer(text)
+    if offer:
+        return (f"Your answer says {offer!r}. There is no next turn -- each "
+                "request arrives with no memory of any other -- so that is a "
+                "promise you cannot keep. Send the same answer with the offer "
+                "deleted and nothing in its place.")
+    return None
+
+
+def _best(ctx: "tools.ToolContext", limit: int) -> list[str]:
+    """The best-rated survivors, for a request with nothing to verify."""
+    ids = sorted(ctx.working_set or (),
+                 key=lambda i: -(catalog.rating_of(i) or 0.0))[:limit]
+    return [catalog.label_of(i) for i in ids if catalog.label_of(i)]
+
+
+def _thin_verdicts(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """The verdict matrix without the plot text, which the Answerer must not
+    quote from directly -- only the sentences the Verifier already vouched for."""
+    return [{"film": r.get("film"), "accepted": r.get("accepted"),
+             "findings": r.get("findings")} for r in rows]
+
+
+def _tool_step(module: str, arguments: dict[str, Any], ctx: "tools.ToolContext",
+               result: dict[str, Any], budget: "_Budget") -> dict[str, Any]:
+    """A deterministic stage, traced with what it was given and what it left."""
+    return {"module": module, "prompt": {"tool": module, "arguments": arguments},
+            "scope": ctx.scope_note, "llm_calls": budget.as_dict(),
+            "response": result}
+
+
+def _error(message: str, steps: list[dict[str, Any]]) -> dict[str, Any]:
+    """Errors keep the steps gathered so far -- a failed run is often only
+    diagnosable from how far it got."""
+    return {"status": "error", "error": message, "response": None, "steps": steps}

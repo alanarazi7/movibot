@@ -329,7 +329,7 @@ def filter_catalog(
     out: dict[str, Any] = {
         "matched": matched,
         "filters_applied": applied or "none",
-        "scope": "search_plots and read_synopses now cover exactly these films",
+        "scope": "the screen and the shortlist now cover exactly these films",
     }
     if list_all or matched <= PREVIEW_FILMS:
         # Labels are ~10 tokens each, so even all 316 costs less than a fifth
@@ -997,96 +997,6 @@ def _trim(text: str, limit: int) -> str:
 # Tool 3: full plot text
 # ---------------------------------------------------------------------
 
-def read_synopses(
-    films: list[str],
-    about: str | None = None,
-    max_chars: int = MAX_SYNOPSIS_CHARS,
-    ctx: "ToolContext | None" = None,
-) -> dict[str, Any]:
-    """Return plot text so constraints no column encodes can be judged.
-
-    This is the only way to answer things like "nobody dies" or "warns about
-    trusting strangers": those are properties of the story, absent from
-    genres, keywords, and the one-line overview alike.
-
-    Pass `about` whenever the question is about a specific part of the story.
-    Without it, a long synopsis is truncated from the beginning, which silently
-    hides late plot developments -- reading the first 6,000 characters of
-    Frozen meets Hans as a charming prince and never reaches his betrayal.
-    With it, the most relevant passages are returned instead, in story order.
-    """
-    requested = list(films or [])[:MAX_SYNOPSES]
-    max_chars = max(500, min(int(max_chars), MAX_SYNOPSIS_CHARS))
-
-    ids, unknown = [], []
-    for label in requested:
-        movie_id = catalog.resolve(label)
-        (ids.append(movie_id) if movie_id is not None else unknown.append(label))
-
-    # Rank passages once across all requested films, then group.
-    relevant: dict[int, list[dict[str, Any]]] = {}
-    if about and about.strip() and ids:
-        for p in retrieval.search_passages(about, top_k=len(ids) * 6, candidate_ids=ids):
-            relevant.setdefault(p["movie_id"], []).append(p)
-
-    out = []
-    for movie_id in ids:
-        title = catalog.label_of(movie_id)
-        hits = relevant.get(movie_id)
-
-        if hits:
-            # Story order, not score order: the planner is reading a narrative,
-            # and passages shuffled by relevance read as incoherent.
-            chosen, used = [], 0
-            for p in sorted(hits, key=lambda h: -h["score"]):
-                if used + len(p["text"]) > max_chars:
-                    continue
-                chosen.append(p)
-                used += len(p["text"])
-            chosen.sort(key=lambda h: h["chunk_index"])
-            out.append({
-                "film": title,
-                "mode": "relevant_passages",
-                "about": about,
-                "passages": [
-                    {"chunk_index": p["chunk_index"],
-                     "relevance": round(p["score"], 4),
-                     "text": p["text"]}
-                    for p in chosen
-                ],
-                "note": "Excerpts selected for relevance, shown in story order.",
-            })
-            continue
-
-        text = catalog.synopsis(movie_id)
-        if text is None:
-            out.append({
-                "film": title, "synopsis": None,
-                "note": "No plot text available for this title.",
-            })
-            continue
-
-        truncated = len(text) > max_chars
-        out.append({
-            "film": title,
-            "mode": "full_text",
-            "synopsis": text[:max_chars],
-            "truncated": truncated,
-            "note": (
-                f"Truncated to the first {max_chars} of {len(text)} characters. "
-                "Later plot developments are NOT shown -- pass `about` to get "
-                "the passages relevant to your question instead."
-                if truncated else None
-            ),
-        })
-
-    return {
-        "requested": len(requested),
-        "unresolved": unknown or None,
-        "returned": len(out),
-        "capped_at": MAX_SYNOPSES,
-        "synopses": out,
-    }
 
 
 # ---------------------------------------------------------------------
@@ -1307,61 +1217,6 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "read_synopses",
-            "description": (
-                "Read the plot text of specific movies. This is the ONLY way "
-                "to verify constraints about what happens in the story -- "
-                "whether a character dies, who betrays whom, whether it is "
-                "frightening. Never assume such things from genre or title. "
-                f"Reads at most {MAX_SYNOPSES} movies per call, so shortlist "
-                "with the other tools first. ALWAYS pass `about` when your "
-                "question concerns a specific part of the story: without it, "
-                "long plots are cut off at the start and late developments are "
-                "silently missing."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "films": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": (
-                            "Films to read, named exactly as returned: "
-                            "\"Title (Year)\", e.g. \"Frozen (2013)\". At most "
-                            f"{MAX_SYNOPSES}."
-                        ),
-                    },
-                    "about": {
-                        "type": "string",
-                        "description": (
-                            "The ONE thing the text either shows or does not "
-                            "show, phrased so that 'yes' has a single "
-                            "meaning: 'does a major character die', 'does "
-                            "someone pretend to love another to gain power'. "
-                            "**Never phrase it two-sidedly.** 'whether the "
-                            "ending is sad or not sad' makes the verdict "
-                            "meaningless -- 'no' then answers neither half, "
-                            "and both a death scene and a warm goodbye come "
-                            "back marked the same way. Ask about the sad "
-                            "ending, and read `no` as the not-sad ones. This "
-                            "also selects which passages come back, so it is "
-                            "strongly recommended: without it a long plot "
-                            "arrives truncated at its opening and you will "
-                            "miss the ending."
-                        ),
-                    },
-                    "max_chars": {
-                        "type": "integer",
-                        "description": f"Budget per movie (hard cap {MAX_SYNOPSIS_CHARS}).",
-                    },
-                },
-                "required": ["films"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
             "name": "verify_candidates",
             "description": (
                 "Check films against EVERY condition, one model call per "
@@ -1472,7 +1327,6 @@ TRACE_NAMES = {
     "filter_catalog": "CatalogFilter",
     "screen_out": "LexicalScreen",
     "build_shortlist": "ShortlistFusion",
-    "read_synopses": "SynopsisReader",
     # The TOOL, not the module it calls. read_synopses/Observer already made
     # this distinction and verify_candidates did not, so a tool step was
     # logged under a subagent's name and the Verifier looked like something
@@ -1507,6 +1361,5 @@ _DISPATCH = {
     "filter_catalog": filter_catalog,
     "screen_out": screen_out,
     "build_shortlist": build_shortlist,
-    "read_synopses": read_synopses,
     "verify_candidates": verify_candidates,
 }

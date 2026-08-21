@@ -37,77 +37,64 @@ COURSE_EMBED_MODEL = "MB5R2CF-azure/text-embedding-3-small"
 
 
 def g03_module_names() -> list[str]:
-    """One name per module, everywhere it appears."""
-    from agent import tools
+    """One name per component, everywhere it appears.
+
+    The assignment requires the architecture diagram, the /api/agent_info
+    description and the `module` field of every steps entry to use the same
+    words. Three renames have already slipped through the gaps in this check:
+    PlotSearch outliving the tool, "Verifier" naming both a reader and the tool
+    that sends it, and the worked examples tracing a module that no longer
+    existed.
+    """
+    from agent import loop, tools
 
     failures = []
     info = json.loads((_ROOT / "agent_info.json").read_text())
-    declared = set(info["architecture"]["tool_modules"])
+    arch = info["architecture"]
+
+    roles = set(arch.get("roles") or {})
+    stages = set(arch.get("stages") or {})
     traced = set(tools.TRACE_NAMES.values())
 
-    if declared != traced:
-        failures.append(
-            f"agent_info tool_modules {sorted(declared)} != TRACE_NAMES {sorted(traced)}"
-        )
+    if stages != traced:
+        failures.append(f"agent_info stages {sorted(stages)} != TRACE_NAMES {sorted(traced)}")
+    if set(arch.get("tool_modules") or []) != traced:
+        failures.append("tool_modules disagrees with TRACE_NAMES")
+    for name in ("QueryDecomposer", "Verifier", "Answerer"):
+        if name not in roles:
+            failures.append(f"agent_info does not declare the {name} role")
+    overlap = roles & stages
+    if overlap:
+        failures.append(f"{sorted(overlap)} declared as both a role and a stage; a role "
+                        f"makes a model call and a stage does not")
 
-    # The diagram renders TRACE_NAMES[key], so the risk is a key that no longer
-    # exists rather than a name that disagrees.
-    src = (_ROOT / "scripts" / "generate_architecture_diagram.py").read_text()
-    keys = re.findall(r'\(\s*"([a-z_]+)",\s*"[^"]*",\s*"\\U', src)
-    if not keys:
-        failures.append("could not read the diagram's tool list -- check the regex here")
-    for key in keys:
-        if key not in tools.TRACE_NAMES:
-            failures.append(f"diagram names tool {key!r}, which is not in TRACE_NAMES")
+    # Every module the pipeline can log must be declared, or a trace shows a
+    # name the architecture never mentions. AnswerCheck is the exception: it is
+    # a check rather than a component, and agent_info lists what it enforces.
+    declared = roles | stages | {"AnswerCheck"}
+    loop_src = (_ROOT / "agent" / "loop.py").read_text()
+    for logged in set(re.findall(r'"module":\s*"(\w+)"', loop_src)):
+        if logged not in declared:
+            failures.append(f"loop.py logs module {logged!r}, which agent_info does not declare")
+    if not arch.get("answer_checks"):
+        failures.append("agent_info does not list what the answer check enforces")
 
-    # Every schema the model is offered must have a trace name, or a step will
-    # be logged under a module the diagram does not show.
-    for schema in tools.TOOL_SCHEMAS:
-        name = schema["function"]["name"]
-        if name not in tools.TRACE_NAMES:
-            failures.append(f"tool {name!r} is offered to the model but has no TRACE_NAME")
+    # The diagram draws these names; a rename that misses it leaves the picture
+    # describing a component nobody can find in a trace.
+    diagram = (_ROOT / "scripts" / "generate_architecture_diagram.py").read_text()
+    for name in traced | {"QueryDecomposer", "Verifier", "Answerer"}:
+        if f'"{name}"' not in diagram:
+            failures.append(f"the architecture diagram does not draw {name!r}")
 
-    # Planner and the readers are modules too, and they are the ones that make
-    # the model calls the steps trace exists to record. They are declared
-    # apart from the tools on purpose: a reader is sent by a tool and cannot
-    # be called by the planner, and collapsing the two is what let a tool step
-    # be logged under the name "Verifier".
-    if "Planner" not in (info["architecture"].get("planner_module") or ""):
-        failures.append("agent_info does not name the Planner module")
-
-    readers = info["architecture"].get("reader_modules") or {}
-    for name in ("Observer", "Verifier"):
-        if name not in readers:
-            failures.append(f"agent_info does not declare the {name} reader module")
-    for name in readers:
-        if name in declared:
-            failures.append(f"{name!r} is declared both as a tool and as a reader; a "
-                            f"reader is sent by a tool, not called by the planner")
-
-    # The worked examples in agent_info are a trace like any other, and they go
-    # stale the moment a module is renamed -- which is exactly what happened
-    # when PlotSearch became ShortlistFusion and the examples kept naming a
-    # module that no longer exists. Nothing checked them, because this gate
-    # only ever read the declarations.
-    declared_all = declared | {"Planner"} | set(readers)
+    # The worked examples are a trace like any other and go stale on a rename.
     for i, example in enumerate(info.get("prompt_examples") or []):
         for step in example.get("steps") or []:
             module = step.get("module")
-            if module and module not in declared_all:
+            if module and module not in declared:
                 failures.append(
                     f"prompt_examples[{i}] traces module {module!r}, which is not a "
-                    f"module any more -- regenerate the examples with "
-                    f"scripts/capture_examples.py"
-                )
+                    f"module any more -- regenerate with scripts/capture_examples.py")
                 break
-
-    # Every module the loop can log must be declared somewhere in agent_info,
-    # or a trace shows a name the architecture never mentions.
-    loop_src = (_ROOT / "agent" / "loop.py").read_text()
-    for logged in set(re.findall(r'"module":\s*"(\w+)"', loop_src)):
-        if logged not in declared_all:
-            failures.append(f"loop.py logs module {logged!r}, which agent_info does not declare")
-
     return failures
 
 
@@ -121,7 +108,7 @@ def g05_runtime_is_structured() -> list[str]:
     the column, the argument, the schema and the returned field together, and
     checks the bounds the prompt states in prose.
     """
-    from agent import catalog, prompts, tools
+    from agent import catalog, decomposer, tools
 
     failures = []
     df = catalog.movies()
@@ -167,7 +154,7 @@ def g05_runtime_is_structured() -> list[str]:
                         "the planner can filter on length but not show it")
 
     # The bounds are stated in prose in two places. Typed-in numbers rot.
-    for where, text in [("the system prompt", prompts.SYSTEM_PROMPT),
+    for where, text in [("the decomposer prompt", decomposer.DECOMPOSER_PROMPT),
                         ("filter_catalog's description",
                          schema["function"]["description"])]:
         if f"{lo} to {hi} minutes" not in text:
@@ -190,111 +177,35 @@ def g04_models() -> list[str]:
 
 
 def g06_call_budget() -> list[str]:
-    """The total-call cap holds against a model that never stops calling tools.
+    """The published call cap is the enforced one, and the roles are counted apart.
 
-    Free, offline and hermetic: the model, the Observer and the tool dispatch
-    are all stubbed, so this drives the real loop with a fake adversary rather
-    than paying to discover the bound. Stubbing dispatch matters -- the first
-    version of this gate called the real read_synopses, which needs an
-    embedding, raised without credentials, and returned an error the loop
-    treated as "nothing to observe". The gate passed while exercising none of
-    the code it exists to check.
-
-    The adversary is the worst case on purpose: every planner turn asks to read
-    synopses, so every round tries to spend two calls. What is asserted is that
-    the cap binds the SUM. A round limit alone lets this exact adversary spend
-    eleven calls while honestly reporting five rounds.
+    The adversary this used to drive is gone with the loop it exploited: the
+    route is fixed now, so no plan can ask for an unbounded number of calls.
+    What remains checkable for free is that the ceiling a request can reach --
+    one decomposer, MAX_VERIFICATIONS verifiers, two answerer attempts -- fits
+    inside the cap, and that agent_info publishes the number the code uses.
     """
-    from agent import llm_client, loop, observer, tools
+    from agent import loop, tools
 
     failures = []
+    worst = 1 + tools.MAX_VERIFICATIONS + 2
+    if worst > loop.MAX_TOTAL_LLM_CALLS:
+        failures.append(f"the worst case is {worst} calls (1 decomposer + "
+                        f"{tools.MAX_VERIFICATIONS} verifiers + 2 answerer attempts) "
+                        f"against a cap of {loop.MAX_TOTAL_LLM_CALLS}")
 
-    class _Call:
-        def __init__(self, name, arguments):
-            self.id = "stub"
-            self.function = type("F", (), {"name": name, "arguments": arguments})()
+    ledger = loop._Budget().as_dict()
+    if set(ledger) != {"decomposer", "verifier", "answerer", "total", "cap"}:
+        failures.append(f"the budget reports {sorted(ledger)}; each role has to be "
+                        f"counted apart or one hides inside another")
 
-    class _Msg:
-        def __init__(self, calls):
-            self.content = None if calls else "Final answer, no film named."
-            self.tool_calls = calls
-
-    calls = {"planner": 0, "observer": 0}
-
-    def fake_complete(messages, tools=None):
-        calls["planner"] += 1
-        # Keep asking to read, forever, unless the loop withholds the schemas.
-        if tools is None:
-            return _Msg([]), {"total_tokens": 0}
-        return _Msg([_Call("read_synopses",
-                           '{"films": ["Inside Out (2015)"], "about": "anything"}')]), \
-            {"total_tokens": 0}
-
-    def fake_dispatch(name, arguments, ctx=None):
-        return {"synopses": [{"film": "Inside Out (2015)",
-                              "synopsis": "Riley moves to San Francisco."}]}
-
-    def fake_observe(question, synopses):
-        calls["observer"] += 1
-        return {"findings": [{"film": "Inside Out (2015)", "verdict": "unclear",
-                              "quote": ""}], "usage": {"total_tokens": 0},
-                "prompt": "stub"}
-
-    saved = (llm_client.complete, observer.observe, tools.dispatch,
-             llm_client.is_configured)
-    llm_client.complete = fake_complete
-    observer.observe = fake_observe
-    tools.dispatch = fake_dispatch
-    llm_client.is_configured = lambda: True
-    try:
-        result = loop.execute("read everything you can, repeatedly")
-    finally:
-        (llm_client.complete, observer.observe, tools.dispatch,
-         llm_client.is_configured) = saved
-
-    total = calls["planner"] + calls["observer"]
-    cap = loop.MAX_TOTAL_LLM_CALLS
-
-    # The gate must exercise the path it claims to. An adversary that never
-    # reaches the Observer proves nothing about a cap that spans both.
-    if calls["observer"] == 0:
-        failures.append("the adversary never triggered an Observer call, so this gate "
-                        "is not testing the sum it claims to test")
-    if total > cap:
-        failures.append(f"the adversary spent {total} model calls "
-                        f"({calls['planner']} planner + {calls['observer']} observer) "
-                        f"against a cap of {cap}")
-    if calls["planner"] > loop.MAX_ROUNDS:
-        failures.append(f"{calls['planner']} planner calls against MAX_ROUNDS "
-                        f"{loop.MAX_ROUNDS}")
-
-    # The reserve: the budget must not run out mid-read, leaving nobody to
-    # write the answer. Spending the last call on an Observer buys evidence
-    # the user never receives.
-    if result.get("status") != "ok" or not result.get("response"):
-        failures.append(f"the budget ran out without an answer: status "
-                        f"{result.get('status')!r}, error {result.get('error')!r}")
-
-    # Every planner step states both counts, or the trace re-blurs the
-    # distinction this fix exists to draw.
-    planner_steps = [s for s in result.get("steps", []) if s["module"] == "Planner"]
-    if not planner_steps:
-        failures.append("no Planner steps in the trace")
-    for s in planner_steps:
-        if set(s.get("llm_calls") or {}) != {"planner", "observer", "verifier",
-                                             "total", "cap"}:
-            failures.append(f"a Planner step reports llm_calls as {s.get('llm_calls')!r}")
-            break
-
-    # And the published figure must be the enforced one.
     info = json.loads((_ROOT / "agent_info.json").read_text())
     published = info["architecture"].get("max_total_llm_calls_per_request")
-    if published != cap:
-        failures.append(f"agent_info publishes max_total_llm_calls_per_request "
-                        f"{published!r}, code enforces {cap}")
-    if info["architecture"].get("max_planner_rounds_per_request") != loop.MAX_ROUNDS:
-        failures.append("agent_info does not publish the planner-round bound separately "
-                        "-- rounds and calls are different quantities")
+    if published != loop.MAX_TOTAL_LLM_CALLS:
+        failures.append(f"agent_info publishes {published!r}, code enforces "
+                        f"{loop.MAX_TOTAL_LLM_CALLS}")
+    if info["architecture"].get("max_verifications_per_request") != tools.MAX_VERIFICATIONS:
+        failures.append("agent_info does not publish the verification bound")
     return failures
 
 
@@ -397,10 +308,10 @@ def g08_no_follow_up_offers() -> list[str]:
 
     # The prompt has to say it too. The check is the backstop, not the policy:
     # a model corrected every time costs a turn every time.
-    from agent import prompts
-    if "no conversation" not in prompts.SYSTEM_PROMPT.lower():
-        failures.append("the system prompt no longer tells the model the interaction "
-                        "is stateless, so the gate below would fire on every answer")
+    from agent import answerer
+    if "no conversation" not in answerer.ANSWERER_PROMPT.lower():
+        failures.append("the Answerer prompt no longer says the interaction is "
+                        "stateless, so this check would fire on every answer")
     return failures
 
 
@@ -691,7 +602,7 @@ def main() -> int:
         ("G05", g05_runtime_is_structured,
          "runtime is a filter argument, exact and inclusive, and cited back"),
         ("G06", g06_call_budget,
-         "the total model-call cap binds planner, Observer and Verifier"),
+         "the worst-case call count fits the published cap"),
         ("G07", g07_fusion_beats_greed,
          "rank fusion puts coverage above average rank, so greed loses"),
         ("G08", g08_no_follow_up_offers,

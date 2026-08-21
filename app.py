@@ -183,43 +183,47 @@ def prompts_endpoint():
     silently stops matching the one in prompts.py. Anything shown here is the
     live string.
     """
+    from agent import answerer as agent_answerer
+    from agent import decomposer as agent_decomposer
     from agent import loop as agent_loop
-    from agent import observer as agent_observer
-    from agent import prompts as agent_prompts
     from agent import tools as agent_tools
     from agent import verifier as agent_verifier
     from rag import screen as rag_screen
 
     return _cors(jsonify({
-        "system_prompt": agent_prompts.SYSTEM_PROMPT,
-        # The readers run on their own prompts and make most of the model calls
-        # on a verifying request, so serving only the planner's showed the
-        # smaller half of what the agent actually runs on.
-        "readers": [
+        # The three roles, in the order a request meets them. Served from the
+        # modules rather than copied into the page, for the reason
+        # rag/DECISIONS.md is: a prompt pasted into HTML is a prompt that
+        # silently stops matching the one that runs.
+        "roles": [
+            {
+                "name": "QueryDecomposer",
+                "does": "reads the request once and returns the plan every later stage runs on",
+                "calls": "one per request",
+                "prompt": agent_decomposer.DECOMPOSER_PROMPT,
+                "output_schema": agent_decomposer.PLAN_SCHEMA,
+            },
             {
                 "name": "Verifier",
-                "sent_by": "CandidateWalk, once per candidate film",
-                "shape": "one film, every condition of the request",
+                "does": "one film, every condition, against that film's plot text",
+                "calls": f"one per candidate checked, at most {agent_tools.MAX_VERIFICATIONS}",
                 "prompt": agent_verifier.VERIFIER_PROMPT,
             },
             {
-                "name": "Observer",
-                "sent_by": "SynopsisReader, when it returns plot text",
-                "shape": "one question, many films",
-                "prompt": agent_observer.OBSERVER_PROMPT,
+                "name": "Answerer",
+                "does": "writes the reply from what was accepted; cannot reach a film that is not in front of it",
+                "calls": "one, plus at most one more if the answer check rejects it",
+                "prompt": agent_answerer.ANSWERER_PROMPT,
             },
         ],
-        "tools": [
+        # The deterministic stages between them. Not prompts -- they take
+        # arguments from the plan and read local data -- but the descriptions
+        # are what a reader needs to follow a trace.
+        "stages": [
             {
-                "name": schema["function"]["name"],
-                "trace_name": agent_tools.TRACE_NAMES.get(schema["function"]["name"]),
+                "name": agent_tools.TRACE_NAMES[schema["function"]["name"]],
+                "function": schema["function"]["name"],
                 "description": schema["function"]["description"],
-                # Descriptions, not just names. A parameter description is
-                # part of the prompt the model actually reads, and real
-                # behaviour lives in them -- which negations screen_out
-                # refuses, how a search query must be phrased -- so serving
-                # names alone made this endpoint claim more coverage than it
-                # gave.
                 "parameters": {
                     name: spec.get("description", "")
                     for name, spec in sorted(
@@ -229,17 +233,12 @@ def prompts_endpoint():
             }
             for schema in agent_tools.TOOL_SCHEMAS
         ],
-        # Counted with the real tokenizer rather than estimated at ~4 chars,
-        # because this is the number the prompt-size argument rests on: the
-        # system prompt and the schemas are re-sent on every turn.
-        "token_cost": _prompt_token_cost(agent_prompts.SYSTEM_PROMPT,
-                                         agent_tools.TOOL_SCHEMAS),
+        "token_cost": _prompt_token_cost(agent_decomposer.DECOMPOSER_PROMPT,
+                                         [agent_decomposer.PLAN_SCHEMA]),
         "guardrails": {
-            "MAX_ROUNDS": agent_loop.MAX_ROUNDS,
-            # Both, always. Publishing only the rounds is what let "five model
-            # turns" circulate as a cost guarantee it never was.
             "MAX_TOTAL_LLM_CALLS": agent_loop.MAX_TOTAL_LLM_CALLS,
-            "MAX_RECOMMENDATIONS": agent_prompts.MAX_RECOMMENDATIONS,
+            "MAX_VERIFICATIONS": agent_tools.MAX_VERIFICATIONS,
+            "MAX_RECOMMENDATIONS": agent_tools.MAX_RECOMMENDATIONS_CEILING,
             "PREVIEW_FILMS": agent_tools.PREVIEW_FILMS,
             "MAX_SEARCH_RESULTS": agent_tools.MAX_SEARCH_RESULTS,
             "MAX_SYNOPSES": agent_tools.MAX_SYNOPSES,
