@@ -77,20 +77,33 @@ expectations in the test bed are written from that run.
 
 ```
 POST /api/execute        returns exactly status / error / response / steps
-  └─ loop.py             up to MAX_ROUNDS = 5 model turns; the last gets no
-                         tools, so it must answer rather than ask
-       └─ Planner        one prompt, 4,197 tokens + 1,670 of schemas, every
-                         turn. The only paid step. Turn 1 also writes the
-                         condition ledger, at no extra cost
-            ├─ filter_catalog   238 -> N by column.  Free, exhaustive
-            ├─ screen_out       N -> the half you keep.  Free, exhaustive
-            ├─ search_plots     ranks what remains. One embedding, ~$0.0000002
-            └─ read_synopses    <= 8 films, <= 6,000 chars each.  Free
+  └─ loop.py             <= 5 planner rounds AND <= 16 model calls; the last
+                         round gets no tools, so it must answer rather than
+                         ask. The exit is gated: an answer may not name a film
+                         verification did not accept
+       └─ Planner        one prompt, 3,056 tokens + 2,634 of schemas, every
+                         round. Round 1 also writes the condition ledger, at
+                         no extra cost
+            ├─ filter_catalog     238 -> N by column.  Free, exhaustive
+            ├─ screen_out         N -> the half you keep.  Free, exhaustive
+            ├─ build_shortlist    every condition searched separately, then
+                                  fused by coverage, then average rank.
+                                  One embedding per condition
+            ├─ read_synopses      <= 8 films, <= 6,000 chars each.  Free
+            │    └─ Observer      one question, many films.  One model call
+            └─ verify_candidates  walks the shortlist best-first
+                 └─ Verifier      one film, EVERY condition.  One model call
+                                  per film, <= 10, stops at 3 accepted
 ```
 
 The prompt encourages cheapest-and-most-exhaustive first, so the token-heavy
 tool only ever sees what survived the free ones — a preference, not a path:
-nothing in the code enforces the order.
+nothing in the code enforces the order. What the code *does* enforce is the
+standard of evidence: free control flow, fixed standard of proof.
+
+`search_plots` is no longer offered to the model. It remains the
+single-condition primitive `build_shortlist` calls once per condition, because
+a tool that can be called greedily is a tool the prompt has to argue with.
 
 - **Working set in Python.** `filter_catalog` records every matching id in a
   request-scoped `ToolContext`; search and read scope to it automatically.

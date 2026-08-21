@@ -1,16 +1,16 @@
 {
   "status": "ok",
   "error": null,
-  "response": "1 film matches all three conditions: Secret of the Wings (2012).\n\nIt was verified as having no deaths in its plot text, a princess appears, and ice appears.",
+  "response": "1 film verified.\n\n- Secret of the Wings (2012) — the verification accepted it for no deaths, a princess appears, and ice.",
   "steps": [
     {
       "module": "Planner",
       "round": 1,
       "usage": {
-        "prompt_tokens": 5302,
-        "completion_tokens": 97,
-        "total_tokens": 5399,
-        "cached_tokens": 0
+        "prompt_tokens": 5341,
+        "completion_tokens": 98,
+        "total_tokens": 5439,
+        "cached_tokens": 4224
       },
       "llm_calls": {
         "planner": 1,
@@ -24,7 +24,7 @@
         "user_prompt": "Recommend a movie with no deaths, having a princess, and with ice."
       },
       "response": {
-        "content": "Conditions:\n- no deaths -> screen_out\n- having a princess -> semantic story condition\n- with ice -> semantic story condition",
+        "content": "CONDITIONS\n- no deaths -> screen_out\n- having a princess -> build_shortlist\n- with ice -> build_shortlist",
         "tool_calls": [
           {
             "name": "screen_out",
@@ -32,7 +32,7 @@
           },
           {
             "name": "build_shortlist",
-            "arguments": "{\"conditions\": [\"a princess appears\", \"ice appears\"], \"top_k\": 20}"
+            "arguments": "{\"conditions\": [\"a princess appears\", \"ice\"], \"top_k\": 25}"
           }
         ]
       }
@@ -166,9 +166,9 @@
         "arguments": {
           "conditions": [
             "a princess appears",
-            "ice appears"
+            "ice"
           ],
-          "top_k": 20
+          "top_k": 25
         }
       },
       "scope": "76 films (screened out 37 words, 149 flagged)",
@@ -182,156 +182,156 @@
       "response": {
         "conditions": [
           "a princess appears",
-          "ice appears"
+          "ice"
         ],
         "searched_within": "76 films in scope",
-        "candidates": 32,
-        "matching_every_condition": 6,
+        "candidates": 38,
+        "matching_every_condition": 12,
         "shortlist": [
           {
             "film": "Secret of the Wings (2012)",
             "conditions_matched": "2/2",
             "ranks": {
               "a princess appears": 2,
-              "ice appears": 1
+              "ice": 2
             },
-            "average_rank": 1.5
+            "average_rank": 2.0
           },
           {
             "film": "Ice Princess (2005)",
             "conditions_matched": "2/2",
             "ranks": {
               "a princess appears": 7,
-              "ice appears": 2
+              "ice": 1
             },
-            "average_rank": 4.5
+            "average_rank": 4.0
+          },
+          {
+            "film": "The Princess Diaries 2: Royal Engagement (2004)",
+            "conditions_matched": "2/2",
+            "ranks": {
+              "a princess appears": 1,
+              "ice": 20
+            },
+            "average_rank": 10.5
+          },
+          {
+            "film": "Glory Road (2006)",
+            "conditions_matched": "2/2",
+            "ranks": {
+              "a princess appears": 10,
+              "ice": 16
+            },
+            "average_rank": 13.0
+          },
+          {
+            "film": "Atlantis: Milo's Return (2003)",
+            "conditions_matched": "2/2",
+            "ranks": {
+              "a princess appears": 22,
+              "ice": 5
+            },
+            "average_rank": 13.5
+          },
+          {
+            "film": "The Santa Clause 3: The Escape Clause (2006)",
+            "conditions_matched": "2/2",
+            "ranks": {
+              "a princess appears": 23,
+              "ice": 4
+            },
+            "average_rank": 13.5
           },
           {
             "film": "Tinker Bell and the Lost Treasure (2009)",
             "conditions_matched": "2/2",
             "ranks": {
               "a princess appears": 4,
-              "ice appears": 12
+              "ice": 24
             },
-            "average_rank": 8.0
+            "average_rank": 14.0
+          },
+          {
+            "film": "The BFG (2016)",
+            "conditions_matched": "2/2",
+            "ranks": {
+              "a princess appears": 6,
+              "ice": 22
+            },
+            "average_rank": 14.0
+          },
+          {
+            "film": "Cars (2006)",
+            "conditions_matched": "2/2",
+            "ranks": {
+              "a princess appears": 21,
+              "ice": 8
+            },
+            "average_rank": 14.5
+          },
+          {
+            "film": "Prom (2011)",
+            "conditions_matched": "2/2",
+            "ranks": {
+              "a princess appears": 17,
+              "ice": 12
+            },
+            "average_rank": 14.5
           },
           {
             "film": "Mickey's Twice Upon a Christmas (2004)",
             "conditions_matched": "2/2",
             "ranks": {
               "a princess appears": 15,
-              "ice appears": 7
+              "ice": 17
             },
-            "average_rank": 11.0
-          },
-          {
-            "film": "The Lizzie McGuire Movie (2003)",
-            "conditions_matched": "2/2",
-            "ranks": {
-              "a princess appears": 11,
-              "ice appears": 16
-            },
-            "average_rank": 13.5
+            "average_rank": 16.0
           },
           {
             "film": "Freaky Friday (1976)",
             "conditions_matched": "2/2",
             "ranks": {
               "a princess appears": 12,
-              "ice appears": 17
+              "ice": 25
             },
-            "average_rank": 14.5
-          },
-          {
-            "film": "The Princess Diaries 2: Royal Engagement (2004)",
-            "conditions_matched": "1/2",
-            "ranks": {
-              "a princess appears": 1,
-              "ice appears": null
-            },
-            "average_rank": 1.0
+            "average_rank": 18.5
           },
           {
             "film": "Mickey, Donald, Goofy: The Three Musketeers (2004)",
             "conditions_matched": "1/2",
             "ranks": {
               "a princess appears": 3,
-              "ice appears": null
+              "ice": null
             },
             "average_rank": 3.0
           },
           {
-            "film": "Atlantis: Milo's Return (2003)",
+            "film": "Max Keeble's Big Move (2001)",
             "conditions_matched": "1/2",
             "ranks": {
               "a princess appears": null,
-              "ice appears": 3
+              "ice": 3
             },
             "average_rank": 3.0
-          },
-          {
-            "film": "The Santa Clause 3: The Escape Clause (2006)",
-            "conditions_matched": "1/2",
-            "ranks": {
-              "a princess appears": null,
-              "ice appears": 4
-            },
-            "average_rank": 4.0
-          },
-          {
-            "film": "Inside Out (2015)",
-            "conditions_matched": "1/2",
-            "ranks": {
-              "a princess appears": null,
-              "ice appears": 5
-            },
-            "average_rank": 5.0
           },
           {
             "film": "Tinker Bell (2008)",
             "conditions_matched": "1/2",
             "ranks": {
               "a princess appears": 5,
-              "ice appears": null
+              "ice": null
             },
             "average_rank": 5.0
-          },
-          {
-            "film": "The BFG (2016)",
-            "conditions_matched": "1/2",
-            "ranks": {
-              "a princess appears": 6,
-              "ice appears": null
-            },
-            "average_rank": 6.0
-          },
-          {
-            "film": "Snow Dogs (2002)",
-            "conditions_matched": "1/2",
-            "ranks": {
-              "a princess appears": null,
-              "ice appears": 6
-            },
-            "average_rank": 6.0
-          },
-          {
-            "film": "The Parent Trap (1998)",
-            "conditions_matched": "1/2",
-            "ranks": {
-              "a princess appears": 8,
-              "ice appears": null
-            },
-            "average_rank": 8.0
           }
         ],
-        "note": "32 films placed for at least one condition; 6 placed for all 2. Ordered by conditions matched, then average rank -- so the top of this list is the best place to start verifying, and a film's position here is a search ranking, NOT evidence that it satisfies anything. Verify before recommending.",
+        "note": "38 films placed for at least one condition; 12 placed for all 2. Ordered by conditions matched, then average rank -- so the top of this list is the best place to start verifying, and a film's position here is a search ranking, NOT evidence that it satisfies anything. Verify before recommending.",
         "model_call": {
           "model": "MB5R2CF-azure/text-embedding-3-small",
           "kind": "embedding",
           "calls": 2,
           "inputs": [
             "a princess appears",
-            "ice appears"
+            "ice"
           ]
         }
       }
@@ -340,9 +340,9 @@
       "module": "Planner",
       "round": 2,
       "usage": {
-        "prompt_tokens": 6995,
-        "completion_tokens": 111,
-        "total_tokens": 7106,
+        "prompt_tokens": 7021,
+        "completion_tokens": 152,
+        "total_tokens": 7173,
         "cached_tokens": 5248
       },
       "llm_calls": {
@@ -357,11 +357,11 @@
         "user_prompt": "(continued)"
       },
       "response": {
-        "content": "Verify top shortlist candidates against all conditions.",
+        "content": "VERIFYING the shortlist against all conditions: no deaths; a princess appears; ice.",
         "tool_calls": [
           {
             "name": "verify_candidates",
-            "arguments": "{\"films\":[\"Secret of the Wings (2012)\",\"Ice Princess (2005)\",\"Tinker Bell and the Lost Treasure (2009)\",\"Mickey's Twice Upon a Christmas (2004)\",\"The Lizzie McGuire Movie (2003)\",\"Freaky Friday (1976)\"],\"conditions\":[\"no deaths\",\"a princess appears\",\"ice appears\"],\"max_accept\":3}"
+            "arguments": "{\"conditions\":[\"no deaths\",\"a princess appears\",\"ice\"],\"films\":[\"Secret of the Wings (2012)\",\"Ice Princess (2005)\",\"The Princess Diaries 2: Royal Engagement (2004)\",\"Glory Road (2006)\",\"Atlantis: Milo's Return (2003)\",\"The Santa Clause 3: The Escape Clause (2006)\",\"Tinker Bell and the Lost Treasure (2009)\",\"The BFG (2016)\",\"Cars (2006)\",\"Prom (2011)\"],\"max_accept\":3}"
           }
         ]
       }
@@ -372,18 +372,22 @@
       "prompt": {
         "tool": "verify_candidates",
         "arguments": {
-          "films": [
-            "Secret of the Wings (2012)",
-            "Ice Princess (2005)",
-            "Tinker Bell and the Lost Treasure (2009)",
-            "Mickey's Twice Upon a Christmas (2004)",
-            "The Lizzie McGuire Movie (2003)",
-            "Freaky Friday (1976)"
-          ],
           "conditions": [
             "no deaths",
             "a princess appears",
-            "ice appears"
+            "ice"
+          ],
+          "films": [
+            "Secret of the Wings (2012)",
+            "Ice Princess (2005)",
+            "The Princess Diaries 2: Royal Engagement (2004)",
+            "Glory Road (2006)",
+            "Atlantis: Milo's Return (2003)",
+            "The Santa Clause 3: The Escape Clause (2006)",
+            "Tinker Bell and the Lost Treasure (2009)",
+            "The BFG (2016)",
+            "Cars (2006)",
+            "Prom (2011)"
           ],
           "max_accept": 3
         }
@@ -392,35 +396,39 @@
       "llm_calls": {
         "planner": 2,
         "observer": 0,
-        "verifier": 6,
-        "total": 8,
+        "verifier": 10,
+        "total": 12,
         "cap": 16
       },
       "response": {
         "conditions": [
           "no deaths",
           "a princess appears",
-          "ice appears"
+          "ice"
         ],
-        "verified": 6,
+        "verified": 10,
         "accepted": [
           "Secret of the Wings (2012)"
         ],
         "rejected": [
           "Ice Princess (2005)",
+          "Glory Road (2006)",
+          "Atlantis: Milo's Return (2003)",
+          "The Santa Clause 3: The Escape Clause (2006)",
           "Tinker Bell and the Lost Treasure (2009)",
-          "The Lizzie McGuire Movie (2003)",
-          "Freaky Friday (1976)"
+          "The BFG (2016)",
+          "Cars (2006)"
         ],
         "unresolved": [
-          "Mickey's Twice Upon a Christmas (2004)"
+          "The Princess Diaries 2: Royal Engagement (2004)",
+          "Prom (2011)"
         ],
         "budget": {
-          "checked": 6,
+          "checked": 10,
           "allowed": 10,
           "ceiling": 10
         },
-        "exhausted": false,
+        "exhausted": true,
         "verdicts": [
           {
             "film": "Secret of the Wings (2012)",
@@ -433,22 +441,22 @@
               {
                 "requirement": "a princess appears",
                 "verdict": "yes",
-                "quote": "Queen Clarion (Anjelica Huston), arrives too,"
+                "quote": "Queen Clarion (Anjelica Huston), arrives too, and sadly explains to the girls that they can never see each other again."
               },
               {
-                "requirement": "ice appears",
+                "requirement": "ice",
                 "verdict": "yes",
-                "quote": "The snow-maker was running out of ice,"
+                "quote": "The snow-maker was running out of ice, and there wasn't enough snow to keep Peri cold,"
               }
             ],
             "accepted": true,
             "usage": {
-              "prompt_tokens": 1899,
-              "completion_tokens": 100,
-              "total_tokens": 1999,
+              "prompt_tokens": 1898,
+              "completion_tokens": 125,
+              "total_tokens": 2023,
               "cached_tokens": 0
             },
-            "prompt": "FILM: Secret of the Wings (2012)\n\nREQUIREMENTS\n- no deaths\n- a princess appears\n- ice appears\n\nPLOT TEXT\nTinkers' Nook is bustling with activity, for the tinker fairies are making snowflake baskets for the fairies of winter. A flock of snowy owls soon arrive for the baskets, bringing a final shipment order for Fairy Mary (Jane Horrocks) with them. Tinker Bell (Mae Whitman) watches as the birds headed off toward the Winter Woods in awe and curiosity.Later that day, Tinker Bell volunteers to help Fawn (Angela Bartys) take animals to the Winter Woods to hibernate, but Fawn warns Tinker Bell that they could only bring animals to the border, and they aren't allowed to go into the Winter Woods. With Fawn distracted by a sleeping marmot, Tinker Bell jumps across the border into the Winter Woods. Tink gazes in wonder at the beautiful wintry landscape, enchanted by the delicate snowflakes falling around her, and the strange colors her wings create. The moment ends when Fawn yanks Tinker Bell back into the Autumn Woods. Touching Tink's wings, Fawn gasps at their cold temperature and rushes her off to the fairy hospital. A healing-talent fairy (Jodi Benson) examines Tink's wings and warms them to normal temperature. Tink remains curious about the sparkles and colors her wings made in the Winter Woods.Tink flies off to the Book Nook, where she finds a wing-shaped book titled Wingology, but unfortunately, the page on \"Sparkling Wings\" has been chewed through. A reading fairy (Thomas Lennon) tells Tink that the author of the book, the Keeper, might be able to help her, but he lives in the Winter Woods. Preparing herself for the Winter Woods, Tink sneaks into the tinkers' workshop and climbs inside one of the snowflake baskets, and flies her way into the Winter Woods. Suddenly, the owl accidentally drops the basket, and Tink crashes into the snow. Realizing her book had been flung from her bag after the landing, she tries to get it back before another fairy finds it. However, Lord Milori (Timothy Dalton), the Lord of Winter, takes the book from Sled (Matt Lanter). Lord Milori asks Sled to return the book to the Keeper. Tinker Bell follows Sled to the Hall of Winter, upon arriving spotting the Keeper, Dewey (Jeff Bennett). Then another winter fairy rushes into the room and proclaims that her wings are sparkling. Simultaneously, Tinker Bell's wings begin to glow and sparkle, too. A force pulls her toward the frost fairy, whose name is Periwinkle (Lucy Hale). The girls ask Dewey to explain what was happening to their wings. Bringing Tink and Periwinkle to the giant snowflake, and positioning their wings, the whole chamber becomes filled with images of the mainland, baby's first laugh (shown to be Wendy Darling in the main movie), that split in half: one [Tinker Bell] to the Pixie Dust Tree, and the other [Periwinkle] to the Winter Woods. Tink and Periwinkle realize that they are fraternal twin sisters.Suddenly, Lord Milori arrives, concerned over Tinker Bell's wing book, warning Dewey to send any 'warm' fairy back to the Autumn Woods. Dewey tells the girls they can have a little time to visit before Tink has to return home. The two go to Periwinkle's house, where she shows Tink her various items she had collected. Next, they go to the Frost Forest, to introduce Tink to Periwinkle's friends Gliss (Grey DeLisle) and Spike (Debby Ryan). They continue to spend time together the entire day. That night outside Periwinkle's house, as Tinker Bell builds a fire to stay warm, she realizes that if she can make it warm in the Winter Woods, she can make it cooler at her home. Suddenly, the snow floor melts beneath them, weakened by the fire. After the incident, Dewey tells the girls that Tinker Bell has to go home. The girls realize that they might never see each other again, but Tinker Bell comes up with a plan. When the three fairies reach the border, Tinker Bell begins to fake crying while whispering to Periwinkle to meet her at the border tomorrow. When Tinker Bell arrives home, she asks her friends Clank (Jeff Bennett) and Bobble (Rob Paulsen) for help. Hard at work, some of Tink's other friends stop by and learn of Tinker Bell's twin sister, excited at the prospect of meeting her.The next day, Tinker Bell arrives at the border with Bobble and Clank, pulling along a snow-maker. Now able to keep Periwinkle cold enough, Peri crosses the border to the 'warm' side of Pixie Hollow. She meets Tinker Bell's friends, Fawn, Iridessa (Raven-Symoné), Rosetta (Megan Hilty), Silvermist (Lucy Liu), and Vidia (Pamela Adlon) and continues her tour of the warm side of Pixie Hollow, until Tink noticed Periwinkle's wings wilting. The snow-maker was running out of ice, and there wasn't enough snow to keep Peri cold, so Tink and Periwinkle return to the border. Lord Milori appears and instructs Periwinkle how to fix her wings. Queen Clarion (Anjelica Huston), arrives too, and sadly explains to the girls that they can never see each other again. As the girls go their separate ways, the snow-maker gets knocked into the stream, and creates a snowstorm.Later that day, Queen Clarion tried to make Tinker Bell understand why the rule about not crossing the border was so important, as so did Lord Milori with Periwinkle. They told the story of two fairies who met and fell in love, one of them was a winter fairy [Lord Milori], and the other was from the warm world [Queen Clarion]. They usually met every sunset at the border, where Spring touches Winter. But as their love grew stronger, they wish to be together and share each others worlds. So they disregarded the danger across the border. One of them [Lord Milori] broke a wing, for which there is no cure. And from that day, Queen Clarion decreed that fairies must never again cross the border, and Lord Milori agreed, that their worlds, should forever remain apart. Just as the Queen finishes her side of the tale, it begins to freeze in the Autumn Woods and Springtime Square, causing a commotion. Queen Clarion, Tink, Iridessa, Rosetta, Vidia, Fawn, and the Ministers (except for the Minister of Winte..."
+            "prompt": "FILM: Secret of the Wings (2012)\n\nREQUIREMENTS\n- no deaths\n- a princess appears\n- ice\n\nPLOT TEXT\nTinkers' Nook is bustling with activity, for the tinker fairies are making snowflake baskets for the fairies of winter. A flock of snowy owls soon arrive for the baskets, bringing a final shipment order for Fairy Mary (Jane Horrocks) with them. Tinker Bell (Mae Whitman) watches as the birds headed off toward the Winter Woods in awe and curiosity.Later that day, Tinker Bell volunteers to help Fawn (Angela Bartys) take animals to the Winter Woods to hibernate, but Fawn warns Tinker Bell that they could only bring animals to the border, and they aren't allowed to go into the Winter Woods. With Fawn distracted by a sleeping marmot, Tinker Bell jumps across the border into the Winter Woods. Tink gazes in wonder at the beautiful wintry landscape, enchanted by the delicate snowflakes falling around her, and the strange colors her wings create. The moment ends when Fawn yanks Tinker Bell back into the Autumn Woods. Touching Tink's wings, Fawn gasps at their cold temperature and rushes her off to the fairy hospital. A healing-talent fairy (Jodi Benson) examines Tink's wings and warms them to normal temperature. Tink remains curious about the sparkles and colors her wings made in the Winter Woods.Tink flies off to the Book Nook, where she finds a wing-shaped book titled Wingology, but unfortunately, the page on \"Sparkling Wings\" has been chewed through. A reading fairy (Thomas Lennon) tells Tink that the author of the book, the Keeper, might be able to help her, but he lives in the Winter Woods. Preparing herself for the Winter Woods, Tink sneaks into the tinkers' workshop and climbs inside one of the snowflake baskets, and flies her way into the Winter Woods. Suddenly, the owl accidentally drops the basket, and Tink crashes into the snow. Realizing her book had been flung from her bag after the landing, she tries to get it back before another fairy finds it. However, Lord Milori (Timothy Dalton), the Lord of Winter, takes the book from Sled (Matt Lanter). Lord Milori asks Sled to return the book to the Keeper. Tinker Bell follows Sled to the Hall of Winter, upon arriving spotting the Keeper, Dewey (Jeff Bennett). Then another winter fairy rushes into the room and proclaims that her wings are sparkling. Simultaneously, Tinker Bell's wings begin to glow and sparkle, too. A force pulls her toward the frost fairy, whose name is Periwinkle (Lucy Hale). The girls ask Dewey to explain what was happening to their wings. Bringing Tink and Periwinkle to the giant snowflake, and positioning their wings, the whole chamber becomes filled with images of the mainland, baby's first laugh (shown to be Wendy Darling in the main movie), that split in half: one [Tinker Bell] to the Pixie Dust Tree, and the other [Periwinkle] to the Winter Woods. Tink and Periwinkle realize that they are fraternal twin sisters.Suddenly, Lord Milori arrives, concerned over Tinker Bell's wing book, warning Dewey to send any 'warm' fairy back to the Autumn Woods. Dewey tells the girls they can have a little time to visit before Tink has to return home. The two go to Periwinkle's house, where she shows Tink her various items she had collected. Next, they go to the Frost Forest, to introduce Tink to Periwinkle's friends Gliss (Grey DeLisle) and Spike (Debby Ryan). They continue to spend time together the entire day. That night outside Periwinkle's house, as Tinker Bell builds a fire to stay warm, she realizes that if she can make it warm in the Winter Woods, she can make it cooler at her home. Suddenly, the snow floor melts beneath them, weakened by the fire. After the incident, Dewey tells the girls that Tinker Bell has to go home. The girls realize that they might never see each other again, but Tinker Bell comes up with a plan. When the three fairies reach the border, Tinker Bell begins to fake crying while whispering to Periwinkle to meet her at the border tomorrow. When Tinker Bell arrives home, she asks her friends Clank (Jeff Bennett) and Bobble (Rob Paulsen) for help. Hard at work, some of Tink's other friends stop by and learn of Tinker Bell's twin sister, excited at the prospect of meeting her.The next day, Tinker Bell arrives at the border with Bobble and Clank, pulling along a snow-maker. Now able to keep Periwinkle cold enough, Peri crosses the border to the 'warm' side of Pixie Hollow. She meets Tinker Bell's friends, Fawn, Iridessa (Raven-Symoné), Rosetta (Megan Hilty), Silvermist (Lucy Liu), and Vidia (Pamela Adlon) and continues her tour of the warm side of Pixie Hollow, until Tink noticed Periwinkle's wings wilting. The snow-maker was running out of ice, and there wasn't enough snow to keep Peri cold, so Tink and Periwinkle return to the border. Lord Milori appears and instructs Periwinkle how to fix her wings. Queen Clarion (Anjelica Huston), arrives too, and sadly explains to the girls that they can never see each other again. As the girls go their separate ways, the snow-maker gets knocked into the stream, and creates a snowstorm.Later that day, Queen Clarion tried to make Tinker Bell understand why the rule about not crossing the border was so important, as so did Lord Milori with Periwinkle. They told the story of two fairies who met and fell in love, one of them was a winter fairy [Lord Milori], and the other was from the warm world [Queen Clarion]. They usually met every sunset at the border, where Spring touches Winter. But as their love grew stronger, they wish to be together and share each others worlds. So they disregarded the danger across the border. One of them [Lord Milori] broke a wing, for which there is no cure. And from that day, Queen Clarion decreed that fairies must never again cross the border, and Lord Milori agreed, that their worlds, should forever remain apart. Just as the Queen finishes her side of the tale, it begins to freeze in the Autumn Woods and Springtime Square, causing a commotion. Queen Clarion, Tink, Iridessa, Rosetta, Vidia, Fawn, and the Ministers (except for the Minister of Winte..."
           },
           {
             "film": "Ice Princess (2005)",
@@ -457,148 +465,261 @@
                 "requirement": "no deaths",
                 "verdict": "yes",
                 "quote": "",
-                "note": "The plot text does not state that anyone dies."
+                "note": "The plot text contains no death."
               },
               {
                 "requirement": "a princess appears",
                 "verdict": "no",
                 "quote": "",
-                "note": "No princess is mentioned in the plot text."
+                "note": "No princess is mentioned."
               },
               {
-                "requirement": "ice appears",
+                "requirement": "ice",
                 "verdict": "yes",
                 "quote": "ice skating",
-                "note": "Ice is explicitly mentioned in the skating context."
+                "note": "The word appears in the phrase about Casey's hobby."
               }
             ],
             "accepted": false,
             "usage": {
-              "prompt_tokens": 1118,
-              "completion_tokens": 96,
-              "total_tokens": 1214,
+              "prompt_tokens": 1117,
+              "completion_tokens": 90,
+              "total_tokens": 1207,
               "cached_tokens": 0
             },
-            "prompt": "FILM: Ice Princess (2005)\n\nREQUIREMENTS\n- no deaths\n- a princess appears\n- ice appears\n\nPLOT TEXT\nIn the city of Millbrook, Connecticut, Casey Carlyle, a very smart and talented science student, pursues a scholarship to Harvard University. For the scholarship, she must present a personal summer project about physics. While watching a figure skating competition with her mathematically inclined best friend, Ann, Casey realizes that her favorite childhood hobby, ice skating, would make a perfect project. She decides to try to improve her own skating by applying physics and what she has discovered from watching other skaters.\nFollowing a recital, Casey becomes proficient and skips two levels to become a junior skater. She helps fellow junior skaters Gennifer \"Gen\" Harwood, Tiffany Lai, and Nikki Fletcher improve their skating by using algorithms generated by her computer. Torn between her Harvard dream and her growing love of skating, Casey has difficulty juggling schoolwork, skating, and a part-time job as a concessions worker; during this time, she develops a relationship with Gen's brother, Teddy. Her mother, Joan, attempts to prevent her from skating due to her declining academic performance. Meanwhile, tension arises between Joan and Gen's mother, Tina, a disgraced former skater who has since become a coach.\nTina, who manages the rink where Casey trains, has Gen on a strict training program. During a competition where both Casey and Gen compete, Tina sees Casey may outrank Gen and sabotages Casey's performance by buying her new skates. Unaware of the danger of unbroken-in skates, Casey's resulting long program is riddled with poor jumps and several falls. Upon being informed of Tina's intent behind her seemingly kind gesture by fellow skate competitor Zoey Bloch, Casey lashes out at her and mistakenly assumes her children were equally involved in the plot. She ranks fifth in the competition but only the top 4 qualify for the sectionals. As a result, Casey loses interest in skating and returns to her studies and goal of attending Harvard.\nUpset at her mother's sabotage and frustrated by all the restrictions of training, Gen quits, inadvertently allowing Casey to take her spot. While Casey and Gen reconcile, Casey can now qualify for the sectionals as Gen quit. She declines the Harvard scholarship competition to devote herself to skating, to Joan's dismay. Casey also reconciles with Tina and asks her to be her personal coach and train for the sectionals. Joan, frustrated at this change of direction in her life, refuses to watch her skate.\nAt the sectionals, Casey initially struggles, and falls while attempting a triple salchow jump. She is reinvigorated by the arrival of Joan in the audience. Inspired by this, she gives a highly rated artistic performance and eventually reconciles with Joan. The sectionals ends with Casey placing silver, qualifying to go to Nationals and potentially the 2006 Winter Olympics. Teddy gives Casey flowers to congratulate her, and they kiss. Later, Joan and Tina, despite burying the hatchet as well, bicker about how many college courses Casey should take, the budding love between her and Teddy, her sponsors, and her future in figure skating."
+            "prompt": "FILM: Ice Princess (2005)\n\nREQUIREMENTS\n- no deaths\n- a princess appears\n- ice\n\nPLOT TEXT\nIn the city of Millbrook, Connecticut, Casey Carlyle, a very smart and talented science student, pursues a scholarship to Harvard University. For the scholarship, she must present a personal summer project about physics. While watching a figure skating competition with her mathematically inclined best friend, Ann, Casey realizes that her favorite childhood hobby, ice skating, would make a perfect project. She decides to try to improve her own skating by applying physics and what she has discovered from watching other skaters.\nFollowing a recital, Casey becomes proficient and skips two levels to become a junior skater. She helps fellow junior skaters Gennifer \"Gen\" Harwood, Tiffany Lai, and Nikki Fletcher improve their skating by using algorithms generated by her computer. Torn between her Harvard dream and her growing love of skating, Casey has difficulty juggling schoolwork, skating, and a part-time job as a concessions worker; during this time, she develops a relationship with Gen's brother, Teddy. Her mother, Joan, attempts to prevent her from skating due to her declining academic performance. Meanwhile, tension arises between Joan and Gen's mother, Tina, a disgraced former skater who has since become a coach.\nTina, who manages the rink where Casey trains, has Gen on a strict training program. During a competition where both Casey and Gen compete, Tina sees Casey may outrank Gen and sabotages Casey's performance by buying her new skates. Unaware of the danger of unbroken-in skates, Casey's resulting long program is riddled with poor jumps and several falls. Upon being informed of Tina's intent behind her seemingly kind gesture by fellow skate competitor Zoey Bloch, Casey lashes out at her and mistakenly assumes her children were equally involved in the plot. She ranks fifth in the competition but only the top 4 qualify for the sectionals. As a result, Casey loses interest in skating and returns to her studies and goal of attending Harvard.\nUpset at her mother's sabotage and frustrated by all the restrictions of training, Gen quits, inadvertently allowing Casey to take her spot. While Casey and Gen reconcile, Casey can now qualify for the sectionals as Gen quit. She declines the Harvard scholarship competition to devote herself to skating, to Joan's dismay. Casey also reconciles with Tina and asks her to be her personal coach and train for the sectionals. Joan, frustrated at this change of direction in her life, refuses to watch her skate.\nAt the sectionals, Casey initially struggles, and falls while attempting a triple salchow jump. She is reinvigorated by the arrival of Joan in the audience. Inspired by this, she gives a highly rated artistic performance and eventually reconciles with Joan. The sectionals ends with Casey placing silver, qualifying to go to Nationals and potentially the 2006 Winter Olympics. Teddy gives Casey flowers to congratulate her, and they kiss. Later, Joan and Tina, despite burying the hatchet as well, bicker about how many college courses Casey should take, the budding love between her and Teddy, her sponsors, and her future in figure skating."
           },
           {
-            "film": "Tinker Bell and the Lost Treasure (2009)",
-            "findings": [
-              {
-                "requirement": "no deaths",
-                "verdict": "unclear",
-                "quote": "",
-                "quote_rejected": "not a literal substring of the plot text; discarded, so this verdict carries no evidence"
-              },
-              {
-                "requirement": "a princess appears",
-                "verdict": "no",
-                "quote": "Queen Clarion (Anjelica Huston)"
-              },
-              {
-                "requirement": "ice appears",
-                "verdict": "no",
-                "quote": "The nature-talent fairies are bringing to the mainland the season of leaves, hibernation, chilly breezes, and pumpkins: autumn."
-              }
-            ],
-            "accepted": false,
-            "usage": {
-              "prompt_tokens": 1486,
-              "completion_tokens": 101,
-              "total_tokens": 1587,
-              "cached_tokens": 0
-            },
-            "prompt": "FILM: Tinker Bell and the Lost Treasure (2009)\n\nREQUIREMENTS\n- no deaths\n- a princess appears\n- ice appears\n\nPLOT TEXT\nThe nature-talent fairies are bringing to the mainland the season of leaves, hibernation, chilly breezes, and pumpkins: autumn. Meanwhile, Tinker Bell (Mae Whitman) and dust-talent fairies like Terence (Jesse McCartney) are staying in Pixie Hollow. Tinker Bell is trying to make a \"Pixie Express\". But it fails just as she is called to meet Queen Clarion (Anjelica Huston), Fairy Mary (Jane Horrocks), and Redleaf, the Minister of Autumn (John DiMaggio).\nThey show her a mystical moonstone and explain to her its tremendous powers. Every eight years, there is a blue harvest moon in Pixie Hollow. When the light of this rare blue moon passes through the moonstone, it creates blue-colored pixie dust to strengthen and rejuvenate the pixie dust tree. The Autumn Revelry is the associated event during which the fairies gather to collect the dust.\nA new scepter is to be made to raise the moonstone, and Tinker Bell has been recommended. Although Tinker Bell has made mistakes in the past, Fairy Mary explains that tinker fairies learn from them, most of the time. Tinker Bell accepts the task, as well as help from Terence. But as the work on the scepter progresses, Tinker Bell begins to have trouble with Terence, who is trying too hard to be helpful. When Tinkerbell asks Terence to go find something sharp, Terence brings a compass to her workshop, irritating Tinkerbell. She kicks the compass, causing it to roll over and break her newly completed scepter. After a row with her friend, Tinker Bell's furious antics result in her accidentally smashing the moonstone as well. Tinker Bell sets out on in a balloon she's created to find a magic mirror, which, according to legend, granted two of three wishes before becoming lost. Tinker Bell intends to use the third and last wish to repair the shattered moonstone to its original form.\nWhile trying to evade a hungry bat, a firefly named Blaze crash lands into Tinker Bell's balloon. Tink orders him to leave, but he truly wants to tag along with Tink on her quest to find the magical mirror. After Blaze's apparent exit, Tink tries to read her map but it's too dark to see. Blaze then sheds light on the map to help Tink, and the tinker finally allows him to stay. As the duo's adventure continues, Tink thinks she has stumbled upon the stone arch that is said to lead way to the mirror. She leaves the balloon to make sure of this and leaves Blaze to watch over it. Once Tink flies off, however, the balloon begins to stray away. After unsuccessfully trying to anchor it, Blaze rushes to tell Tink, though she is too busy trying to figure out why she stumbled upon a bent tree instead of the stone ark to notice Blaze. When she finally sees the balloon floating off, she gives chase, Blaze in tow, but the harsh winds knocks them down. The next morning, Tinker Bell awakens, hungry and lost.\nBlaze scouts out to rally some forest insects that provide food and water for Tink. They also lead her and Blaze to the stone arch, and the adventure continues. They find the shipwreck that is said to house the mirror and head inside Tinker Bell finally discovers the mirror. Just as she is about to make the wish, Blaze keeps getting in her face, causing her to blurt out her wish for the firefly to be quiet for one minute, accidentally wasting her third wish. She blames Blaze for distracting her, but then, realizing that her temper is what had gotten her in trouble in the first place, she apologizes and breaks down crying. She is found by Terence, who has been following her after discovering her plans and the fragments of the moonstone in her empty house. They reunite, but then they are chased by rats.\nTinker Bell and Terence start back to Pixie Hollow. Along the way, Tinker Bell fixes the scepter using a white gem from the top of the mirror, the scepter pieces Terence has wisely brought, and the moonstone pieces, all set at just the right angle. She discovers the magic of true friendship, humility, and love. Thanks to inspired teamwork with Terence, she is ready to give the scepter to Queen Clarion.\nWhen she unveils the scepter, the assembled fairies are all shocked and alarmed to see the fragments of the precious moonstone. However, the broken moonstone shards create an unexpected benefit: they drastically magnify and increase the surface area through which the rays of the blue moon could pass, creating the largest supply of blue-colored pixie dust ever seen in Pixie Hollow."
-          },
-          {
-            "film": "Mickey's Twice Upon a Christmas (2004)",
+            "film": "The Princess Diaries 2: Royal Engagement (2004)",
             "findings": [
               {
                 "requirement": "no deaths",
                 "verdict": "yes",
-                "quote": "The film concludes with a medley of various carols."
+                "quote": "The next day, Mia is crowned \"Her Majesty Amelia Mignonette Thermopolis Renaldi, Queen of Genovia\", with all in attendance in the royal palace."
               },
               {
                 "requirement": "a princess appears",
-                "verdict": "unclear",
-                "quote": "",
-                "note": "No princess is identified in the plot text."
-              },
-              {
-                "requirement": "ice appears",
                 "verdict": "yes",
-                "quote": "who are competing in an ice skating competition."
-              }
-            ],
-            "accepted": false,
-            "usage": {
-              "prompt_tokens": 1520,
-              "completion_tokens": 92,
-              "total_tokens": 1612,
-              "cached_tokens": 0
-            },
-            "prompt": "FILM: Mickey's Twice Upon a Christmas (2004)\n\nREQUIREMENTS\n- no deaths\n- a princess appears\n- ice appears\n\nPLOT TEXT\nThe narrator recites the first 10 words of The Night Before Christmas before saying, \"Oh, wait. Different story, but we'll still see a mouse\". The narrator announces new tales of giving and loving, and a book opens to show pop-up elves.\n=== \"Belles on Ice\" ===\nThis first segment tells the story of Minnie Mouse and Daisy Duck, who are competing in an ice skating competition. The girls each are joined by their boyfriends, Mickey and Donald, as they prepare to take the ice. Daisy becomes envious of crowd's reaction to Minnie and attempts to steal the spotlight for herself. Minnie performs several daredevil stunts to regain the spotlight, Daisy summons the Fantasia Hippos, who become her backup skaters, while her counterpart summons the Alligators from the same film. Fed up, Daisy and Minnie argue and shove each other, putting each other at risk, and then try pulling dramatic stunts to draw the attention of the crowds. When Minnie accidentally slipped on a fallen handbell while landing from a stunt blindfolded, Daisy helps Minnie up feeling sorry for her actions. Minnie also feels the same way, and they perform a grand finale.\n=== \"Christmas: Impossible\" ===\nThe second segment tells the story of Huey, Dewey, and Louie Duck celebrating Christmas Eve at their Uncle Scrooge's mansion in Duckburg. Donald Duck and Daisy Duck also join in the festivities. The boys know that they are on the \"naughty list\" for sure, so they travel to the North Pole to write their names on Santa's \"good list\". At Santa's workshop, the trio cause much trouble, such as messing the elves' jobs up, but they and the elves help clean up the mess and save Christmas. Before they leave, they luck into an opportunity to add their names to the \"good list\"; however, they add Uncle Scrooge's name instead, mindful of the fact that he was never written onto the list either. On Christmas, Santa leaves them a note that explains that their actions have caused them to be put on the Good List, too.\n=== \"Christmas Maximus\" ===\nThe third segment's focus is about Max Goof and Goofy celebrating the holidays. A college-age Max brings home his girlfriend Mona to meet Goofy. However, Max is unsure whether or not he wants Mona to meet his dad. Most of the story takes place within the song \"Make Me Look Good\". Max at first is embarrassed by his dad, who shows baby pictures to Mona, but after noticing that his scarf is made by him, he realizes that Goofy is always goofy, and that is why he loves him. Max forgets about being embarrassed and decides to join in the fun when the popcorn making machine goes haywire and causes the house to explode popcorn like a volcano and Mona reveals to have the same kind of teeth like Goofy and Max.\n=== \"Donald's Gift\" ===\nThe fourth segment's focus is about Donald Duck and his Christmas wish of peace and quiet. Daisy Duck and Huey, Dewey, and Louie also appear. As Donald returns home from Christmas shopping, he daydreams and misses his bus. He runs to catch after it, but he is slowed down by a series of well-wishers. Donald becomes increasingly annoyed by the joyous people, and, at home, he is annoyed to hear the same Christmas carols on his radio. When Daisy and his nephews arrive, Donald becomes annoyed that they want to go out so soon after he returned home, but Daisy drags him out. Donald finds that is stuck with the song \"We Wish You a Merry Christmas\", and he inadvertently vandalizes a windows display. After he is kicked out of the mall by a policeman, he feels guilty for his lack of Christmas spirit and helps off-key carolers. Daisy and the boys join him, and Donald sings from his heart.\n=== \"Mickey's Dog-Gone Christmas\" ===\nThe final segment stars Mickey as he makes decorations for the Christmas party, which Pluto keeps interrupting. Pluto attempts to put the star on the tree, but when he destroys all the decorations, an angry Mickey sends Pluto to the dog house. Pluto then gets upset himself feeling unappreciated and decides to run away from home and finds himself shipped to the North Pole, where the reindeer adopt him. At home, Mickey attempts to reconcile, only to find Pluto missing. Mickey posts several \"lost dog\" posters and eventually turns to a department store Santa, who turns out to be the real one. Meanwhile, Pluto becomes homesick, and the reindeer and Santa help Pluto to return home. As Mickey's friends arrive, Pluto completes the Christmas tree decorations, and everyone celebrates Pluto's return, even Donald and Daisy Duck, who had just showed up with Huey, Dewey and Louie, Uncle Scrooge, Max, Goofy and Minnie Mouse. Minnie is also entranced by the decorations. The film concludes with a medley of various carols."
-          },
-          {
-            "film": "The Lizzie McGuire Movie (2003)",
-            "findings": [
-              {
-                "requirement": "no deaths",
-                "verdict": "yes",
-                "quote": "",
-                "note": ""
+                "quote": "Crown Princess of Genovia Amelia \"Mia\" Thermopolis (Anne Hathaway) has just graduated from Princeton University's Woodrow Wilson School and is returning to Genovia"
               },
               {
-                "requirement": "a princess appears",
-                "verdict": "no",
-                "quote": "",
-                "note": ""
-              },
-              {
-                "requirement": "ice appears",
+                "requirement": "ice",
                 "verdict": "unclear",
                 "quote": ""
               }
             ],
             "accepted": false,
             "usage": {
-              "prompt_tokens": 1132,
-              "completion_tokens": 61,
-              "total_tokens": 1193,
+              "prompt_tokens": 1669,
+              "completion_tokens": 126,
+              "total_tokens": 1795,
               "cached_tokens": 0
             },
-            "prompt": "FILM: The Lizzie McGuire Movie (2003)\n\nREQUIREMENTS\n- no deaths\n- a princess appears\n- ice appears\n\nPLOT TEXT\nLizzie McGuire prepares for her junior-high graduation with one of her two closest friends, David \"Gordo\" Gordon. Their other best friend, Miranda Sanchez, has chosen to skip the graduation ceremony in favor of a trip to Mexico City to visit her relatives. During the ceremony, Lizzie trips onstage and accidentally brings the curtain down on her fellow graduates, which is filmed by her younger brother Matt.\nAfter graduation, Lizzie and her classmates embark on a trip to Rome, chaperoned by their strict future high school principal, Angela Ungermeyer. To their dismay, Lizzie and Kate Saunders are assigned to the same hotel room. While visiting the Trevi Fountain, Lizzie is approached by an Italian pop star named Paolo Valisari, who notices that she bears a striking resemblance to his singing partner, Isabella Parigi.\nThe next day, Lizzie feigns illness and meets Paolo, who explains that he and Isabella are booked for the International Music Video Awards, but she left Italy after their partnership breakup. He tells Lizzie that Isabella lip syncs and begs her to pose as her for the ceremony. Lizzie reluctantly agrees but soon begins to enjoy the experience and falls for Paolo. Lizzie continues to fake being ill to prepare for the ceremony. Kate finds out and agrees to help her, leading to a mutual friendship. Ms. Ungermeyer grows suspicious, leading Gordo to take the blame and resulting in him being sent back home as punishment.\nMatt finds Italian gossip sites with pictures of Lizzie as Isabella. He initially tells his parents he misses Lizzie, convincing his parents to fly them to Rome, during which his parents find out about Lizzie's exploits. At the airport, Gordo meets the real Isabella, who is upset that someone has been impersonating her. The two find Lizzie and warn her that Paolo is planning to have a nervous Lizzie unknowingly sing live at the ceremony, as Isabella actually does, creating the impression that Isabella is a fake, which would damage the latter's career and embarrass Lizzie. The McGuires find Ms. Ungermeyer and reach the award show to find Lizzie.\nDuring the performance, Isabella and Gordo expose Paolo, who is actually the one who lip syncs, by turning on his microphone, revealing his real mediocre singing voice. Upset, he runs off stage, where his displeased manager Sergei resigns, and gets ambushed outside by paparazzi. Isabella introduces Lizzie to the crowd, and the two of them sing \"What Dreams Are Made Of\".\nWhen Isabella leaves the stage, Lizzie finishes the song solo, displaying a newfound confidence. Later, they celebrate at the hotel's after party, where Ms. Ungermeyer rescinds Gordo's punishment and flirts with Sergei. Although Lizzie's dad tells her she is grounded for the rest of the summer, he says he and her mom are still proud of her. Lizzie and Gordo then sneak away from the party to go up to the roof, where they promise to never let things change between them. They kiss and then rejoin the party."
+            "prompt": "FILM: The Princess Diaries 2: Royal Engagement (2004)\n\nREQUIREMENTS\n- no deaths\n- a princess appears\n- ice\n\nPLOT TEXT\nFive years after the first film, Crown Princess of Genovia Amelia \"Mia\" Thermopolis (Anne Hathaway) has just graduated from Princeton University's Woodrow Wilson School and is returning to Genovia with her bodyguard Joe (Héctor Elizondo) and beloved cat Fat Louie. There, she will await her reign once her grandmother, Queen Clarisse (Julie Andrews), steps down as Queen. During Mia's 21st birthday party, she dances with all the eligible bachelors in hope of finding a husband. She becomes attracted to a handsome young gentleman named Nicholas (Chris Pine). During the course of the night, Mia's tiara falls off and is caught by Parliament member Viscount Mabrey (John Rhys-Davies) who secretly plans to steal Mia's crown. While the Parliament is in-session the next morning, Mia stumbles upon a hidden room that allows her to secretly listen in. Viscount Mabrey reveals his nephew, Lord Devereaux, is another heir to the Genovian throne. Despite Queen Clarisse's objection, the only way Mia can assume her duties as Queen is if she marries within the month. Clarisse invites Lord Devereaux to stay at the palace, while Mia is shocked to discover Lord Devereaux is Nicholas. Mia's best friend Lilly Moscovitz (Heather Matarazzo) surprises her by visiting. Together, they pick through potential husbands. Mia eventually chooses Andrew Jacoby (Callum Blue), Duke of Kenilworth and days later they are engaged. Mabrey plans to have Nicholas woo Mia and dissolve the engagement.\nFor a ceremony, Mia is to ride sidesaddle but does not know how. Queen Clarisse provides an ancestral wooden leg decoy to make it look like she's riding sidesaddle. Mabrey spooks Mia's horse with a rubber snake and Joe rushes to Mia's aide, but accidentally tears off the wooden leg. Humiliated, Mia flees to the stables, where Nicholas fails to comfort her. At a garden party, Mia and Nicholas quarrel about Mia's relationship with Andrew; Nicholas tricks Mia into admitting she doesn't love him. Angered, she argues but instead gets bombarded by a kiss. At first, she kisses him back but then backs away. Nicholas pursues her even more, which causes both of them to fall into a fountain. Queen Clarisse finally tells Mia that her behavior with Nicholas needs to stop.\nDuring the Genovian Independence Day parade, Mia sees some boys picking on a little girl (Abigail Breslin), and abruptly halts the parade to comfort the girl. Learning the children are orphans, Mia has a vendor give them all tiaras and lets them walk with her in the parade. Everyone is impressed by her act of generosity, while Mabrey sees it as a political maneuver. Mia later decides to convert one of the royal palaces into a temporary children's center. That night, Mia has her bachelorette/sleepover party, where Queen Clarisse surfs on a mattress and sings a duet with Princess Asana (Raven-Symoné), one of Mia's good friends. In the meantime, Mabrey realizes Nicholas has fallen for Mia, but Nicholas says that Mia will never love him. Nicholas comes upon Mia as she is practising her archery as part of her coronation rites. He helps her succeed in getting the arrow to hit the bullseye, something she had been struggling with. Nicholas then informs Mia that he is leaving, but asks to see her just one more time before he goes. She declines, saying she is under close guard.\nThat night, Nicholas appears outside Mia's window and asks her to come out. Lilly encourages her to go, and Mia sneaks out. They ride out to a lake where they share secrets, dance and eventually fall asleep. They awaken to find a man in a boat videotaping them. Mia thinks Nicholas set her up, while he insists had no idea. By the time Mia gets back to the palace, the scandalous footage is already being broadcast. Andrew is disappointed and kisses Mia to see if there is a romantic spark between them. They realize they do not love each other, but do not call off the wedding for the good of Genovia. The wedding is to take place the following day, and Mia's mother Helen (Caroline Goodall) comes with her new husband Patrick (Sean O'Bryan) and their newborn son Trevor. Nicholas decides against attending, but his surly housekeeper Gretchen, informs him that Mabrey engineered their televised scandal.\nRight before the wedding, Joe informs Mia that Nicholas is innocent. Queen Clarisse encourages Mia to follow her heart, something she has never done and has now cost her Joe, the only man she truly loved. Mia reenters the church, and asks the members of the Parliament to consider the women in their families and if it would be right to force them to marry those they don't love. Mabrey cites the law again, suggesting that Nicholas be named King, only for Nicholas to arrive and refuse the crown and disown his uncle. Mia proposes the law on royal marriages be abolished, and Parliament unanimously gives its assent. Encouraged by Mia to have her own happy ending, Clarisse proposes to Joe and they are promptly married.\nAbout a week later, Mia is preparing for her coronation when Nicholas shows up. He professes his romantic love for Mia on bended knee, and they share a romantic kiss. The next day, Mia is crowned \"Her Majesty Amelia Mignonette Thermopolis Renaldi, Queen of Genovia\", with all in attendance in the royal palace.\nAn epilogue shows that Genovian Parliament now allows female members, one of which is Charlotte. And Queen Mia officially opens the children's home."
           },
           {
-            "film": "Freaky Friday (1976)",
+            "film": "Glory Road (2006)",
             "findings": [
               {
                 "requirement": "no deaths",
-                "verdict": "yes",
-                "quote": "The reversal occurs differently than before: Annabel suddenly finds herself behind the wheel of a car with Ben and Boris, none of whom know how to drive, attracting police attention.",
-                "note": "No death is stated anywhere in the plot text."
+                "verdict": "unclear",
+                "quote": "",
+                "note": "The text mentions slaying creatures, but no actual death is explicitly stated for any character."
               },
               {
                 "requirement": "a princess appears",
                 "verdict": "no",
                 "quote": "",
-                "note": "No princess is mentioned or appears in the plot text."
+                "note": "Star is an Empress, not a princess."
               },
               {
-                "requirement": "ice appears",
+                "requirement": "ice",
                 "verdict": "unclear",
-                "quote": "",
-                "note": "The text mentions an aquacade and water skis, but not ice."
+                "quote": ""
               }
             ],
             "accepted": false,
             "usage": {
-              "prompt_tokens": 1154,
-              "completion_tokens": 137,
-              "total_tokens": 1291,
+              "prompt_tokens": 1061,
+              "completion_tokens": 87,
+              "total_tokens": 1148,
               "cached_tokens": 0
             },
-            "prompt": "FILM: Freaky Friday (1976)\n\nREQUIREMENTS\n- no deaths\n- a princess appears\n- ice appears\n\nPLOT TEXT\nEllen Andrews and her teenage daughter Annabel frequently quarrel. On a Friday the 13th, they simultaneously wish aloud to trade places for just one day. Their wish is granted instantly, and they are shocked to find themselves in each other's bodies.\nAnnabel, now in her mother's body, must navigate the responsibilities of being a housewife. She handles laundry, car repairs, grocery deliveries, carpet cleaners, dry cleaning, the housemaid, and the family Basset Hound, Max. The day becomes more complicated when her father, Bill, announces that his catered dinner party has fallen through and asks her to prepare dinner for 25 guests. Annabel enlists Boris, a neighbor she has a crush on, to help look after her younger brother, Ben, and assist in making a chocolate mousse. Despite a series of mishaps, they salvage the evening by transforming the meal into a smörgåsbord. During the day, Annabel bonds with Ben, who shares his admiration for her and confesses he tried to emulate her messiness to connect with her. They play baseball together, leading Annabel to gain a new appreciation for her brother.\nMeanwhile, Ellen, now in Annabel's body, struggles with high school life. She exposes her photography class's developing film, ruins several electric typewriters in typing class, disrupts marching band and loses a field hockey game. She finds success in U.S. history class by accurately recounting the Korean War, having lived through the 1950s. Seeking to escape school, Ellen visits Bill's office, where she encounters his new, young, and provocatively dressed secretary. Ellen, posing as Annabel, tries to intimidate her by describing \"her mother\" as strict. The secretary soon adopts a more modest appearance, wearing glasses and a conservative hairstyle. Ellen then asks Bill for his credit card to pay for Annabel's dental appointment, which he approves. Bill misattributes the secretary's change in demeanor to personal troubles, prompting Ellen to scold herself for her earlier jealousy.\nAt the end of the day, Ellen and Annabel wish to return to their own bodies. The reversal occurs differently than before: Annabel suddenly finds herself behind the wheel of a car with Ben and Boris, none of whom know how to drive, attracting police attention. Ellen, meanwhile, is pulled onto water skis as she (in Annabel's body) was scheduled to participate in an aquacade. Bill, watching with prospective clients, fears embarrassment, but Ellen's chaotic performance delights the clients, helping him secure a business deal.\nWith a renewed understanding of each other's lives, Ellen and Annabel reconcile. Annabel begins dating Boris, and Bill joins Ellen for a card game, still puzzled by the day's events. Later, Annabel agrees to let Ben join her and Boris at a pizzeria. Ben laments that he never gets to do fun things like his father, who is preparing for a business trip that involves dirt biking with a Japanese motorcycle company entering the U.S. market. Both Ben and Bill express a desire to switch places for a day, prompting Ellen and Annabel to nervously urge them against it—just before both declare, \"Oh, yes, I do!\" to the women's dismay."
+            "prompt": "FILM: Glory Road (2006)\n\nREQUIREMENTS\n- no deaths\n- a princess appears\n- ice\n\nPLOT TEXT\nEvelyn Cyril \"E.C.\" Gordon (also known as \"Easy\" and \"Flash\") had been recently discharged from an unnamed war in Southeast Asia. He is pondering what to do with his future and considers spending a year traveling in France. He is presented with a dilemma: follow up on a possible winning entry in the Irish Sweepstakes or respond to a newspaper ad which asks \"Are you a coward?\". He settles on the latter, discovering it has been placed by Star, a stunningly gorgeous woman he had previously met on Île du Levant. Star informs him that he is the one to embark on a perilous quest to retrieve the Egg of the Phoenix. When she asks what to call him, he wants to suggest Scarface, referring to the scar on his face, but she stops him as he is saying \"Oh, Scar...\" and repeats this as \"Oscar\", and thus gives him his new name. Along with Rufo, her assistant, who appears to be a man in his fifties, they tread the \"Glory Road\" in swashbuckling style, slaying dragons and other exotic creatures.\nShortly before the final Quest for the Egg itself, Oscar and Star marry. The team then proceeds to enter the tower in which the Egg has been hidden, navigating a maze of illusions and optical tricks. Oscar scouts ahead and encounters a fearsome foe who, though unnamed, is clearly the legendary 17th-century swordsman Cyrano de Bergerac, the final guardian of the Egg. After a long fight, the party escapes with the Egg. When they arrive in the home universe of Star and Rufo, Rufo informs Oscar that Star is actually the Empress of many worlds—and Rufo's grandmother.\nThe Egg is a cybernetic device that contains the knowledge and experiences of most of her predecessors. Despite her youthful appearance, she is the mother of dozens of children (by egg donation) and has undergone special medical treatments that extend her life much longer than usual. She has Oscar unknowingly receive the same treatments.\nInitially, Oscar enjoys his new-found prestige and luxurious life as the husband of the Empress of the Twenty Universes. However, as time goes on, he grows bored and feels out of place and useless. When he demands Star's professional judgment, she tells him that he must leave; her world has no place or need for a hero of his stature. It will be decades before she can complete the transfer of the knowledge held in the Egg, so he must go alone. He returns to Earth but has difficulty readjusting to his own world, despite having brought great wealth along with him. He begins to doubt his own sanity and whether the adventure even happened. The story ends as he is contacted by Rufo to set up another trip along the Glory Road."
+          },
+          {
+            "film": "Atlantis: Milo's Return (2003)",
+            "findings": [
+              {
+                "requirement": "no deaths",
+                "verdict": "no",
+                "quote": "When they blow up the Kraken, the man disintegrates and restores the spirit of the village."
+              },
+              {
+                "requirement": "a princess appears",
+                "verdict": "unclear",
+                "quote": "",
+                "note": "Kida is Queen, but the text does not say she is a princess."
+              },
+              {
+                "requirement": "ice",
+                "verdict": "yes",
+                "quote": "He creates a lava beast and then an ice beast to destroy the world"
+              }
+            ],
+            "accepted": false,
+            "usage": {
+              "prompt_tokens": 1158,
+              "completion_tokens": 111,
+              "total_tokens": 1269,
+              "cached_tokens": 0
+            },
+            "prompt": "FILM: Atlantis: Milo's Return (2003)\n\nREQUIREMENTS\n- no deaths\n- a princess appears\n- ice\n\nPLOT TEXT\nAfter the decline in Atlantean culture following the sinking, Kida (Cree Summer), now Queen, and married to Milo Thatch (James Arnold Taylor), is using the heart of Atlantis to restore her city's former glory. Suddenly, Milo's comrades and Mr. Whitmore (John Mahoney) arrive in Atlantis; while their arrival is unexpected, the Atlanteans welcome their old friends. Unfortunately, they have come to inform them of a mysterious creature causing trouble on the surface. They arrive in Norway and discover that the mysterious problem is actually the creature known as the Kraken, which had been attacking shipping freighters and taking their cargo to a cliffside village. At first they presume it to be an ancient Atlantean war machine gone rogue (like the Leviathan from the previous film), but they discover that the town magistrate, Edgar Volgud (Clancy Brown), seems to be controlling the Kraken. They soon learn, though, that the Kraken itself is the master, having made a deal with Volgud. When they blow up the Kraken, the man disintegrates and restores the spirit of the village.\nAll the while, Kida is learning about the outside world and is adapting well. However, she still feels guilty, as there could still be other Atlantean war machines in the world causing problems, like the Leviathan. Their next mystery is in the Southwestern United States, involving coyote spirits opposing them. They later find a hidden city in Arizona that contains a statue that greatly resembles Atlantean architecture. Unfortunately, a very sly shop owner, Ashton Carnaby (Thomas F. Wilson), intends to pillage the place for its valuables, but the spirits then turn him into one of them. A Native American man named Chakashi (Floyd Red Crow Westerman), who is a Native American wind spirit, trusts them with the knowledge of their sanctuary and informs Kida that she can choose Atlantis' destiny.\nReturning home, the adventurers discover that one of Whitmore's old competitors Erik Hellstrom (W. Morgan Sheppard), believing himself to be the Norse god Odin, stole one of his possessions, an ancient spear called the Gungnir, presumably an artifact of Atlantean origin. When they track him down in the frigid Nordic Mountains, he presumes Kida to be his long lost daughter and kidnaps her. His intentions are to end the world in Ragnarok. He creates a lava beast and then an ice beast to destroy the world, but well-placed explosives used by Vinny distract the monsters long enough for Kida to retrieve the spear and vanquish the beasts. During these escapades, Kida comes into a greater understanding of just how powerful the Atlantean Crystal is, and that she must choose between hiding it and sharing it with the rest of mankind.\nHaving retrieved the spear, Kida realizes her father was wrong to hide the Crystal from mankind. She combines the Spear with the Heart Crystal and lifts Atlantis to the surface. Two fishermen are shocked when they suddenly see an entire continent rise before them. In the end, we see Atlantis above the water for the first time in over nine-thousand years. Mr. Whitmore narrates that from then on, the world was a better place."
+          },
+          {
+            "film": "The Santa Clause 3: The Escape Clause (2006)",
+            "findings": [
+              {
+                "requirement": "no deaths",
+                "verdict": "yes",
+                "quote": "Jack is arrested by elf police."
+              },
+              {
+                "requirement": "a princess appears",
+                "verdict": "no",
+                "quote": "the Easter Bunny, Cupid, the Tooth Fairy, and the Sandman."
+              },
+              {
+                "requirement": "ice",
+                "verdict": "yes",
+                "quote": "Jack Frost also arrives"
+              }
+            ],
+            "accepted": false,
+            "usage": {
+              "prompt_tokens": 1289,
+              "completion_tokens": 84,
+              "total_tokens": 1373,
+              "cached_tokens": 0
+            },
+            "prompt": "FILM: The Santa Clause 3: The Escape Clause (2006)\n\nREQUIREMENTS\n- no deaths\n- a princess appears\n- ice\n\nPLOT TEXT\nCarol/Mrs. Claus is teaching a class of young elves and begins telling them a story of her life with Scott Calvin/Santa Claus. The couple are expecting their first child as Christmas Eve approached. Scott invites his in-laws, Sylvia and Bud Newman, to the North Pole, along with Scott's former wife, Laura, her husband, Neil, and their daughter, Lucy. Meanwhile, he is summoned to a meeting of the Council of Legendary Figures, consisting of Mother Nature, Father Time, the Easter Bunny, Cupid, the Tooth Fairy, and the Sandman. Jack Frost also arrives, jealous that he has no holiday or special occasion in his honor. Because he has been promoting himself during the Christmas season, Mother Nature suggests sanctions against him. When Santa says he is dealing with how to get the in-laws to come without revealing that he is Santa, Jack Frost negotiates a light sentence of community service at the North Pole, helping Santa and the elves put up various Canadian-themed paraphernalia, as Carol's parents believe Scott is a toymaker in Canada.\nHowever, Frost's ultimate goal is to trick Santa into renouncing his position. When elf Curtis inadvertently reveals the Escape Clause, Frost sneaks into Santa's hall of snow globes and steals one containing Scott as Santa. If Scott holds the globe and says, \"I wish I'd never been Santa at all,\" he will go back in time and undo his career as Santa. When Lucy discovers this, Frost freezes her parents and locks her in a closet. He then orchestrates situations that make Scott think he must resign to make things better.\nFrost tricks Scott into invoking the Escape Clause and both are sent to Scott's front yard in 1994, when Scott caused the original Santa to fall off of his roof and had to replace him. Frost causes the original Santa to fall off the roof and grabs Santa's coat before Scott can, making Frost the new Santa. Scott is sent back to the present day, where he has been CEO of his old company for the last 12 years and business takes priority over family. Laura treats him coldly and explains she and Neil divorced, revealing that the new timeline has affected other people as well. Scott also learns he and Carol never married and Carol moved away years ago.\nScott goes to find Lucy and Neil, who are vacationing at the North Pole, which Frost has turned into a touristy resort. Christmas is now \"Frostmas\", the elves are miserable, and the reindeer are confined to a petting zoo. When Scott finds Lucy and Neil, Neil expresses his resentment for Scott's causing the separation between Neil and Laura. Scott confronts Frost as Santa Claus and tricks Jack Frost into recording his voice stating the Escape Clause. Scott has Lucy steal Frost's snow globe and bring it to him; when Frost finds out and takes the globe back, Scott plays the recording of Frost saying, \"I wish I'd never been Santa at all\", invoking the Escape Clause and causing Scott and Frost to be sent back again to 1994. Scott restrains Jack long enough to let the Scott Calvin of 1994 get the coat, making him Santa Claus again and taking him back to the North Pole in the present and the family where no time has passed.\nScott as Santa reconciles with his family and Jack is arrested by elf police. He reveals he cannot unfreeze his victims unless he is unfrozen himself. Scott convinces Lucy via a snow globe he had given her earlier of her warmly hugging a snowman, to give Frost a \"magic hug\" to unfreeze and reform him. The \"Canada\" ruse is dropped and Scott appears as Santa to Carol's parents. With two hours remaining before Santa must leave for his Christmas deliveries, Carol goes into labor.\nBack to the present time, while Carol is telling the tale to her students, Scott walks in to reveals his baby boy, Buddy Claus."
+          },
+          {
+            "film": "Tinker Bell and the Lost Treasure (2009)",
+            "findings": [
+              {
+                "requirement": "no deaths",
+                "verdict": "yes",
+                "quote": "They also lead her and Blaze to the stone arch, and the adventure continues."
+              },
+              {
+                "requirement": "a princess appears",
+                "verdict": "unclear",
+                "quote": "",
+                "note": "Queen Clarion appears, but she is not identified as a princess in the text."
+              },
+              {
+                "requirement": "ice",
+                "verdict": "no",
+                "quote": "The nature-talent fairies are bringing to the mainland the season of leaves, hibernation, chilly breezes, and pumpkins: autumn."
+              }
+            ],
+            "accepted": false,
+            "usage": {
+              "prompt_tokens": 1485,
+              "completion_tokens": 117,
+              "total_tokens": 1602,
+              "cached_tokens": 0
+            },
+            "prompt": "FILM: Tinker Bell and the Lost Treasure (2009)\n\nREQUIREMENTS\n- no deaths\n- a princess appears\n- ice\n\nPLOT TEXT\nThe nature-talent fairies are bringing to the mainland the season of leaves, hibernation, chilly breezes, and pumpkins: autumn. Meanwhile, Tinker Bell (Mae Whitman) and dust-talent fairies like Terence (Jesse McCartney) are staying in Pixie Hollow. Tinker Bell is trying to make a \"Pixie Express\". But it fails just as she is called to meet Queen Clarion (Anjelica Huston), Fairy Mary (Jane Horrocks), and Redleaf, the Minister of Autumn (John DiMaggio).\nThey show her a mystical moonstone and explain to her its tremendous powers. Every eight years, there is a blue harvest moon in Pixie Hollow. When the light of this rare blue moon passes through the moonstone, it creates blue-colored pixie dust to strengthen and rejuvenate the pixie dust tree. The Autumn Revelry is the associated event during which the fairies gather to collect the dust.\nA new scepter is to be made to raise the moonstone, and Tinker Bell has been recommended. Although Tinker Bell has made mistakes in the past, Fairy Mary explains that tinker fairies learn from them, most of the time. Tinker Bell accepts the task, as well as help from Terence. But as the work on the scepter progresses, Tinker Bell begins to have trouble with Terence, who is trying too hard to be helpful. When Tinkerbell asks Terence to go find something sharp, Terence brings a compass to her workshop, irritating Tinkerbell. She kicks the compass, causing it to roll over and break her newly completed scepter. After a row with her friend, Tinker Bell's furious antics result in her accidentally smashing the moonstone as well. Tinker Bell sets out on in a balloon she's created to find a magic mirror, which, according to legend, granted two of three wishes before becoming lost. Tinker Bell intends to use the third and last wish to repair the shattered moonstone to its original form.\nWhile trying to evade a hungry bat, a firefly named Blaze crash lands into Tinker Bell's balloon. Tink orders him to leave, but he truly wants to tag along with Tink on her quest to find the magical mirror. After Blaze's apparent exit, Tink tries to read her map but it's too dark to see. Blaze then sheds light on the map to help Tink, and the tinker finally allows him to stay. As the duo's adventure continues, Tink thinks she has stumbled upon the stone arch that is said to lead way to the mirror. She leaves the balloon to make sure of this and leaves Blaze to watch over it. Once Tink flies off, however, the balloon begins to stray away. After unsuccessfully trying to anchor it, Blaze rushes to tell Tink, though she is too busy trying to figure out why she stumbled upon a bent tree instead of the stone ark to notice Blaze. When she finally sees the balloon floating off, she gives chase, Blaze in tow, but the harsh winds knocks them down. The next morning, Tinker Bell awakens, hungry and lost.\nBlaze scouts out to rally some forest insects that provide food and water for Tink. They also lead her and Blaze to the stone arch, and the adventure continues. They find the shipwreck that is said to house the mirror and head inside Tinker Bell finally discovers the mirror. Just as she is about to make the wish, Blaze keeps getting in her face, causing her to blurt out her wish for the firefly to be quiet for one minute, accidentally wasting her third wish. She blames Blaze for distracting her, but then, realizing that her temper is what had gotten her in trouble in the first place, she apologizes and breaks down crying. She is found by Terence, who has been following her after discovering her plans and the fragments of the moonstone in her empty house. They reunite, but then they are chased by rats.\nTinker Bell and Terence start back to Pixie Hollow. Along the way, Tinker Bell fixes the scepter using a white gem from the top of the mirror, the scepter pieces Terence has wisely brought, and the moonstone pieces, all set at just the right angle. She discovers the magic of true friendship, humility, and love. Thanks to inspired teamwork with Terence, she is ready to give the scepter to Queen Clarion.\nWhen she unveils the scepter, the assembled fairies are all shocked and alarmed to see the fragments of the precious moonstone. However, the broken moonstone shards create an unexpected benefit: they drastically magnify and increase the surface area through which the rays of the blue moon could pass, creating the largest supply of blue-colored pixie dust ever seen in Pixie Hollow."
+          },
+          {
+            "film": "The BFG (2016)",
+            "findings": [
+              {
+                "requirement": "no deaths",
+                "verdict": "no",
+                "quote": "but sadly was discovered and eaten by the giants"
+              },
+              {
+                "requirement": "a princess appears",
+                "verdict": "unclear",
+                "quote": "",
+                "note": "The text mentions Queen Elizabeth II, but not a princess."
+              },
+              {
+                "requirement": "ice",
+                "verdict": "unclear",
+                "quote": ""
+              }
+            ],
+            "accepted": false,
+            "usage": {
+              "prompt_tokens": 1284,
+              "completion_tokens": 84,
+              "total_tokens": 1368,
+              "cached_tokens": 0
+            },
+            "prompt": "FILM: The BFG (2016)\n\nREQUIREMENTS\n- no deaths\n- a princess appears\n- ice\n\nPLOT TEXT\nOne night, Sophie, a smart and brave ten-year-old girl living in a London orphanage, catches sight of an elderly giant. The giant captures her and takes her to his residence in Giant Country. He tells Sophie that he took her so that she would never reveal the existence of giants to anyone. The giant creates a nightmare to prevent her from escaping, fearing she might be eaten by larger giants.\nThe next morning, Sophie is nearly discovered by Fleshlumpeater, the leader of the man-eating giants, but the elderly giant drives Fleshlumpeater away with a foul-tasting vegetable known as the snozzcumber. She persuades the elderly giant to take her to Dream Country.\nDespite the elderly giant's careful moving around the sleeping giants, Bloodbottler wakes up and grabs BFG as the other giants wake up. After Bloodbottler suggests to Fleshlumpeate they should \"frolic\", they bully the friendly giant. A thunderstorm drives the Fleshlumpeater's group into their cave, but Fleshlumpeater finds Sophie's blanket.\nIn Dream Country, Sophie and the friendly giant catch good and bad dreams. The giant reveals that his only name – besides \"Runt\", the other giants' nickname for him – is \"the Big Friendly Giant\", which leads Sophie to call him \"BFG\". She accompanies him to London for his nightly work: using his dream trumpet to spread good dreams to sleeping children. They return to Giant Country just as the other giants have departed to go eat children worldwide. The BFG realizes that Sophie has lost her blanket, exposing her presence to the other giants, and leaves her outside her orphanage. Revealing that his last human companion liked to read, and even taught The BFG how to read, but sadly was discovered and eaten by the giants, he is unwilling to endanger Sophie and departs. Unafraid, Sophie jumps off her balcony hoping he will appear again to catch her, and he does.\nThey return to the BFG's workshop and the other giants barge in, hunting for Sophie. They destroy much of the BFG's work, but Sophie evades detection and the BFG drives them off with a hot iron. Sophie finds the home of the last human to live with the BFG, with a portrait of Queen Victoria among his belongings. This inspires her to devise a plan: to forge a nightmare for Elizabeth II, the Queen of the United Kingdom, about giants eating the children of England, the British Army fighting the giants, and Sophie appearing to her.\nSophie and the BFG go to Buckingham Palace and deliver the nightmare to the sleeping Queen. Upon waking, the Queen and her maid Mary and butler Mr Tibbs find Sophie on the windowsill. She introduces them to the BFG, explaining that the child-eating giants are real and must be stopped. At a large breakfast, the BFG shares his favourite drink, flatulence-inducing \"frobscottle\", and he and Sophie lead the Queen's soldiers to Giant Country.\nThe BFG plans to ambush the man-eating giants with a nightmare but has forgotten his dream trumpet. Sophie carries the nightmare herself into the midst of the giants and is confronted by Fleshlumpeater. She releases the nightmare, which consumes the giants with guilt, except the Fleshlumpeater (who intercepts and destroys his), and they are caught by military helicopters. Carried away to an isolated island, the giants are left with a large crate of snozzcumber seeds to plant.\nSophie gets adopted by Mary, comes to live in the Queen's palace, and awakens from a dream of the BFG, who returns to his life in Giant Country and writes the story of their adventure. She speaks to him whenever she feels lonely; at his home, the BFG hears her words and smiles."
+          },
+          {
+            "film": "Cars (2006)",
+            "findings": [
+              {
+                "requirement": "no deaths",
+                "verdict": "yes",
+                "quote": "The town's physician and judge, Doc Hudson (Paul Newman), arrives to try McQueen's case."
+              },
+              {
+                "requirement": "a princess appears",
+                "verdict": "no",
+                "quote": ""
+              },
+              {
+                "requirement": "ice",
+                "verdict": "unclear",
+                "quote": ""
+              }
+            ],
+            "accepted": false,
+            "usage": {
+              "prompt_tokens": 1806,
+              "completion_tokens": 82,
+              "total_tokens": 1888,
+              "cached_tokens": 0
+            },
+            "prompt": "FILM: Cars (2006)\n\nREQUIREMENTS\n- no deaths\n- a princess appears\n- ice\n\nPLOT TEXT\nThe movie begins with two announcers, Bob Cutlass (voice of Bob Costas) and Darrell Cartrip (Darrell Waltrip) preparing for the opening of the Dinoco 400, the final race in the Piston Cup Series, the most famous and prestigious race in the United States. So far this racing season, three racers have emerged as the most likely candidates for the Piston Cup Championship, all three of them tied for the season point's lead-* #43 Strip Weathers, AKA \"The King\" (Richard Petty; modeled after one of the Petty's real 1970 Plymouth Superbirds), a longtime racing veteran who already has seven Piston Cups to his credit and is rumored to be retiring at the end of the current season.*#86 Chick Hicks, another veteran racer (a 1980s Buick Regal, voiced by Michael Keaton) and a longtime \"second banana;\" he's spent his entire racing career coming in second behind The King.*#95 Lightning McQueen, a rookie (standard stock car, voiced by Owen Wilson) This is his first year in the racing circuit and his performance has been nothing short of incredible. Speculation is that he might be the first driver to win the Piston Cup, Rookie of the Year, and Dinoco sponsorship in one sweep.Now, the final race of the season- to decide the winner of the Piston Cup- is about to begin!As the race proceeds, Hicks (who is clearly willing to do anything to succeed) sideswipes another car- causing the inevitable multicar pileup. Lightning is barely able to dart through the wreckage and keep up with the lead cars. Then, to cement his hold on the lead, McQueen stays out on the lead lap while everyone else pits. The commentators mention that McQueen has recently fired his third crew chief, offering the explanation that Lightning prefers to work alone.Throughout the race, Lightning refuses to make complete pit stops- taking only a few seconds each lap to refuel. The strategy backfires on the last lap when his tires explode. McQueen makes a valiant effort to get across the line first, but the race ends in an absolute dead heat.Reporters interview Lightning while the judges argue over the result. McQueen repeats again that he is a \"one-man show.\" His pit crew, fed up with Lightning's shoddy treatment, quit in the middle of the interview. Chick and Lightning trade insults until The King comes over to have a word with Lightning. The King tells McQueen that his talent is extraordinary, but his attitude is stupid- Lightning can't win without a good team behind him. Lightning's idea of a good team is Dinoco, the most prestigious sponsor on the racing circuit (and The Kings' current sponsor; Lightning is certain that if he wins the Piston Cup he will be offered the chance at a Dinoco sponsorship.)An announcement regarding the outcome of the race comes over the loudspeakers. Officials declare that a tiebreaker race (between Chick, Lightning and The King) will be held in California next week to determine the championship.Lightning meets with his transporter, Mack (a 1980 Mack Super-Liner truck, voiced by John Ratzenberger) after the announcement. Mack reminds McQueen that he needs to make a personal appearance for his sponsor, Rust-Eze. Lightning films a commercial for Rust-Eze and talks to a group of rusted out vehicles brought to the personal appearance by Rusty & Dusty, heads of the company (voiced by Car Talk hosts and brothers Tom & Ray Magliozzi respectively). McQueen forcibly puts on a good face for the crowd but is obviously unhappy working for a small-time group.On the road with Mack, Lightning is desperate to be the first competitor to arrive at California. He refuses to let Mack stop off and rest, forcing him to drive on through the night. While on Interstate 40, Mack is confronted by a gang of street racers while he is drowsy, who force him onto the shoulder. The vibration from the rumble strips (designed to alert drowsy drivers that they are drifting off the road) accidentally causes a Lightning figurine to land on the button that opens the back door of the truck, and causes the sleeping Lightning to fall out. Lightning, terrified about being lost, desperately rushes to try and find Mack but ends up leaving the highway at the next exit and following a semi that he thinks is Mack but turns out to be a Peterbilt, who rudely tells McQueen to turn on his headlights.While Lightning is speeding, he gets lost in the dark country roads. He passes a police car (Michael Wallis) waiting in a speed trap, who pulls out and chases after Lightning. Lightning pedals for it when he hears the police car backfiring (thinking he is being shot at). Lightning loses control, spinning wildly and becoming entangled in several power lines. He tears through a small town and ends up shredding a large gash down the main street before finally coming to a stop in front of the Sheriff.The next morning, Mack arrives at the track alone and a huge manhunt begins to try and find Lightning McQueen.Lightning wakes up in an impound lot strapped with a parking boot and confronted by a rusted tow truck named Mater (Larry the Cable Guy). Mater tells Lightning that he is in the town of Radiator Springs, a spot just off old U.S. Route 66. The Sheriff shows up to take Lightning to court for his actions.The other citizens of Radiator Springs- Fillmore (George Carlin), who owns a shop selling his own organic fuel; Luigi (Tony Shalhoub) and Guido (Guido Quaroni), who run a tire shop; Ramone (Cheech Marin), who runs a paint and body shop; Flo (Jenifer Lewis), who runs a gas station/cafe; Sarge (Paul Dooley), a Humvee who sells surplus; Lizzie (Katherine Helmond), an antiques dealer; and Red (Joe Ranft), the town's fire truck - have all turned out to demand punishment for Lightning's reckless driving, which caused a large amount of damage to the town.The town's physician and judge, Doc Hudson (Paul Newman), arrives to try McQueen's case. At first, Doc is ready to impose serious hard time on the culprit but upon getting a close look at Lightning orders him thrown out of town. A fe..."
+          },
+          {
+            "film": "Prom (2011)",
+            "findings": [
+              {
+                "requirement": "no deaths",
+                "verdict": "unclear",
+                "quote": "",
+                "note": "The text mentions a fire and a burned-down shed, but does not state whether anyone dies."
+              },
+              {
+                "requirement": "a princess appears",
+                "verdict": "unclear",
+                "quote": "",
+                "note": "No princess is mentioned in the provided plot text."
+              },
+              {
+                "requirement": "ice",
+                "verdict": "unclear",
+                "quote": "",
+                "note": "The provided text does not mention ice."
+              }
+            ],
+            "accepted": false,
+            "usage": {
+              "prompt_tokens": 1821,
+              "completion_tokens": 104,
+              "total_tokens": 1925,
+              "cached_tokens": 0
+            },
+            "prompt": "FILM: Prom (2011)\n\nREQUIREMENTS\n- no deaths\n- a princess appears\n- ice\n\nPLOT TEXT\nClass president Nova (Aimee Teegarden) has been planning her high school's prom. She and her friends, Mei (Yin Chang), Ali (Janelle Ortiz), Brandon (Jonathan Keltz), and Rolo (Joe Adler) have created the perfect decorations, which they store in the school's shed. Nova, who has a crush on Brandon, hopes he will ask her to prom.Meanwhile, Lloyd (Nicholas Braun), the \"invisible\" guy at school, is complaining about prom to his stepsister, Tess (Raini Rodriguez) because he has no date but she encourages him to just ask someone. Elsewhere at the school, Tyler (De'Vaughn Nixon) is confronted by his girlfriend, Jordan (Kylie Bunbury), who assumes he is cheating on her due to the single gold earring she finds in his car. He assures her this is not the case, and Jordan believes him.\"Bad boy\" Jesse Richter (Thomas McDonell) has been missing school lately and showing other \"unacceptable\" behavior, such as riding his motorcycle on school grounds. Principal Dunnan (Jere Burns) has a talk with him, but is not satisfied with Jesse's attitude.Mei learns she has been accepted into Parsons, which conflicts with the plans she made with her boyfriend, Justin (Jared Kusnitz), of going to the University of Michigan together. She is stressed about this and becomes irritable as prom approaches, which she agrees to go with Justin.Sophomore Lucas (Nolan Sotillo) is attracted to Simone (Danielle Campbell), his lab partner, who he tries to get with the help of his friend Corey (Cameron Monaghan).That night, Tyler takes Jordan to the school's shed, which he has decorated with many candles, to ask her to prom, and she agrees. When they leave the shed, however, they forget to put out a single candle. The shed catches fire and burns down. The next day, a devastated Nova, with no decorations and only three weeks to prom, asks her friends for extra help to pull the dance off, which they all back out of, each listing their own reason.Principal Dunnan, seeing her dilemma, has an idea, and forces Jesse to help her for Prom, or he cannot graduate. Although Nova and Jesse both are unhappy with this situation, they comply anyway. At school, Lloyd is having trouble finding a date, even with the help of his sister. As one thing goes wrong after another, Lloyd loses confidence and becomes frustrated.Later at home, Brandon shows up at Nova's house to tell her he cannot take her to prom, and that she will have to find another date. As the date becomes closer to prom, Nova and Jesse grow closer while working together.During lacrosse practice, Tyler invites Lucas to the team barbecue, and tells him to invite a girl. Lucas decides to ask Simone, which she agrees to. At Tyler's barbecue, Tyler tries to make a move on Simone, only to be rejected by her. It is made clear they have a history. Simone tells Lucas that if she had known it was Tyler's barbecue, she would not have come. Mei's attitude is becoming worse and worse, and Justin believes she does not want to go to prom. He calls the date off, and Mei is left feeling very uncomfortable. One night, Nova finds out that the neighboring high school has the same theme for their prom as her own. Jesse suggests they take his motorcycle to go check out the other school's decorations, and she agrees. However, they are caught by the police, who call Nova's parents. Nova's father is infuriated with Jesse and insults him.At school, Lucas is blowing off Corey to spend more time with Simone, and asks her to study for the upcoming test with him, to which she agrees. However, as she is about to go to library, Simone is stopped by Tyler, who convinces her to talk with him. He tells her about his feelings for her. Jordan sees the two talking and immediately grasps the situation.After school, Nova apologizes to Jesse for her father's behavior. Later, she takes him dress shopping. Back at school, Simone apologizes to Lucas for having ditched him. She has a surprise, tickets to a concert, where Stick Hippo (his and Corey's favorite band) is opening. Lucas wants to take Simone instead of Corey, much to Corey's dismay. Jordan dumps Tyler for his unfaithfulness, and decides to go to prom alone. This prompts him to ask Simone to prom, which is the same night as the concert, and she agrees. Simone tells Lucas that she is sorry, but she cannot go to the concert.Mei apologizes to Justin for her behavior and tells him the truth, but instead of feeling hurt that she is going to a different college, he tells her he is proud of her. They agree that they should still go to prom together.Lloyd spots Lucas sitting outside the school, looking dejected. He learns his situation, and tells Lucas his own mistake with girls and high school. Lloyd tells Lucas that if he really loves Simone, he should tell her.Two nights before the prom, Nova, Ali, and Mei are in Nova's room, talking. Nova confesses to them that she has feelings for Jesse, which her dad unfortunately overhears. The next day, Nova's father tells Jesse he cannot ask Nova to prom, because he is \"bringing her down\". That afternoon, Jesse is unusually hostile towards Nova and deserts her.On prom night, Lucas climbs a tree to reach Simone's window. He tells her how he feels and begs her not to go to prom, but she goes anyway. Disappointed, Lucas realizes what a bad friend he has been to Corey, and offers him the other concert ticket. The two head off to see their favorite band happily.At her house, Nova is heartbroken, and refuses to pose for the camera in her prom dress. Her father, worried, explains that he was the one who told Jesse not to ask her to prom. Angered, Nova storms out of the house. Meanwhile, at Lloyd's house, it is revealed that he is taking his sister to prom. At Jesse's house, his mother has a talk with him, and he realizes that he should still take Nova to prom.At the school, Tyler leads Simone into the building, and almost immediately abandons her. Simone finds out from a couple of girls that it was actually Jordan who dumped Tyler, and Tyler h..."
           }
         ],
         "note": "1 film(s) satisfied every condition. **Only these may be recommended, and the number you state must be this number.** A film in `rejected` failed a condition; one in `unresolved` was not settled by its text, which is not the same as satisfying it. If `accepted` is empty, say plainly that nothing could be verified and how many films were checked -- do not offer an unresolved title as a near-miss."
@@ -608,16 +729,16 @@
       "module": "Planner",
       "round": 3,
       "usage": {
-        "prompt_tokens": 13937,
-        "completion_tokens": 39,
-        "total_tokens": 13976,
+        "prompt_tokens": 19138,
+        "completion_tokens": 33,
+        "total_tokens": 19171,
         "cached_tokens": 6784
       },
       "llm_calls": {
         "planner": 3,
         "observer": 0,
-        "verifier": 6,
-        "total": 9,
+        "verifier": 10,
+        "total": 13,
         "cap": 16
       },
       "prompt": {
@@ -625,7 +746,7 @@
         "user_prompt": "(continued)"
       },
       "response": {
-        "content": "1 film matches all three conditions: Secret of the Wings (2012).\n\nIt was verified as having no deaths in its plot text, a princess appears, and ice appears.",
+        "content": "1 film verified.\n\n- Secret of the Wings (2012) — the verification accepted it for no deaths, a princess appears, and ice.\n\n",
         "tool_calls": []
       }
     }

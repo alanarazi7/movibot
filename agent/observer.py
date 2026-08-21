@@ -1,4 +1,15 @@
-"""Observer: the one place a model reads plot text, with a prompt that fits it.
+"""Observer: reads plot text for ONE question, when read_synopses is called.
+
+Not the main reader any more. agent/verifier.py is: it takes one film and
+every condition of the request at once, and its accepted list is what the loop
+gates the final answer on. This module survives for the narrower job it was
+always good at -- the planner has a single specific question about films it has
+already named, asks read_synopses, and gets verdicts back without the plot text
+entering its context. It cannot accept a film; only the Verifier can.
+
+The docstring below is the original argument for splitting reading out of the
+planner, and it still holds for both readers.
+
 
 The planner carries 5,867 tokens of system prompt and tool schemas on every
 turn, almost all of it about routing conditions to tools. None of that helps

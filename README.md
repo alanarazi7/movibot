@@ -10,14 +10,21 @@ Classic RAG fails on queries like *"bring me a not-too-old Disney movie with no 
 
 ## How it works
 
-MoviBot is a **ReAct agent**: a planner model reasons, calls tools, observes what came back, and decides whether to go again or answer, bounded at `MAX_ROUNDS = 5` model turns per query. All four tools are available on every turn and none is mandatory. The system prompt encourages **cheapest and most exhaustive first**, so that each call hands the next a smaller candidate set and the token-heavy tool only ever sees what survived the free ones — but that is a preference, not a path: nothing in the code enforces an order, and the planner skips whatever a request does not need.
+MoviBot is a **ReAct agent whose exit is gated on evidence**: a planner model reasons, calls tools, observes what came back, and decides whether to go again or answer, bounded at `MAX_ROUNDS = 5` planner rounds and `MAX_TOTAL_LLM_CALLS = 16` model calls per query. Every tool is available on every turn and none is mandatory; the planner skips whatever a request does not need. What it cannot do is answer with a film it did not verify — the loop checks that before returning, the same way it checks the recommendation ceiling.
 
 | Tool | Answers from | Narrows | Cost |
 |---|---|---|---|
 | `filter_catalog` | catalog columns | all → N | free, exhaustive |
 | `screen_out` | a word scan | N → the half you keep | free, exhaustive |
-| `search_plots` | meaning | N → a top handful | ~$0.0000002 |
-| `read_synopses` | full text | ≤ 8 films | free; its output is read by the Observer |
+| `build_shortlist` | meaning, every condition at once | N → a fused ranking | one embedding per condition |
+| `read_synopses` | full text, one question | ≤ 8 films | free; its output is read by the Observer |
+| `verify_candidates` | full text, every condition | → the accepted list | one model call per film |
+
+**Every story condition gets its own search, and the rankings are fused before anything expensive happens.** This is the difference between finding an answer and finding a plausible one. Searching a single condition and reading its top hits quietly assumes the rest hold in whatever came back — ask for *a princess and ice* and the film ranking first on "a princess" gets read, while **Frozen, which ranks tenth on princess and first on ice, is never seen at all**. So `build_shortlist` searches each condition separately and orders films by how many conditions they placed for, then by average rank. Coverage has to dominate: average rank alone makes a film ranked 1st, 1st and absent beat one ranked 10th, 10th and 10th, which is the greedy answer arriving by arithmetic.
+
+`search_plots` is not offered to the model. It is the single-condition primitive `build_shortlist` calls once per condition, and it stays out of the model's reach because a tool that can be called greedily is a tool the prompt has to talk the model out of using.
+
+**Verification runs one film at a time against every condition at once.** `verify_candidates` walks the fused shortlist best-first, giving each film's plot text and the whole list of requirements to one model call, and returns a verdict per condition — `yes`, `no`, or `unclear` — with the sentence that decides it quoted verbatim. A film is accepted only when every condition says yes, and **the accepted list is assembled in Python**, so the count an answer states is a count of a list rather than a claim the model makes about its own reasoning. It stops at three accepted films or ten checked, whichever comes first; running out having accepted nothing is a real answer and is reported as one.
 
 `screen_out` is what answers the query in the pitch above. A negation cannot be retrieved for: embed *"no deaths"* and the top hits are the films where somebody dies, because that is what those plots say. So it is screened instead — every plot passage of every candidate is scanned, which is exhaustive over the word list in a way fixed-K retrieval cannot be. Its error is one-sided by design: *"dead heat"* over-excludes, it never under-excludes. A match makes a film **flagged**, not rejected, since a word list cannot tell an attempt from an outcome.
 
@@ -25,9 +32,9 @@ The same scan runs forwards. *"An animal that wears a hat"* is one small detail 
 
 **Guardrails live in the data and tool code, never in the prompt** — the model cannot forget them and a bad plan cannot bypass them. Results are always ordered by `weighted_rating` rather than raw `vote_average`; `read_synopses` reads at most 8 films, truncated to 6,000 characters each, which is what bounds the cost of a turn; and `screen_out` refuses to certify a film with under 600 tokens of plot text, so absence of evidence is never reported as evidence.
 
-**Plot text is read by a separate module.** A synopsis read is ~5,000 tokens; left in the planner's context it would be re-sent every turn. The **Observer** reads it instead, with a 422-token prompt of its own against the planner's 5,867 — no tool schemas, no routing rules — and returns a verdict per film plus the sentence that decides it. Every quote is checked to be a literal substring of the source and discarded otherwise, so the planner cites evidence rather than a summary of it. The full text stays in the `steps` trace.
+**Plot text is read by separate modules, never by the planner.** A synopsis read is ~5,000 tokens; left in the planner's context it would be re-sent every turn. The **Verifier** reads it instead — one film, every condition, its own prompt with no tool schemas and no routing rules — and the **Observer** does the same for the narrower case where the planner has one specific question about films it has already named. Both check every quote to be a literal substring of the source and discard it otherwise, downgrading an unsupported `yes` to `unclear`, so what reaches the planner is evidence rather than a summary of it. The full text stays in the `steps` trace, which is why what a reviewer can inspect and what the model must carry are deliberately different things.
 
-`python scripts/check_screen.py` and `python scripts/check_gates.py` assert the screen's safety property, the language filter, and every displayed count — offline and for free.
+`python scripts/check_screen.py` and `python scripts/check_gates.py` assert the screen's safety property, the language filter, the `/api/execute` contract against eleven malformed inputs, the total call cap against an adversary that never stops calling tools, the fusion ordering that keeps greed from winning, and every displayed count — offline and for free.
 
 **The app's [Architecture tab](https://movibot-gamma.vercel.app) is the full account** — the loop, every tool description, and every prompt verbatim, served live from the source. The diagram alone is at `GET /api/model_architecture`.
 

@@ -74,9 +74,25 @@ def g03_module_names() -> list[str]:
     if "Observer" not in (info["architecture"].get("observer_module") or ""):
         failures.append("agent_info does not name the Observer module")
 
+    # The worked examples in agent_info are a trace like any other, and they go
+    # stale the moment a module is renamed -- which is exactly what happened
+    # when PlotSearch became ShortlistFusion and the examples kept naming a
+    # module that no longer exists. Nothing checked them, because this gate
+    # only ever read the declarations.
+    declared_all = declared | {"Planner", "Observer", "Verifier"}
+    for i, example in enumerate(info.get("prompt_examples") or []):
+        for step in example.get("steps") or []:
+            module = step.get("module")
+            if module and module not in declared_all:
+                failures.append(
+                    f"prompt_examples[{i}] traces module {module!r}, which is not a "
+                    f"module any more -- regenerate the examples with "
+                    f"scripts/capture_examples.py"
+                )
+                break
+
     # Every module the loop can log must be declared somewhere in agent_info,
     # or a trace shows a name the architecture never mentions.
-    declared_all = declared | {"Planner", "Observer"}
     loop_src = (_ROOT / "agent" / "loop.py").read_text()
     for logged in set(re.findall(r'"module":\s*"(\w+)"', loop_src)):
         if logged not in declared_all:

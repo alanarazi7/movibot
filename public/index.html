@@ -143,6 +143,7 @@
       overflow-y: auto;
     }
     .error-text { color: #d32f2f; font-weight: 600; }
+    .ok-text { color: #2e7d32; }
     .success-text { color: #2e7d32; font-weight: 600; }
 
     .examples { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem; }
@@ -651,6 +652,10 @@
       </div>
 
       <div class="card" id="steps-card">
+        <div id="summary-block" style="display:none;">
+          <label>What it did &mdash; plan to result</label>
+          <div class="arch-diagram" id="summary-text" style="margin-top:0.5rem;"></div>
+        </div>
         <div id="plan-block" style="display:none;">
           <label>Condition ledger &mdash; written on turn 1, at no extra cost</label>
           <div class="prompt-box" id="plan-text" style="max-height:220px;"></div>
@@ -756,9 +761,23 @@
           its last call is reserved for the planner so a request that runs out of
           budget still returns an answer. Every tool is on the table on every turn. The
           planner chooses which to call, with what arguments, how many at once, and
-          when it has enough to answer. <strong>Exactly one step costs money</strong>
-          &mdash; the planner. Three of the four tools are free, and the fourth costs
-          two millionths of a dollar.
+          when it has enough to answer. <strong>Two things cost money, and one of them is
+          not the planner</strong> &mdash; each planner round is one call, and each
+          film the Verifier checks is another. Three of the five tools are free;
+          <code>build_shortlist</code> spends one embedding per condition, about two
+          millionths of a dollar each, and <code>verify_candidates</code> spends a
+          text call per film it reads. A typical request is three planner rounds and
+          three or four verifications.
+        </p>
+        <p>
+          <strong>The answer is gated on evidence, not on the model&rsquo;s
+          confidence.</strong> Two checks stand between the final message and the
+          reply: it may not name more films than the ceiling, and it may not name a
+          film that verification did not accept. Both are checked in
+          <code>agent/loop.py</code> rather than asked for in the prompt, and each
+          costs one correction turn. The second is what makes a shortcut pointless
+          &mdash; skipping verification produces films with no verdicts, and no
+          answer can be built out of them.
         </p>
         <p>
           <strong>The cheapest-first ordering is a preference, not a path.</strong>
@@ -776,17 +795,24 @@
         <summary><span class="emoji">🔁</span> Why this is an agent, not a pipeline</summary>
         <div class="panel-body">
           <p>
-            A fair thing to ask of the diagram above: four tools, a recommended
+            A fair thing to ask of the diagram above: five tools, a recommended
             order, a set that shrinks at each step &mdash; is this an agent, or a
             pipeline with a language model bolted to the front?
           </p>
           <p>
             The distinction is <strong>policy versus mechanism</strong>. A pipeline's
-            order is in its code. MoviBot's is in its prompt. All four tool schemas
+            order is in its code. MoviBot's is in its prompt. All five tool schemas
             are offered on every non-final turn (<code>agent/loop.py</code>), the
             model picks freely among them, and the loop ends when it emits no tool
             call at all. Nowhere does the code say &ldquo;filter, then screen, then
-            search, then read.&rdquo;
+            shortlist, then verify.&rdquo;
+          </p>
+          <p>
+            What the code <em>does</em> say is what a good answer has to be made of.
+            The planner decides the route; it does not decide whether a film it
+            recommends was checked. That is the honest shape of this agent, and it
+            is worth stating plainly rather than claiming more freedom than it has:
+            <strong>free control flow, fixed standard of evidence.</strong>
           </p>
           <p>
             Which makes the claim testable, because it predicts something a pipeline
@@ -802,19 +828,19 @@
                 <tr>
                   <td>&ldquo;Best empowering princess movie besides Frozen and Moana&rdquo;</td>
                   <td>Planner &rarr; CatalogFilter &rarr; Planner &rarr; answer</td>
-                  <td class="n">1 of 4</td>
+                  <td class="n">1 of 5</td>
                 </tr>
                 <tr>
                   <td>&ldquo;An animated film where nobody dies&rdquo;</td>
                   <td>Planner &rarr; CatalogFilter &rarr; LexicalScreen &rarr; Planner &rarr; answer</td>
-                  <td class="n">2 of 4</td>
+                  <td class="n">2 of 5</td>
                 </tr>
               </tbody>
             </table>
           </div>
 
           <p>
-            Three of the four tools never ran in the first case. A pipeline runs its
+            Four of the five tools never ran in the first case. A pipeline runs its
             stages; an agent skips what the request does not need, and here it decided
             that for itself from the conditions it had written out one turn earlier.
           </p>
@@ -865,8 +891,8 @@
                 <tr><td>structured</td><td>&ldquo;a Pixar film&rdquo;, &ldquo;in French&rdquo;, and negatives the catalog stores &mdash; &ldquo;not Pixar&rdquo;, &ldquo;no musicals&rdquo;, &ldquo;besides Frozen&rdquo;</td><td><code>filter_catalog</code></td></tr>
                 <tr><td>lexical &mdash; absence</td><td>&ldquo;nobody dies&rdquo;, &ldquo;nothing scary&rdquo;</td><td><code>screen_out</code> <code>keep='clear'</code></td></tr>
                 <tr><td>lexical &mdash; presence</td><td>&ldquo;an animal that wears a hat&rdquo;, &ldquo;a film with a train&rdquo;</td><td><code>screen_out</code> <code>keep='flagged'</code></td></tr>
-                <tr><td>semantic</td><td>&ldquo;a rat who wants to cook&rdquo;</td><td><code>search_plots</code></td></tr>
-                <tr><td>narrative</td><td>&ldquo;who betrays whom&rdquo;, &ldquo;is the ending sad&rdquo;</td><td><code>read_synopses</code></td></tr>
+                <tr><td>semantic</td><td>&ldquo;a rat who wants to cook&rdquo;, &ldquo;a princess&rdquo; <em>and</em> &ldquo;ice&rdquo; together</td><td><code>build_shortlist</code> &mdash; one search per condition, fused</td></tr>
+                <tr><td>narrative</td><td>&ldquo;who betrays whom&rdquo;, &ldquo;is the ending sad&rdquo;, and whether a flagged word was a real event</td><td><code>verify_candidates</code> &mdash; one call per film, every condition</td></tr>
               </tbody>
             </table>
           </div>
@@ -965,11 +991,11 @@
             planner recognised they belonged to the same tool and packed them together;
             the fourth needed no tool at all, and it worked that out rather than
             spending a turn to discover it. Then it stopped &mdash; with
-            <code>PlotSearch</code> and <code>SynopsisReader</code> still available and
+            <code>ShortlistFusion</code> and <code>Verifier</code> still available and
             three turns of budget unspent.
           </p>
 
-          <h4>Why the Observer has its own prompt</h4>
+          <h4>Why the readers have their own prompts</h4>
           <p>
             A synopsis read is about <strong>5,000 tokens</strong>. Left in the planner's
             context it would be re-sent on every later turn, so the most expensive
@@ -996,14 +1022,15 @@
 
           <h4>What the answer may claim</h4>
           <p>
-            Two tools are exhaustive and two are not, and the difference decides what
-            the agent is entitled to say. <code>filter_catalog</code> and
+            Two tools are exhaustive and the rest are not, and the difference decides
+            what the agent is entitled to say. <code>filter_catalog</code> and
             <code>screen_out</code> check every candidate, so their findings are
             complete: 76 films clear on the death screen means all of them, not a
-            sample. <code>search_plots</code> returns a top handful and
-            <code>read_synopses</code> is capped at eight films, so anything resting on
-            those is the best <em>among those examined</em> &mdash; and the prompt
-            requires saying which is meant.
+            sample. <code>build_shortlist</code> returns a ranking and
+            <code>verify_candidates</code> checks as far down it as the budget allows
+            &mdash; at most ten films &mdash; so anything resting on those is the best
+            <em>among those examined</em>, and the prompt requires saying which is
+            meant and how many were checked.
           </p>
           <p>
             The screen returns three buckets for the same reason. <code>clear</code> is
@@ -1368,8 +1395,8 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
         <label>What each thing costs</label>
         <p style="color:#666;font-size:0.85rem;margin-bottom:0.8rem;">
           Measured, not estimated: every figure below comes from token counts
-          the provider reported on real calls. Three of the four tools are
-          free, so nearly all of it is planner turns.
+          the provider reported on real calls. Three of the five tools are free;
+          the spend is planner turns plus one call per film verified.
         </p>
         <div class="data-table">
           <table>
@@ -1379,16 +1406,20 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
               <tr><td>One query embedding</td><td class="n">~$0.0000002</td></tr>
               <tr><td>One planner turn</td><td class="n">$0.0011</td></tr>
               <tr><td>One planner turn, after reading synopses</td><td class="n">$0.0041</td></tr>
-              <tr><td>Worst-case request (5 turns)</td><td class="n">$0.0143</td></tr>
+              <tr><td>One Verifier call (one film, every condition)</td><td class="n">~$0.0013</td></tr>
+              <tr><td>Typical request (3 turns, 3&ndash;6 verifications)</td><td class="n">~$0.008</td></tr>
+              <tr><td>Worst-case request (16 model calls)</td><td class="n">~$0.021</td></tr>
               <tr><td>The 11 test cases, once</td><td class="n">~$0.09</td></tr>
             </tbody>
           </table>
         </div>
         <p style="color:#8a9099;font-size:0.78rem;margin-top:0.9rem;">
-          At the worst-case rate, roughly <b>900 requests</b> would exhaust the
-          cap. <code>MAX_ROUNDS</code> bounds what any single request can spend;
-          nothing bounds how many requests arrive, which is the honest shape of
-          the exposure on a public endpoint.
+          At the worst-case rate, roughly <b>600 requests</b> would exhaust the
+          cap. <code>MAX_TOTAL_LLM_CALLS</code> bounds what any single request can
+          spend, and it is the bound that matters: <code>MAX_ROUNDS</code> counts
+          only planner turns, and a request also pays for every film it verifies.
+          Nothing bounds how many requests arrive, which is the honest shape of the
+          exposure on a public endpoint.
         </p>
       </div>
 
@@ -1629,7 +1660,7 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
       {
         kind: 'answer',
         q: 'Best empowering princess movie besides Frozen and Moana',
-        expect: 'Both titles must reach exclude_titles as a real filter, visible as a drop in the narrowing trace, not merely left unmentioned. "Empowering" is the open condition: keywords cannot settle a theme, so expect a PlotSearch or SynopsisReader step and a rationale that quotes it. Observed: CatalogFilter → PlotSearch → Mulan (1998), citing the plot text.'
+        expect: 'Both titles must reach exclude_titles as a real filter, visible as a drop in the narrowing trace, not merely left unmentioned. "Empowering" is the open condition: keywords cannot settle a theme, so expect a ShortlistFusion or Verifier step and a rationale that quotes it. Observed: CatalogFilter → ShortlistFusion → Mulan (1998), citing the plot text.'
       },
       {
         kind: 'answer',
@@ -1968,6 +1999,7 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
     }
 
     let lastRun = null;
+    let runTimer = null;
 
     document.addEventListener('DOMContentLoaded', function () {
       document.getElementById('copy-response')?.addEventListener('click', function () {
@@ -1994,8 +2026,21 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
       lastRun = null;
       responseCard.style.display = 'none';
       stepsCard.style.display = 'none';
-      status.textContent = '🎬 Running MoviBot...';
       const startedAt = Date.now();
+      // A live counter, not a spinner. A request runs three to twenty seconds
+      // depending on how many films it verifies, and a reader with no clock
+      // cannot tell a slow answer from a hung one.
+      status.textContent = '🎬 Running MoviBot... 0.0s';
+      if (runTimer) clearInterval(runTimer);
+      runTimer = setInterval(() => {
+        status.textContent =
+          `🎬 Running MoviBot... ${((Date.now() - startedAt) / 1000).toFixed(1)}s`;
+      }, 100);
+      const stopTimer = () => {
+        if (runTimer) { clearInterval(runTimer); runTimer = null; }
+        return Date.now() - startedAt;
+      };
+      let elapsed = 0;
 
       try {
         const res = await fetch('/api/execute', {
@@ -2006,12 +2051,19 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
         const data = await res.json();
         lastRun = data;
 
-        status.textContent = '';
+        elapsed = stopTimer();
+        status.innerHTML =
+          `<span class="ok-text">Answered in <b>${(elapsed / 1000).toFixed(1)}s</b></span>`;
 
         if (data.status !== 'ok') {
           responseText.innerHTML = `<span class="error-text">Error: ${escapeHtml(data.error || res.statusText)}</span>`;
           responseCard.style.display = 'block';
+          // The summary matters MORE on a failure, not less: how far the run
+          // got is most of what a reader needs to know about why it stopped.
+          renderPlan(data);
+          renderSummary(data, elapsed);
           renderSteps(data.steps);
+          renderCost(data, elapsed);
           if ((data.steps || []).length) stepsCard.style.display = 'block';
           return;
         }
@@ -2020,14 +2072,17 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
         responseCard.style.display = 'block';
 
         renderPlan(data);
+        renderSummary(data, elapsed);
         renderSteps(data.steps);
-        renderCost(data, Date.now() - startedAt);
+        renderCost(data, elapsed);
         if ((data.steps || []).length) stepsCard.style.display = 'block';
       } catch (err) {
+        stopTimer();
         status.textContent = '';
         responseText.innerHTML = `<span class="error-text">Network error: ${escapeHtml(err.message)}</span>`;
         responseCard.style.display = 'block';
       } finally {
+        stopTimer();
         btn.disabled = false;
       }
     }
@@ -2125,23 +2180,103 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
       }
     }
 
+    // The TL;DR. Everything below it -- the ledger, the narrowing trace, the
+    // full steps -- is the same story at increasing magnification, and a reader
+    // who wants to know whether the answer is trustworthy should not have to
+    // start at the deepest zoom. Built entirely from `steps`, so it cannot
+    // drift from what actually ran: there is no summary field to keep in sync.
+    function renderSummary(data, elapsedMs) {
+      const block = document.getElementById('summary-block');
+      const steps = data.steps || [];
+      const lines = [];
+      const num = (n) => (n === undefined || n === null) ? '?' : n.toLocaleString();
+
+      for (const s of steps) {
+        const r = s.response || {};
+        const a = (s.prompt || {}).arguments || {};
+        if (s.module === 'CatalogFilter') {
+          const applied = (r.filters_applied && r.filters_applied !== 'none')
+            ? Object.entries(r.filters_applied).map(([k, v]) => `${k}=${v}`).join(', ')
+            : 'no filter';
+          lines.push(`Catalog filter    238 → ${num(r.matched)}   (${applied})`);
+        } else if (s.module === 'LexicalScreen') {
+          lines.push(`Word screen       “${a.vocabulary || a.words || '?'}”, keeping `
+            + `${a.keep || 'clear'} → ${num(r[a.keep] ?? r.kept)} `
+            + `(${num(r.flagged)} flagged, ${num(r.insufficient_text)} unreadable)`);
+        } else if (s.module === 'ShortlistFusion') {
+          lines.push(`Shortlist         ${num((r.conditions || []).length)} conditions `
+            + `searched separately → ${num(r.candidates)} candidates, `
+            + `${num(r.matching_every_condition)} matching every one`);
+          for (const c of (r.conditions || [])) lines.push(`                    · ${c}`);
+        } else if (s.module === 'SynopsisReader') {
+          lines.push(`Read synopses     ${num((a.films || []).length)} films, about `
+            + `“${a.about || 'the whole plot'}”`);
+        } else if (s.module === 'Verifier') {
+          lines.push(`Verified          ${num(r.verified)} films checked of `
+            + `${num((r.budget || {}).allowed)} allowed → `
+            + `${num((r.accepted || []).length)} accepted, `
+            + `${num((r.rejected || []).length)} rejected, `
+            + `${num((r.unresolved || []).length)} unresolved`);
+          for (const row of (r.verdicts || [])) {
+            const cells = (row.findings || [])
+              .map(f => `${f.requirement}=${f.verdict}`).join(', ');
+            lines.push(`                    ${row.accepted ? '✓' : '✗'} ${row.film}`
+              + (cells ? `  [${cells}]` : ''));
+          }
+        } else if (s.module === 'Planner' && (r.rejected)) {
+          // A correction turn is part of the story, not an embarrassment to
+          // hide: it is the loop refusing an answer the model wanted to give.
+          lines.push(`Answer rejected   ${r.rejected}`);
+        }
+      }
+
+      if (!lines.length) {
+        block.style.display = 'none';
+        return;
+      }
+      const ledger = steps.filter(s => s.module === 'Planner').length;
+      lines.push('');
+      lines.push(`Result            ${ledger} planner round${ledger === 1 ? '' : 's'}`
+        + `, ${(elapsedMs / 1000).toFixed(1)}s`);
+      document.getElementById('summary-text').textContent = lines.join('\n');
+      block.style.display = 'block';
+    }
+
     function renderCost(data, elapsedMs) {
       const el = document.getElementById('run-cost');
       const steps = data.steps || [];
       // Summed from the per-step usage rather than read off a top-level field.
       const b = {model_calls: 0, tool_calls: 0, prompt_tokens: 0,
                  completion_tokens: 0, cached_prompt_tokens: 0};
+      // A Verifier step is one *step* holding many model calls -- one per film
+      // it checked -- so counting steps would report six calls as one. Its
+      // per-film usage lives in response.verdicts[].usage, and the loop's own
+      // running total rides on every step as llm_calls, which is the figure to
+      // trust when it is there.
+      const addUsage = (u) => {
+        if (!u) return;
+        b.prompt_tokens += u.prompt_tokens || 0;
+        b.completion_tokens += u.completion_tokens || 0;
+        b.cached_prompt_tokens += u.cached_tokens || 0;
+      };
+      let counted = 0;
+      let ledger = null;
       for (const s of steps) {
+        if (s.llm_calls) ledger = s.llm_calls;
         if (s.module === 'Planner' || s.module === 'Observer') {
-          b.model_calls++;
-          const u = s.usage || {};
-          b.prompt_tokens += u.prompt_tokens || 0;
-          b.completion_tokens += u.completion_tokens || 0;
-          b.cached_prompt_tokens += u.cached_tokens || 0;
+          counted++;
+          addUsage(s.usage);
+        } else if (s.module === 'Verifier') {
+          const rows = (s.response && s.response.verdicts) || [];
+          counted += rows.length;
+          b.tool_calls++;
+          for (const r of rows) addUsage(r.usage);
         } else {
           b.tool_calls++;
         }
       }
+      // The loop counts what it actually spent; prefer it over our tally.
+      b.model_calls = ledger && ledger.total ? ledger.total : counted;
       if (!b.model_calls) { el.style.display = 'none'; return; }
 
       const cached = b.cached_prompt_tokens || 0;
@@ -2192,8 +2327,9 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
         const costs = {
           filter_catalog: 'free',
           screen_out: 'free',
-          search_plots: '~$0.0000002',
-          read_synopses: 'free, token-heavy'
+          build_shortlist: '~$0.0000002 per condition',
+          read_synopses: 'free, token-heavy',
+          verify_candidates: '~$0.0013 per film'
         };
 
         let html = `

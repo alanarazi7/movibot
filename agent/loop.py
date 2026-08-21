@@ -1,6 +1,6 @@
 """MoviBot's agent loop: native tool calling, bounded, fully traced.
 
-    plan -> call tools -> observe -> (repeat) -> answer
+    plan -> call tools -> observe -> (repeat) -> answer, gated on evidence
 
 The model chooses which tools to call and when to stop. What it cannot choose
 is how long to keep going.
@@ -19,13 +19,23 @@ instead of a timeout.
 
 Cost per request, worst case:
 
-    <= MAX_ROUNDS rounds              (planner turns)
-    <= MAX_TOTAL_LLM_CALLS model calls (paid -- planner + Observer)
-    unlimited tool calls              (free -- local CSV reads)
+    <= MAX_ROUNDS rounds               (planner turns)
+    <= MAX_TOTAL_LLM_CALLS model calls (paid -- planner + Verifier + Observer)
+    unlimited tool calls               (free, except the two that call out)
 
-Tool calls are free, which inverts the usual tuning problem: there is no
+Most tool calls are free, which inverts the usual tuning problem: there is no
 reason to skimp on them, only on model calls, which is exactly what this loop
-bounds.
+bounds. Two are not free and both are counted -- build_shortlist spends one
+embedding per condition, and verify_candidates spends one text call per film
+it checks, which is why the remaining budget is threaded into the tool rather
+than checked only between calls.
+
+**The exit is gated on evidence.** Two checks stand between the model's final
+message and the caller: the answer may not name more films than the ceiling,
+and it may not name a film that verification did not accept. Both are checked
+rather than requested, and each costs one correction turn. The second is what
+makes a greedy shortcut pointless: skipping verification produces films with
+no verdicts, and no answer can be built out of them.
 """
 
 from __future__ import annotations

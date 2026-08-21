@@ -84,7 +84,7 @@ now *possible*. It is still wrong here:
 - **Precision.** One vector for a 28,000-character story averages thirty
   unrelated beats. Frozen's betrayal sits at 81% through the text and cannot
   outrank the film's own opening under that averaging.
-- **Evidence.** `search_plots` returns the matching passage to the planner as a
+- **Evidence.** A plot search returns the matching passage to the planner as a
   quotable line of proof, and `read_synopses` returns relevant passages in story
   order. A document-level vector has no passage to return.
 

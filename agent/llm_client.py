@@ -1,8 +1,16 @@
 """LLM access for MoviBot, via the course's LLMod.ai OpenAI-compatible endpoint.
 
-This is the only module in the agent that spends money. Everything else --
-the catalog, the local E5 embeddings, all three tools -- runs for free, so the
-agent can be developed and tested end to end before this is ever called.
+This is where the text model is called, and both callers of it are here: the
+planner, once per round, and the Verifier, once per candidate film. It is not
+the only module that spends -- rag/embed.py calls the course's embedding
+deployment, once per condition per shortlist -- so "everything else is free"
+was never quite true and is less true now. What is genuinely free is the
+catalog, the lexical screen and every local read, which is why the agent can
+be developed and tested a long way before either deployment is touched.
+
+Rough shape of a request's bill: one text call per planner round, one per film
+verified, and one embedding per story condition. The text calls dominate by
+about four orders of magnitude.
 
 There is no mock fallback by design. A silent stand-in that answers without
 the model would make a broken configuration look like a working agent, which

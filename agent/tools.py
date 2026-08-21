@@ -743,13 +743,19 @@ def verify_candidates(
     if not conditions:
         return {"error": "verify_candidates needs the conditions to check against."}
 
-    # Explicit films win; otherwise walk the fused shortlist in its order,
-    # which is the whole point of having fused it.
-    if films:
-        order = [i for i in (catalog.resolve(f) for f in films) if i is not None]
-    elif ctx is not None and ctx.shortlist:
-        order = list(ctx.shortlist)
-    else:
+    # Named films go FIRST, they do not replace the walk. Letting them replace
+    # it reopened the exact hole this tool was built to close: the planner named
+    # three candidates it liked, the tool checked those three, and a request
+    # that was entitled to ten verifications spent three and reported "I could
+    # not verify any film after checking 3 films". Choosing which candidates to
+    # check is the greedy move, and it does not stop being greedy because a
+    # parameter invited it. So the named films are a head start on the fused
+    # order, and the walk continues down that order until it accepts enough or
+    # runs out of budget.
+    named = [i for i in (catalog.resolve(f) for f in (films or [])) if i is not None]
+    tail = [i for i in (ctx.shortlist if ctx is not None else []) if i not in set(named)]
+    order = named + tail
+    if not order:
         return {"error": "no candidates: call build_shortlist first, or name films."}
 
     max_accept = max(1, min(int(max_accept), MAX_RECOMMENDATIONS_CEILING))
@@ -1189,9 +1195,15 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                     "films": {
                         "type": "array", "items": {"type": "string"},
                         "description": (
-                            "Optional. Specific films to check, as "
-                            "'Title (Year)'. Omit to walk the fused shortlist "
-                            "in its own order, which is usually what you want."
+                            "Optional. Films to check FIRST, as "
+                            "'Title (Year)'. This is a head start, not a "
+                            "restriction: the walk continues down the fused "
+                            "shortlist afterwards until enough films are "
+                            "accepted or the budget runs out. You cannot "
+                            "narrow verification to a few favourites, and "
+                            "should not want to -- the shortlist is already "
+                            "ordered by how well each film matched every "
+                            "condition."
                         ),
                     },
                     "max_accept": {
