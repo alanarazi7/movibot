@@ -184,12 +184,31 @@ def prompts_endpoint():
     live string.
     """
     from agent import loop as agent_loop
+    from agent import observer as agent_observer
     from agent import prompts as agent_prompts
     from agent import tools as agent_tools
+    from agent import verifier as agent_verifier
     from rag import screen as rag_screen
 
     return _cors(jsonify({
         "system_prompt": agent_prompts.SYSTEM_PROMPT,
+        # The readers run on their own prompts and make most of the model calls
+        # on a verifying request, so serving only the planner's showed the
+        # smaller half of what the agent actually runs on.
+        "readers": [
+            {
+                "name": "Verifier",
+                "sent_by": "CandidateWalk, once per candidate film",
+                "shape": "one film, every condition of the request",
+                "prompt": agent_verifier.VERIFIER_PROMPT,
+            },
+            {
+                "name": "Observer",
+                "sent_by": "SynopsisReader, when it returns plot text",
+                "shape": "one question, many films",
+                "prompt": agent_observer.OBSERVER_PROMPT,
+            },
+        ],
         "tools": [
             {
                 "name": schema["function"]["name"],

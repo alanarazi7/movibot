@@ -144,6 +144,11 @@
     }
     .error-text { color: #d32f2f; font-weight: 600; }
     .ok-text { color: #2e7d32; }
+    .lede { color: #444; font-size: 0.95rem; line-height: 1.65; margin: 0.4rem 0 1.2rem; }
+    .fineprint { color: #8a9099; font-size: 0.78rem; margin-top: 1rem; }
+    #arch h3 { font-size: 0.92rem; color: #333; margin: 1.5rem 0 0.5rem;
+               padding-bottom: 0.35rem; border-bottom: 1px solid #eee; }
+    #arch p { color: #444; font-size: 0.88rem; line-height: 1.65; }
     .answer-aside { margin-top: 1.1rem; padding-top: 0.9rem; border-top: 1px solid #eee; }
     .aside-head { font-size: 0.82rem; font-weight: 600; color: #444; margin-bottom: 0.55rem; }
     .aside-body { font-size: 0.86rem; color: #444; line-height: 1.65; }
@@ -277,16 +282,6 @@
     }
     .budget-note { color: #8a9099; font-size: 0.76rem; margin-top: 1rem; }
 
-    .rag-sources { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0.8rem 0; }
-    .rag-src {
-      display: inline-flex; align-items: center; gap: 0.4rem;
-      border: 1px solid #ddd; border-radius: 20px;
-      padding: 0.32rem 0.75rem; font-size: 0.8rem; cursor: pointer;
-      font-weight: 500; margin: 0; background: #fff;
-    }
-    .rag-src:hover { border-color: #0070f3; }
-    .rag-src input { margin: 0; }
-    .rag-src .n { color: #999; font-variant-numeric: tabular-nums; }
 
     .hit {
       border: 1px solid #eee; border-left: 3px solid #0070f3;
@@ -641,7 +636,7 @@
 
       <span class="tab-group-label" title="Everything beyond the assignment's requirements">Extras</span>
       <button class="tab-button" onclick="switchTab('datanav')">🗃️ Data</button>
-      <button class="tab-button" onclick="switchTab('retrieval')">🔎 Retrieval</button>
+      <button class="tab-button" onclick="switchTab('prompts-tab')">📋 Prompts</button>
       <button class="tab-button" onclick="switchTab('budget-tab')">💰 Budget</button>
     </div>
 
@@ -693,7 +688,7 @@
       </div>
 
       <div class="card">
-        <label>Examples</label>
+        <label>Prompt Test Examples</label>
         <div id="test-cases"></div>
       </div>
 
@@ -802,299 +797,118 @@
         </p>
       </div>
 
-      <details class="panel" open>
-        <summary><span class="emoji">🔁</span> Why this is an agent, not a pipeline</summary>
-        <div class="panel-body">
-          <p>
-            A fair thing to ask of the diagram above: five tools, a recommended
-            order, a set that shrinks at each step &mdash; is this an agent, or a
-            pipeline with a language model bolted to the front?
-          </p>
-          <p>
-            The distinction is <strong>policy versus mechanism</strong>. A pipeline's
-            order is in its code. MoviBot's is in its prompt. All five tool schemas
-            are offered on every non-final turn (<code>agent/loop.py</code>), the
-            model picks freely among them, and the loop ends when it emits no tool
-            call at all. Nowhere does the code say &ldquo;filter, then screen, then
-            shortlist, then verify.&rdquo;
-          </p>
-          <p>
-            What the code <em>does</em> say is what a good answer has to be made of.
-            The planner decides the route; it does not decide whether a film it
-            recommends was checked. That is the honest shape of this agent, and it
-            is worth stating plainly rather than claiming more freedom than it has:
-            <strong>free control flow, fixed standard of evidence.</strong>
-          </p>
-          <p>
-            Which makes the claim testable, because it predicts something a pipeline
-            cannot do: <strong>the trace should change shape with the request.</strong>
-            Two verified tool paths from <code>/api/agent_info</code>, same agent,
-            same code:
-          </p>
+      <div class="card">
+        <h2>How it works</h2>
 
-          <div class="data-table">
-            <table>
-              <thead><tr><th>Request</th><th>Trace</th><th>Tools used</th></tr></thead>
-              <tbody>
-                <tr>
-                  <td>&ldquo;Best empowering princess movie besides Frozen and Moana&rdquo;</td>
-                  <td>Planner &rarr; CatalogFilter &rarr; Planner &rarr; answer</td>
-                  <td class="n">1 of 5</td>
-                </tr>
-                <tr>
-                  <td>&ldquo;An animated film where nobody dies&rdquo;</td>
-                  <td>Planner &rarr; CatalogFilter &rarr; LexicalScreen &rarr; Planner &rarr; answer</td>
-                  <td class="n">2 of 5</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+        <p class="lede">
+          One bounded loop: the <b>Planner</b> reads the request, calls whatever tools
+          it needs, and stops when it can answer. What it cannot do is answer with a
+          film it did not check &mdash; the loop verifies that before replying.
+        </p>
 
-          <p>
-            Four of the five tools never ran in the first case. A pipeline runs its
-            stages; an agent skips what the request does not need, and here it decided
-            that for itself from the conditions it had written out one turn earlier.
-          </p>
-          <p>
-            Three further things the loop affords that a fixed sequence does not. The
-            planner is instructed to <strong>re-query after observing</strong> &mdash;
-            a search that comes back unconvincing gets re-phrased as a different
-            concrete event and run again, which is a decision taken from a result
-            rather than from the plan. A single turn may carry
-            <strong>several tool calls</strong>, so independent conditions need not be
-            serialised. And the agent <strong>stops on its own judgement</strong>:
-            <code>MAX_ROUNDS</code> is a spending cap, reached only when something has
-            gone wrong, not the normal way a request ends.
-          </p>
-          <p>
-            What is genuinely fixed is smaller than it looks, and deliberately so: the
-            45-minute runtime floor, the rating adjustment, and the working-set scoping
-            are invariants in Python that no plan can route around. Those are not
-            stages. They are the things an agent is not allowed to decide.
-          </p>
+        <h3>The loop</h3>
+        <p>
+          <b>Reason</b> &rarr; <b>Act</b> &rarr; <b>Observe</b> &rarr; <b>Stop?</b>
+          Every tool is on the table on every turn. The planner picks which to call and
+          when it has enough; the loop ends on the turn that asks for no tool, and that
+          turn is the answer. Nothing in the code sequences the tools.
+        </p>
+
+        <h3>Five tools &mdash; the planner calls these</h3>
+        <div class="data-table">
+          <table>
+            <thead><tr><th>Tool</th><th>What it does</th><th>Cost</th></tr></thead>
+            <tbody>
+              <tr>
+                <td><code>CatalogFilter</code></td>
+                <td>Columns: year, runtime, genre, studio, language, title exclusions. Exact and exhaustive.</td>
+                <td class="n">free</td>
+              </tr>
+              <tr>
+                <td><code>LexicalScreen</code></td>
+                <td>Scans every plot for a word list the planner writes. The only thing that can answer an <em>absence</em> &mdash; you cannot search for something not happening.</td>
+                <td class="n">free</td>
+              </tr>
+              <tr>
+                <td><code>ShortlistFusion</code></td>
+                <td>Searches <b>each story condition separately</b>, then merges the rankings. Films matching more conditions outrank films matching one of them better.</td>
+                <td class="n">1 embedding per condition</td>
+              </tr>
+              <tr>
+                <td><code>SynopsisReader</code></td>
+                <td>Plot text for named films, when there is one specific question about them.</td>
+                <td class="n">free</td>
+              </tr>
+              <tr>
+                <td><code>CandidateWalk</code></td>
+                <td>Walks the shortlist best-first and sends each film to the Verifier. Returns accepted / rejected / unresolved.</td>
+                <td class="n">free</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-      </details>
 
-<details class="panel" open>
-        <summary><span class="emoji">🧭</span> How a request flows</summary>
-        <div class="panel-body">
-          <p>
-            Before its first tool call, the planner decomposes the request into
-            conditions and types each one. This is free: it rides along in the same
-            message that makes the first call, rather than costing a turn of its own.
-            A dedicated planning step would have doubled the paid turns of every
-            request to produce the same text.
-          </p>
-
-          <p>
-            The types matter because <strong>each kind of condition is settled by
-            exactly one tool</strong>, and a condition is not satisfied until its own
-            tool has settled it. That is a rule about <em>evidence</em>, not about
-            order: it says which tool can close a given condition, never which
-            condition to take up first, or how many turns to spend, or whether to go
-            back. Those stay with the planner.
-          </p>
-
-          <div class="data-table">
-            <table>
-              <thead><tr><th>Condition kind</th><th>Example</th><th>Settled by</th></tr></thead>
-              <tbody>
-                <tr><td>structured</td><td>&ldquo;a Pixar film&rdquo;, &ldquo;in French&rdquo;, and negatives the catalog stores &mdash; &ldquo;not Pixar&rdquo;, &ldquo;no musicals&rdquo;, &ldquo;besides Frozen&rdquo;</td><td><code>filter_catalog</code></td></tr>
-                <tr><td>lexical &mdash; absence</td><td>&ldquo;nobody dies&rdquo;, &ldquo;nothing scary&rdquo;</td><td><code>screen_out</code> <code>keep='clear'</code></td></tr>
-                <tr><td>lexical &mdash; presence</td><td>&ldquo;an animal that wears a hat&rdquo;, &ldquo;a film with a train&rdquo;</td><td><code>screen_out</code> <code>keep='flagged'</code></td></tr>
-                <tr><td>semantic</td><td>&ldquo;a rat who wants to cook&rdquo;, &ldquo;a princess&rdquo; <em>and</em> &ldquo;ice&rdquo; together</td><td><code>build_shortlist</code> &mdash; one search per condition, fused</td></tr>
-                <tr><td>narrative</td><td>&ldquo;who betrays whom&rdquo;, &ldquo;is the ending sad&rdquo;, and whether a flagged word was a real event</td><td><code>verify_candidates</code> &mdash; one call per film, every condition</td></tr>
-              </tbody>
-            </table>
-          </div>
-
-          <h4>Why a lexical condition is scanned, not searched</h4>
-          <p>
-            This is the one counter-intuitive piece. Embed &ldquo;nobody dies&rdquo; and
-            the top results are the films where somebody <em>does</em> &mdash; because
-            that is what the text of those films says. Similarity finds the films that
-            <strong>fail</strong> the condition.
-          </p>
-          <p>
-            So this kind of negation is screened instead: every plot passage of every
-            candidate is scanned for a word list. Two properties make this the right
-            tool rather than a shortcut. No film escapes the check by ranking
-            eleventh, which top-k retrieval can never promise. And its error is
-            <strong>one-sided</strong>: &ldquo;dead heat&rdquo; over-excludes, it never
-            under-excludes, which for a negative request is the harmless direction.
-          </p>
-          <p>
-            <strong>The same scan runs forwards.</strong> A concrete presence fails
-            ranking for a different reason: &ldquo;an animal that wears a hat&rdquo; is
-            one small detail inside a 300-token passage, and similarity scores the
-            whole passage &mdash; so you get films <em>about</em> animals whose plots
-            never mention a hat, while the film whose plot says the hat
-            &ldquo;lands on Tod&rdquo; places nowhere. Scanning for the word finds it:
-            <code>keep=&rsquo;flagged&rsquo;</code> returns every film in scope whose plot
-            text uses one, each with the passage that matched, because a word list
-            cannot tell you that <em>Bowler Hat Guy</em> is a man and Judy Hopps is a
-            rabbit. And when the scan comes back empty, that is the answer: plot text
-            records what happens rather than what things look like, so the agent
-            reports the gap in its sources instead of naming films it could not verify.
-          </p>
-          <p>
-            <strong>A paired request needs both words in one passage.</strong>
-            &ldquo;A cat that wears a hat&rdquo; is not answered by films mentioning a
-            cat somewhere and a hat somewhere. Scanning for either word returns
-            <strong>51</strong> films and cat-words alone returns <strong>27</strong>
-            &mdash; lists of near-misses an answer would have to explain away, which is
-            exactly what it did. Requiring the two to land in the same 300-token passage
-            returns <strong>2</strong>: <em>The Great Mouse Detective</em> (Felicia the
-            cat) and <em>Alice Through the Looking Glass</em>. Three prompt rules failed
-            to stop the rationalising; narrowing the tool did.
-          </p>
-          <p>
-            <strong>What a screen proves, and what it does not.</strong> It is
-            exhaustive over its <em>word list</em>, not over the event. A
-            <code>clear</code> result means no listed word appears in the film's stored
-            plot text &mdash; which an event can evade by being narrated in other words,
-            or by not being written down at all. So the agent is required to report it
-            as what it is (&ldquo;no death-related terms appear in its plot text&rdquo;)
-            rather than upgrading it to &ldquo;nobody dies&rdquo;, and to read the
-            synopsis when the stronger claim is what the request actually needs.
-          </p>
-          <p>
-            <strong>Screening is where a negation starts, not where it must end.</strong>
-            Negations the catalog stores &mdash; &ldquo;not Pixar&rdquo;, &ldquo;no
-            musicals&rdquo; &mdash; never reach the screen at all; they are column
-            lookups. And negations that are concepts rather than vocabularies &mdash;
-            &ldquo;not depressing&rdquo;, &ldquo;doesn't focus on romance&rdquo; &mdash;
-            cannot be settled by any word list, so they escalate to search and reading
-            instead, with whatever uncertainty remains stated in the answer.
-          </p>
-          <p>
-            What it cannot do is tell an attempt from an outcome. <em>&ldquo;Randall
-            attempts to kill Sulley&rdquo;</em>, <em>&ldquo;believing Woody murdered
-            Buzz&rdquo;</em> &mdash; nobody dies in either. That is modality, not
-            vocabulary, and no word list resolves it. So a match makes a film
-            <strong>flagged</strong>, meaning unresolved, never rejected, and the
-            matching quote comes back with the flag so the planner judges two sentences
-            instead of a 5,000-word plot.
-          </p>
-
-          <h4>Worked example</h4>
-          <p><em>&ldquo;a Pixar film where nobody dies, besides Toy Story&rdquo;</em></p>
-          <div class="data-table">
-            <table>
-              <thead><tr><th>Condition</th><th>Kind</th><th>Turn</th><th>Tool</th><th>Working set</th></tr></thead>
-              <tbody>
-                <tr><td>Pixar</td><td>structured</td><td class="n">1</td><td>CatalogFilter</td><td class="n">316 &rarr; 18</td></tr>
-                <tr><td>besides Toy Story</td><td>structured</td><td class="n">1</td><td>same call</td><td class="n">18 &rarr; 17</td></tr>
-                <tr><td>nobody dies</td><td>negative</td><td class="n">2</td><td>LexicalScreen</td><td class="n">17 &rarr; 7 clear</td></tr>
-                <tr><td>a good one</td><td>ranking</td><td class="n">&mdash;</td><td>rating order</td><td class="n">&mdash;</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <p>
-            Answer: <em>Inside Out</em> (7.83), <em>WALL&middot;E</em> (7.73),
-            <em>Toy Story 3</em> (7.52). Ten films were flagged and none had
-            insufficient text. <strong>Two model turns, no embedding, no synopsis
-            read.</strong> Ranking-then-verifying would have spent a search plus up to
-            eight synopsis reads to reach somewhere less certain.
-          </p>
-          <p>
-            Note the turn column. Two conditions were settled in one call, because the
-            planner recognised they belonged to the same tool and packed them together;
-            the fourth needed no tool at all, and it worked that out rather than
-            spending a turn to discover it. Then it stopped &mdash; with
-            <code>ShortlistFusion</code> and <code>Verifier</code> still available and
-            three turns of budget unspent.
-          </p>
-
-          <h4>Why the readers have their own prompts</h4>
-          <p>
-            A synopsis read is about <strong>5,000 tokens</strong>. Left in the planner's
-            context it would be re-sent on every later turn, so the most expensive
-            payload in the system would be carried by the most expensive reader &mdash;
-            one holding 5,867 tokens of routing rules that do not help decide whether a
-            passage shows what was asked for.
-          </p>
-          <p>
-            So reading is split out. The <strong>Observer</strong> gets the question, the
-            passages, and a <strong>422-token</strong> prompt of its own &mdash; no tool
-            schemas, no scope rules, no routing taxonomy, no answer format. It returns a
-            verdict per film and the sentence that decides it, and the planner sees that
-            instead of the raw text.
-          </p>
-          <p>
-            <strong>Quotes are verbatim, and that is enforced rather than requested.</strong>
-            <code>loop.py</code> checks every quote is a literal substring of the passage it
-            claims to come from, discards it if not, and downgrades a <code>yes</code> to
-            <code>unclear</code>. Without that the planner would be citing a summary of
-            evidence rather than evidence, breaking the chain one link before the answer.
-            The full text still appears in the steps trace below, so what you can inspect
-            and what the model has to carry are deliberately different.
-          </p>
-
-          <h4>What the answer may claim</h4>
-          <p>
-            Two tools are exhaustive and the rest are not, and the difference decides
-            what the agent is entitled to say. <code>filter_catalog</code> and
-            <code>screen_out</code> check every candidate, so their findings are
-            complete: if a scan reports 98 films clear, that is all of them and not
-            a sample. Exhaustive over the words it was given, which the planner
-            writes for the request &mdash; so the count is only ever as good as the
-            list, and the tool says so when the list looks short. <code>build_shortlist</code> returns a ranking and
-            <code>verify_candidates</code> checks as far down it as the budget allows
-            &mdash; at most ten films &mdash; so anything resting on those is the best
-            <em>among those examined</em>, and the prompt requires saying which is
-            meant and how many were checked.
-          </p>
-          <p>
-            The screen returns three buckets for the same reason. <code>clear</code> is
-            a finding. <code>flagged</code> is unresolved. <code>insufficient_text</code>
-            means the film had too little plot text to screen at all, so it was verified
-            neither way &mdash; that bucket exists because 13 films would otherwise pass
-            a death screen simply by having nothing to scan, and absence of evidence
-            would get reported as evidence.
-          </p>
+        <h3>Two readers &mdash; a tool sends these, the planner cannot</h3>
+        <div class="data-table">
+          <table>
+            <thead><tr><th>Reader</th><th>Shape</th><th>Sent by</th></tr></thead>
+            <tbody>
+              <tr><td><code>Observer</code></td><td>one question &times; many films</td><td>SynopsisReader</td></tr>
+              <tr><td><code>Verifier</code></td><td>one film &times; every condition</td><td>CandidateWalk, once per film</td></tr>
+            </tbody>
+          </table>
         </div>
-      </details>
+        <p>
+          The <b>Verifier</b> is what makes a film recommendable. It reads one film&rsquo;s
+          plot text with the whole list of requirements and returns
+          <code>yes</code> / <code>no</code> / <code>unclear</code> per requirement, each
+          with a sentence quoted verbatim from the text. A film is accepted only when
+          every requirement says yes.
+        </p>
 
-      <details class="panel" open>
-        <summary><span class="emoji">📋</span> The prompts, exactly as they run</summary>
-        <div class="panel-body">
-          <p>
-            Read from <code>agent/prompts.py</code> and <code>agent/tools.py</code> at
-            request time rather than copied into this page &mdash; a prompt pasted into
-            HTML is a prompt that quietly stops matching the one the agent runs on.
-          </p>
-          <div id="prompts-status"></div>
-          <div id="prompts-body"></div>
-        </div>
-      </details>
+        <h3>What the code enforces</h3>
+        <p>
+          Guardrails live in the data and the tool code, never in the prompt &mdash; a
+          prompt is the wrong place for a rule that must not be forgotten, and one the
+          model can read past is not a rule. Before any answer is returned, the loop
+          checks it: it may not name more films than the ceiling, may not name a film
+          verification did not accept, may not omit one it did, may not name films
+          after a search without verifying them, and may not offer a follow-up the
+          stateless API cannot honour. Each failure costs one correction turn.
+        </p>
+        <p>
+          Quotes are checked to be literal substrings of the source and discarded
+          otherwise; a decisive verdict left without a quote is downgraded to
+          <code>unclear</code>. The accepted list is assembled in Python, so the count
+          an answer states is a count of a list rather than a claim the model makes
+          about its own reasoning.
+        </p>
+        <div id="guardrails-body"><p class="pending">Loading&hellip;</p></div>
+        <p class="fineprint">
+          Every prompt and tool description, served live from the source, is on the
+          <b>Prompts</b> tab.
+        </p>
+      </div>
 
-      <details class="panel" open>
-        <summary><span class="emoji">🔒</span> Guardrails, and where they live</summary>
-        <div class="panel-body">
-          <p>
-            The invariants are enforced in the data and the tool code, never in the
-            prompt. A prompt is the wrong place for a rule that must not be forgotten:
-            the 45-minute feature floor is applied at data preparation time, and results
-            are ordered by a vote-count-adjusted rating inside the tools, so no plan can
-            bypass either. The prompt is not even told about them.
-          </p>
-          <p>
-            The one that matters most for the screen is
-            <code>MIN_SCREEN_TOKENS</code>. A film is only certified clear if it offered
-            enough plot text for the absence of a match to mean something &mdash; median
-            plot length is 1,207 tokens for clear films against 2,153 for flagged ones,
-            precisely because a short summary has fewer chances to contain any given
-            word. Without that floor, the thinnest entries in the catalog would look
-            like the safest.
-          </p>
-          <div id="guardrails-body"><p class="pending">Load the prompts above to see the live values.</p></div>
-        </div>
-      </details>
     </div>
 
     <!-- TAB 5: Project Decisions -->
     <!-- TAB 6: Data -->
+    <div id="prompts-tab" class="tab-content">
+      <div class="card">
+        <h2>Prompts</h2>
+        <p class="lede">
+          Every instruction the agent actually runs on, read from
+          <code>agent/prompts.py</code>, <code>agent/verifier.py</code>,
+          <code>agent/observer.py</code> and the tool schemas at request time &mdash;
+          not copied into this page. A prompt pasted into HTML is a prompt that quietly
+          stops matching the one the agent runs on.
+        </p>
+        <div id="prompts-status"></div>
+        <div id="prompts-body"></div>
+      </div>
+    </div>
+
     <div id="datanav" class="tab-content">
       <div class="card">
         <h2>Data</h2>
@@ -1109,105 +923,54 @@
       <details class="panel">
         <summary><span class="emoji">🧰</span> How this catalog was built</summary>
         <div class="panel-body">
-
           <p>
-            Three sources go in. A Kaggle catalog supplies the structure &mdash; ids, dates,
-            runtime, genres, studios, votes, keywords &mdash; and is the only one that
-            supports deterministic filtering. Its descriptions are too thin to reason
-            about, so MPST plot synopses supply the real story text. Wikipedia supplies
-            independent verification text, scraped once offline: the Plot section for scene
-            questions, and everything else &mdash; cast, production, reception &mdash; for
-            tone questions the plot cannot settle.
+            Three sources, prepared once offline and committed, so the repo runs from a
+            fresh clone with no rebuild: a Disney/Pixar catalog from Kaggle (TMDB
+            metadata), MPST plot synopses, and a Wikipedia cache scraped once. Nothing
+            is fetched live &mdash; a live fetch would make a turn's latency depend on a
+            third party.
           </p>
-
-          <h4>Why only Disney and Pixar</h4>
           <p>
-            It keeps the catalog in family territory and makes the demo coherent, but the
-            real reason is a constraint: the assignment caps stored data at
-            <strong>50&nbsp;MB</strong> and the full catalog does not fit. For a real
-            product, scaling this to all movies would be straightforward &mdash; this is a
-            proof of concept, not a ceiling.
+            The scope is <b>Disney and Pixar feature films</b>: 316 of them,
+            1937&ndash;2017. Two rules do the narrowing. Films are kept if a
+            production company matches one of four studio names, and shorts are dropped
+            at a 47-minute floor, because the studios release five-minute shorts
+            that carry very high ratings on very few votes and would crowd out the
+            features a recommendation query actually wants.
           </p>
-
-          <h4>Why nothing after 2017</h4>
           <p>
-            The Kaggle dataset is a snapshot published in 2017, so its metadata simply stops
-            there. This is a property of the source, not a filter we chose: the newest films
-            in the catalog are <em>Cars 3</em>, <em>Beauty and the Beast</em>, and
-            <em>Guardians of the Galaxy Vol. 2</em>, all 2017, and 21 films date from 2015
-            or later. Anything since &mdash; <em>Frozen II</em>, <em>Encanto</em>,
-            <em>Turning Red</em> &mdash; does not exist as far as this system is concerned.
-            The agent is told this explicitly and refuses questions about recent or current
-            releases rather than answering them from a stale catalog. Again, fresher data is
-            perfectly obtainable &mdash; this snapshot was simply the convenient choice for
-            a proof of concept.
+            <b>That studio list was wrong until recently, and it mattered more than
+            anything else here.</b> It named only the modern companies, and Disney was
+            called <em>Walt Disney Productions</em> until 1986 &mdash; TMDB credits
+            films by the name in use at the time. So the filter did not trim the
+            catalog at its edges, it removed the canon: Cinderella, Peter Pan, Bambi,
+            Dumbo, Pinocchio, Sleeping Beauty, Lady and the Tramp, 101 Dalmatians, Mary
+            Poppins. Seventy-seven feature films. It stayed invisible because the
+            remakes kept the titles under the modern name, so the catalog held Alice in
+            Wonderland (2010) and Cinderella (2015) and looked complete. It was found
+            by asking why a query about a flying human, animals and a clock never
+            returned Peter Pan.
           </p>
-
-          <div class="data-table">
-            <table>
-              <caption style="caption-side:top;text-align:left;font-size:0.7rem;text-transform:uppercase;letter-spacing:0.05em;color:#999;padding:0 0 0.4rem;">What the catalog cannot answer</caption>
-              <thead><tr><th>Limit</th><th>Consequence</th></tr></thead>
-              <tbody>
-                <tr><td>Disney + Pixar only</td><td>No other studio, no general cinema</td></tr>
-                <tr><td>1937&ndash;2017</td><td>Nothing recent, current, or trending</td></tr>
-                <tr><td>Above 45 mins</td><td>No shorts or featurettes</td></tr>
-                <tr><td>No cast or crew index</td><td>No reliable &ldquo;starring X&rdquo; or &ldquo;directed by Y&rdquo;</td></tr>
-                <tr><td>Uneven plot text</td><td>A few films have only a short overview, so story-level claims about them cannot be verified</td></tr>
-              </tbody>
-            </table>
-          </div>
-
-          <div class="funnel">
-            <div class="funnel-row">
-              <span>Raw Kaggle catalog</span>
-              <span class="bar"><span style="width:100%"></span></span>
-              <span class="n">45,466</span>
-            </div>
-            <div class="funnel-row">
-              <span>Disney + Pixar only</span>
-              <span class="bar"><span style="width:9.2%"></span></span>
-              <span class="n">420</span>
-            </div>
-            <div class="funnel-row">
-              <span>After duration filter</span>
-              <span class="bar"><span style="width:6.9%"></span></span>
-              <span class="n">316</span>
-            </div>
-          </div>
-          <h4>Duration filter</h4>
           <p>
-            Disney and Pixar both release short films alongside features, and a six-minute
-            short is never what someone asking for &ldquo;a movie&rdquo; wants. Anything
-            under 45 minutes is dropped, which removes 103 titles; one further row went for a non-positive runtime.
+            Plot text comes from whichever source has it: 198 films have an MPST
+            synopsis, and the Wikipedia Plot section covers the rest, for 307 of
+            316 with readable story text. The remainder carry only a one-line
+            overview, and the tools report those as <code>insufficient_text</code>
+            rather than letting a film pass a check by having nothing to scan.
           </p>
-
-          <h4>Ranking</h4>
           <p>
-            Unless the request says otherwise, the agent aims to return the best-ranked
-            films. Raw rating alone cannot express that, because a film with very few votes
-            can carry a very high score. Each film therefore carries a
+            Ranking never uses the raw average. Each film carries a
             <code>weighted_rating</code> &mdash; the formula IMDb uses for its Top 250
-            &mdash; which pulls thinly-voted films toward the catalog average until they
-            earn enough votes to stand on their own:
+            &mdash; which pulls thinly-voted films toward the catalog mean until they
+            earn enough votes to stand on their own.
           </p>
-          <pre class="formula">weighted_rating = (v / (v + m)) &times; R  +  (m / (v + m)) &times; C
-
-R = the film's rating     v = its vote count
-C = 6.199 catalog mean    m = 300 vote prior</pre>
-          <p>
-            It ranks rather than filters, so nothing is removed and no answer becomes
-            unreachable &mdash; thinly-voted films are demoted on broad queries and still
-            win narrow ones where they are the right answer. Sort the table by
-            <em>Best rated</em> to see the result.
+          <p class="fineprint">
+            Every current figure is in the table below, generated from the shipped
+            artifacts. <code>data_preprocessing/prepare_movibot_data.py --all-studios</code>
+            produces the full multi-studio catalog from the same pipeline; the
+            Disney/Pixar scope is a demo constraint, since the assignment caps stored
+            data at 50 MB.
           </p>
-          <p>
-            Worth being honest about: &ldquo;best&rdquo; is ill-defined here. This is an
-            adjusted average of public votes &mdash; a proxy for broad approval, not a
-            measure of quality, and it knows nothing about the person asking. It is a
-            reasonable default when the request gives no other basis to sort on, not a
-            claim about which films are actually better.
-          </p>
-
         </div>
       </details>
 
@@ -1252,147 +1015,6 @@ C = 6.199 catalog mean    m = 300 vote prior</pre>
     </div>
 
     <!-- TAB 8: Retrieval -->
-    <div id="retrieval" class="tab-content">
-      <div class="card">
-        <h2>Retrieval</h2>
-        <p style="color:#666;font-size:0.9rem;margin-top:0.4rem;">
-          Semantic search over the passage index &mdash; one corpus at a time, or all together.
-        </p>
-      </div>
-
-      <div class="card">
-        <label for="rag-q">Search the corpus</label>
-        <textarea id="rag-q" style="min-height:60px;"
-          placeholder="Describe a concrete event, e.g. a prince reveals he never loved her and leaves her to die"></textarea>
-
-        <div id="rag-sources" class="rag-sources"></div>
-
-        <div style="display:flex;gap:0.6rem;align-items:center;flex-wrap:wrap;">
-          <button id="rag-go" onclick="ragSearch()">Search</button>
-          <span style="font-size:0.78rem;color:#888;">
-            one embedding call, ~$0.000002
-          </span>
-        </div>
-        <div id="rag-status"></div>
-      </div>
-
-      <div class="card" id="rag-results-card" style="display:none;">
-        <label>Results</label>
-        <div id="rag-results"></div>
-      </div>
-
-      <details class="panel">
-        <summary><span class="emoji">📐</span> How retrieval was built</summary>
-        <div class="panel-body">
-
-          <div id="rag-index"></div>
-
-          <p>
-            Four corpora, chunked into passages, embedded by one model, scored with a dot
-            product. Each corpus answers a different kind of question, which is why they stay
-            separable: a plot says whether someone <em>dies</em>, a reception section says
-            whether a film is <em>thought frightening</em>.
-          </p>
-
-          <div class="data-table">
-            <table>
-              <thead><tr><th>Corpus</th><th>Films</th><th>Passages</th><th>What it answers</th></tr></thead>
-              <tbody>
-                <tr><td>Plot synopses (MPST)</td><td class="n">159</td><td class="n">1,254</td><td>What happens, in full</td></tr>
-                <tr><td>Wikipedia plot</td><td class="n">233</td><td class="n">826</td><td>The same, for the 75 films MPST misses</td></tr>
-                <tr><td>Wikipedia context</td><td class="n">237</td><td class="n">841</td><td>Cast, production, reception, tone</td></tr>
-                <tr><td>Catalog overview</td><td class="n">238</td><td class="n">238</td><td>Thin, but exists for every film</td></tr>
-                <tr><td><strong>All four</strong></td><td class="n"><strong>238</strong></td><td class="n"><strong>3,159</strong></td><td>Every film is now searchable</td></tr>
-              </tbody>
-            </table>
-          </div>
-
-          <h4>Why passages, not whole films</h4>
-          <p>
-            The embedding model accepts 8,191 tokens and the median synopsis is 1,143, so a
-            whole film <em>would</em> fit in one vector. It still shouldn't. One vector for a
-            28,000-character story averages thirty unrelated beats together: Frozen's
-            betrayal sits 81% of the way through and could never outrank the film's own
-            opening. Splitting also gives the agent something to quote &mdash; a passage is
-            evidence, a document-level vector is not.
-          </p>
-
-          <h4>Sentences, not paragraphs</h4>
-          <p>
-            The obvious approach is to accumulate paragraphs to a token budget, which is what
-            our earlier RAG project did. Measured here it produces nothing: <strong>zero</strong>
-            of the 159 synopses contain blank-line paragraphs and 66 have no newline at all, so
-            a paragraph splitter would emit one chunk per film. Passages are built from
-            sentences instead.
-          </p>
-
-          <h4>The parameters, against the course guidance</h4>
-          <div class="data-table">
-            <table>
-              <thead><tr><th>Parameter</th><th>Ours</th><th>Course default</th><th>Why we differ</th></tr></thead>
-              <tbody>
-                <tr><td>Chunk size</td><td class="n">300</td><td>512&ndash;1024</td><td>The retrieval unit is a story beat, not a section. At 23 tokens per sentence, 300 holds about one scene.</td></tr>
-                <tr><td>Overlap</td><td class="n">20%</td><td>5&ndash;15%</td><td>A beat split across a boundary must survive whole somewhere; a half-quoted betrayal is not usable evidence.</td></tr>
-                <tr><td>Min passage</td><td class="n">50</td><td>&mdash;</td><td>Not a discard threshold. A shorter tail is merged into the previous passage, so no sentence is ever lost.</td></tr>
-              </tbody>
-            </table>
-          </div>
-
-          <h4>One embedding model, everywhere</h4>
-          <p>
-            <code>text-embedding-3-small</code>, 1536-dim, for both indexing and queries. An
-            earlier design ran a local model in development and this one in production, which
-            meant local testing never exercised the rankings production would return. Passages
-            are embedded once and cached by content, so re-running only pays for what changed.
-          </p>
-
-          <h4>No vector database</h4>
-          <p>
-            The vectors live in memory, in a committed file scored with numpy. There is no
-            vector database and no switch to enable one, which is a decision rather than a shortcut:
-            <strong>3,965 vectors is not a search problem</strong>. Scanning all of them takes
-            about <strong>0.5 ms</strong>, against 50&ndash;200 ms for a round trip to a
-            hosted index &mdash; and the query has to be embedded through the API either way,
-            so a database saves nothing there.
-          </p>
-          <p>
-            What it would add is a credential, an account, a quota, another failure mode, and
-            a fresh clone that cannot retrieve until someone provisions an index. Shipping the
-            matrix with the code also means a given commit retrieves identically forever.
-            A vector database earns its place when the index stops fitting in memory or brute
-            force stops being instant; at 19 MB, neither is close.
-          </p>
-
-          <h4>What still doesn't work</h4>
-          <p>
-            Retrieval is sensitive to phrasing. Asked for &ldquo;a prince reveals he never
-            loved her and leaves her to die&rdquo;, Frozen ranks <strong>#2</strong>. Asked the
-            same thing abstractly &mdash; &ldquo;someone you just met turns out to be the
-            villain&rdquo; &mdash; it falls outside the top 25. Moving to a stronger embedding
-            model did not fix this. The agent is therefore instructed to search for concrete
-            events rather than themes, which is a workaround, not a solution.
-          </p>
-
-          <h4>Rebuilding it</h4>
-          <p>
-            Ingest is a local job: it writes the index into the repo, and a serverless
-            filesystem is read-only. Passages are cached by content, so re-running only pays
-            for what changed.
-          </p>
-          <pre class="formula">python -m rag.ingest --dry-run --sources all   # free
-python -m rag.ingest --debug   --sources all   # ~$0.0002
-python -m rag.ingest --sources all             # ~$0.0156</pre>
-
-          <p style="font-size:0.85rem;color:#888;">
-            Full write-up, with the measurements behind each number, in
-            <code>rag/DECISIONS.md</code>, served raw at <code>GET /api/rag/decisions</code>.
-          </p>
-
-        </div>
-      </details>
-    </div>
-
-    <!-- TAB 7: Budget -->
     <div id="budget-tab" class="tab-content">
       <div class="card">
         <h2>Budget</h2>
@@ -1452,7 +1074,9 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
       // Refetched on every visit, not cached like the others: the whole point
       // of the number is that it is current.
       if (tabName === 'budget-tab') loadBudget();
-      if (tabName === 'retrieval') loadRag();
+      // The Architecture tab shows the live guardrail values, which arrive with
+      // the prompts, so it loads them too even though it renders none of them.
+      if (tabName === 'prompts-tab') fetchPrompts();
       if (tabName === 'arch') { fetchPrompts(); fetchArchitecture(); }
     }
 
@@ -1503,91 +1127,6 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
     }
 
     document.addEventListener('DOMContentLoaded', checkTeamInfo);
-
-    // --- Retrieval tab ---------------------------------------------------
-    // Search and corpus selection. Building the index is a local job, not
-    // something this page can trigger -- see the Retrieval panel.
-
-    let ragInfo = null;
-
-    async function loadRag() {
-      if (ragInfo) return;
-      try {
-        const res = await fetch('/api/rag/info');
-        ragInfo = await res.json();
-      } catch (err) {
-        document.getElementById('rag-index').innerHTML =
-          '<div class="index-state index-bad">Could not reach /api/rag/info: ' +
-          escapeHtml(err.message) + '</div>';
-        return;
-      }
-
-      const idx = ragInfo.index;
-      document.getElementById('rag-index').innerHTML = idx
-        ? '<div class="index-state index-ok"><b>Index ready</b> &mdash; ' +
-          escapeHtml(String(idx.chunks)) + ' passages, ' + escapeHtml(String(idx.dim)) +
-          '-dim, store <code>' + escapeHtml(String(idx.store)) + '</code>, model <code>' +
-          escapeHtml(String(idx.model)) + '</code></div>'
-        : '<div class="index-state index-bad"><b>Index not usable.</b> ' +
-          escapeHtml(ragInfo.index_error || 'unknown') + '</div>';
-
-      const host = document.getElementById('rag-sources');
-      host.innerHTML = (ragInfo.corpora || []).map(c => `
-        <label class="rag-src" title="${escapeHtml(c.description)}">
-          <input type="checkbox" value="${escapeHtml(c.key)}"
-                 ${(ragInfo.default_sources || []).includes(c.key) ? 'checked' : ''} />
-          ${escapeHtml(c.label)}
-        </label>`).join('');
-
-    }
-
-    function ragSelectedSources() {
-      return Array.from(document.querySelectorAll('#rag-sources input:checked'))
-                  .map(i => i.value);
-    }
-
-    async function ragSearch() {
-      const query = document.getElementById('rag-q').value.trim();
-      const status = document.getElementById('rag-status');
-      if (!query) { status.innerHTML = '<div id="status">Enter a query first.</div>'; return; }
-
-      const sources = ragSelectedSources();
-      const btn = document.getElementById('rag-go');
-      btn.disabled = true;
-      status.innerHTML = '<div id="status">Searching…</div>';
-      try {
-        const res = await fetch('/api/rag/search', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query, sources: sources.length ? sources : ['all'], top_k: 12 })
-        });
-        const data = await res.json();
-        if (data.error) {
-          status.innerHTML = '<div id="status" class="error-text">' + escapeHtml(data.error) + '</div>';
-          document.getElementById('rag-results-card').style.display = 'none';
-          return;
-        }
-        const hits = data.results || [];
-        status.innerHTML = '<div id="status" class="success-text">' + hits.length + ' passages</div>';
-        document.getElementById('rag-results').innerHTML = hits.length
-          ? hits.map(h => `
-            <div class="hit">
-              <div class="hit-head">
-                <span class="hit-title">${escapeHtml(h.title || ('film ' + h.movie_id))}</span>
-                <span class="hit-src">${escapeHtml(h.source || '')}</span>
-                <span class="hit-score">${h.score.toFixed(4)}</span>
-              </div>
-              <div class="hit-text">${escapeHtml(h.text)}</div>
-            </div>`).join('')
-          : '<p style="color:#888;font-size:0.88rem;">Nothing matched.</p>';
-        document.getElementById('rag-results-card').style.display = 'block';
-      } catch (err) {
-        status.innerHTML = '<div id="status" class="error-text">' + escapeHtml(err.message) + '</div>';
-      } finally {
-        btn.disabled = false;
-      }
-    }
-
     // --- Budget ---------------------------------------------------------
     // The spend figure used to be typed into TODO.md, where it was stale the
     // moment anyone ran a query. This reads LLMod.ai's own accounting instead.
@@ -2370,39 +1909,55 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
           verify_candidates: '~$0.0013 per film'
         };
 
-        let html = `
-          <div class="prompt-meta">System prompt &mdash; sent on every turn
-            (${d.system_prompt.length.toLocaleString()} chars, ~${approxTokens(d.system_prompt).toLocaleString()} tokens)</div>
-          <div class="prompt-box">${escapeHtml(d.system_prompt)}</div>
-          <div class="prompt-meta">Tool descriptions &mdash; the other half of the instructions</div>
-          <p style="font-size:0.8rem;">
-            Each tool's schema carries its own usage rules, so they do not have to be
-            repeated in the system prompt. The planner sees these on every turn except
-            the last, when they are withheld deliberately so it must answer with what
-            it already has instead of requesting a call that would be discarded.
-          </p>`;
-
-        const paramsHtml = (params) => {
-          const names = Object.keys(params || {});
-          if (!names.length) return '<div class="tool-params">parameters: none</div>';
-          return '<div class="tool-params">' + names.map(n =>
-            `<div class="tool-param"><code>${escapeHtml(n)}</code>` +
-            (params[n] ? ` &mdash; ${escapeHtml(params[n])}` : '') + '</div>'
-          ).join('') + '</div>';
-        };
-
-        for (const t of d.tools) {
-          html += `
-            <div class="tool-card">
-              <span class="tool-cost">${escapeHtml(costs[t.name] || '')}</span>
-              <span class="tool-name">${escapeHtml(t.name)}</span>
-              ${t.trace_name ? ` <span style="font-size:0.7rem;color:#999;">shown in the trace as ${escapeHtml(t.trace_name)}</span>` : ''}
-              <p>${escapeHtml(t.description)}</p>
-              ${paramsHtml(t.parameters)}
-            </div>`;
-        }
+        // One expander per component. The page used to print every prompt and
+        // every schema end to end, which is thousands of words of instructions
+        // opened on nobody's behalf; collapsed, the list is a map and each
+        // entry is there when it is wanted.
+        const box = (t) => `<div class="prompt-box">${escapeHtml(t)}</div>`;
+        const exp = (title, meta, inner, open) => `
+          <details class="subpanel"${open ? ' open' : ''}>
+            <summary><b>${title}</b>${meta ? ` <span class="tok">${meta}</span>` : ''}</summary>
+            <div style="padding:0.6rem 0.7rem;">${inner}</div>
+          </details>`;
 
         const tc = d.token_cost || {};
+        let html = '';
+
+        html += `<div class="prompt-meta">Planner</div>`;
+        html += exp('System prompt',
+          `${(tc.system_prompt || approxTokens(d.system_prompt)).toLocaleString()} tokens · sent every turn`,
+          `<p style="font-size:0.82rem;">The policy the tool schemas cannot carry: what a good
+           answer is, and the mistakes this catalog invites.</p>` + box(d.system_prompt));
+
+        html += `<div class="prompt-meta">Readers &mdash; a tool sends these, the planner cannot</div>`;
+        for (const r of (d.readers || [])) {
+          html += exp(r.name, `${escapeHtml(r.shape)} · sent by ${escapeHtml(r.sent_by)}`,
+                      box(r.prompt));
+        }
+
+        html += `<div class="prompt-meta">Tools &mdash; each schema carries its own rules</div>`;
+        html += `<p style="font-size:0.8rem;">Sent on every turn except the last, when they are
+          withheld deliberately so the planner must answer with what it has rather than
+          request a call that would be discarded.</p>`;
+        for (const t of d.tools) {
+          const params = Object.keys(t.parameters || {});
+          const inner =
+            `<p style="font-size:0.82rem;">${escapeHtml(t.description)}</p>` +
+            (params.length
+              ? '<div class="tool-params">' + params.map(n =>
+                  `<div class="tool-param"><code>${escapeHtml(n)}</code>` +
+                  (t.parameters[n] ? ` &mdash; ${escapeHtml(t.parameters[n])}` : '') +
+                  '</div>').join('') + '</div>'
+              : '<div class="tool-params">parameters: none</div>');
+          const meta = [costs[t.name], t.trace_name ? `traced as ${t.trace_name}` : '']
+            .filter(Boolean).join(' · ');
+          html += exp(escapeHtml(t.name), escapeHtml(meta), inner);
+        }
+
+        if (d.word_lists) {
+          html += `<p class="fineprint">Word lists: ${escapeHtml(d.word_lists)}</p>`;
+        }
+
         const counted = tc.per_turn
           ? `<b>${tc.per_turn.toLocaleString()}</b> tokens &mdash;
              ${tc.system_prompt.toLocaleString()} of system prompt plus
@@ -2410,12 +1965,11 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
              ${escapeHtml(tc.encoding)}`
           : `roughly ${approxTokens(d.system_prompt).toLocaleString()} tokens (estimated)`;
         html += `
-          <p style="font-size:0.78rem;color:#888;margin-top:1rem;">
-            Re-sent on every model turn: ${counted}. It is the same bytes at the front of
-            every request, so whether it is charged once or five times depends on the
-            provider's prefix cache &mdash; the per-run panel under a trace reports how
-            much came back cached. Everything else in the context is tool results, which
-            is why those are capped rather than the prompt trimmed to the bone.
+          <p class="fineprint">
+            Re-sent on every planner turn: ${counted}. It is the same bytes at the front of
+            every request, so whether it is charged once or many times depends on the
+            provider's prefix cache &mdash; the panel under a trace reports how much came
+            back cached.
           </p>`;
         body.innerHTML = html;
         promptsLoaded = true;

@@ -592,10 +592,10 @@ def g09_counts() -> list[str]:
             failures.append(f"the claim about {what} is no longer phrased as "
                             f"{template.format('N')!r} -- update this check")
 
-    cov = store.coverage()
     claim("{} Disney and Pixar feature films", len(catalog.movies()), "catalog size")
-    claim("{} vectors is not a search problem", f"{cov['chunks']:,}", "passage count")
-    claim("{}-dim", cov["dim"], "embedding dimension")
+    # The passage count and embedding dimension were stated on the Retrieval
+    # tab, which is gone. They are still served by /api/rag/info for anyone who
+    # wants them; the page no longer repeats a number it would have to keep.
 
     # The screen's counts are no longer checked here, and cannot be: the word
     # list is written per request by the planner, so "films clear on the death
