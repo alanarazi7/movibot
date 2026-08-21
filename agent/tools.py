@@ -764,6 +764,36 @@ MAX_VERIFICATIONS = 10
 MAX_RECOMMENDATIONS_CEILING = 3
 
 
+def _catalog_facts() -> str:
+    """What the catalog is, computed from the catalog.
+
+    Every prompt that describes the data used to state its own numbers, and
+    they went stale together the moment the studio filter was corrected and
+    238 films became 316. Written once, from the CSV, so a prompt cannot claim
+    a range the data does not have.
+    """
+    df = catalog.movies()
+    lo, hi = int(df["release_year"].min()), int(df["release_year"].max())
+    rlo, rhi = int(df["runtime_minutes"].min()), int(df["runtime_minutes"].max())
+    readable = sum(1 for i in df["id"] if catalog.has_synopsis(int(i)))
+    return (
+        f"- {len(df)} Disney and Pixar feature films, {lo} to {hi}. No other "
+        f"studio, no TV, no anime.\n"
+        f"- Nothing later than {hi} exists for you -- not Frozen II, not "
+        f"Encanto. You cannot know what is new, recent or trending.\n"
+        f"- Feature films only, {rlo} to {rhi} minutes. Shorts were excluded, "
+        f"so nothing shorter than {rlo} minutes can be found.\n"
+        f"- No cast or crew data. \"Starring X\" and \"directed by Y\" cannot "
+        f"be answered.\n"
+        f"- {readable} of {len(df)} films have full plot text; the rest carry "
+        f"only a one-line overview, and a story claim about those cannot be "
+        f"settled."
+    )
+
+
+CATALOG_FACTS = _catalog_facts()
+
+
 # Conditions plot text can never settle, because they are catalog columns.
 # Sent to the Verifier they come back `unclear` on every film, and since
 # acceptance needs every condition to say yes, one of them makes the request
