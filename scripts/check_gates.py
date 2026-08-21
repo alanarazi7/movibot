@@ -265,10 +265,10 @@ def g07_fusion_beats_greed() -> list[str]:
 
     # The tool is offered to the model and traced.
     from agent import tools
-    if "build_shortlist" not in {s["function"]["name"] for s in tools.TOOL_SCHEMAS}:
-        failures.append("build_shortlist is not in TOOL_SCHEMAS, so the model cannot use it")
-    if "build_shortlist" not in tools.TRACE_NAMES:
-        failures.append("build_shortlist has no TRACE_NAME")
+    for name in ("retrieve_plots", "retrieve_metadata"):
+        if name not in tools.TRACE_NAMES:
+            failures.append(f"{name} has no TRACE_NAME, so its step would be logged "
+                            f"under a module the architecture does not declare")
     return failures
 
 
@@ -307,15 +307,13 @@ def g08_nothing_is_memorised() -> list[str]:
                 failures.append(f"{path} still carries {name!r}; the Decomposer writes "
                                 f"the words for the request in front of it")
 
-    # The one word list that is allowed is the model's own, paired to the
-    # requirement it was written for.
+    # There is no word list at all now: the scan that needed one is gone, and
+    # retrieval works from the condition the Decomposer wrote rather than from
+    # a vocabulary anyone assembled.
     from agent import decomposer
     props = decomposer.PLAN_SCHEMA["function"]["parameters"]["properties"]
-    screen = props.get("screen", {}).get("properties", {})
-    for field in ("words", "exclude_phrases", "for_requirement"):
-        if field not in screen:
-            failures.append(f"the plan schema does not ask the Decomposer for "
-                            f"screen.{field}")
+    if "screen" in props:
+        failures.append("the plan still has a word-scan block")
 
     # And statelessness is a prompt rule now, since the check that enforced it
     # was a list of phrasings.
@@ -390,54 +388,10 @@ def g10_verdicts_need_evidence() -> list[str]:
     if r["accepted"]:
         failures.append("a film was accepted on a requirement that got no verdict")
 
-    # An absence evidenced by a sentence containing the thing denied.
-    # "no character dies" came back yes, quoting "McLeach is swept over the
-    # waterfall to his death" -- a literal substring, no hedging note, a
-    # decisive verdict with evidence. Every other guard passed.
-    #
-    # The pairing comes from the plan: the Decomposer says which requirement
-    # it wrote the scan for. An earlier version guessed by matching the
-    # requirement against English negation words, which caught "no character
-    # dies" and missed "everyone lives" -- the phrasings someone thought of,
-    # again.
-    deny = {"everyone lives": ["dies", "died", "death", "killed"]}
-    if verifier._refuted_by_its_own_quote(
-            "everyone lives", "McLeach is swept over the waterfall to his death.",
-            deny) is None:
-        failures.append("a `yes` for an absence quoting the thing denied was not caught, "
-                        "on a requirement with no negation word in it")
-    if verifier._refuted_by_its_own_quote(
-            "an animal appears", "Mufasa dies in the stampede.", deny) is not None:
-        failures.append("a requirement the plan did not pair with a word list was "
-                        "refuted anyway")
-    if verifier._refuted_by_its_own_quote(
-            "everyone lives", "The dog finds his way home safely.", deny) is not None:
-        failures.append("a clean quote for an absence was wrongly refuted")
-
-    # The Verifier judges a requirement without the words it came from unless
-    # the request reaches it. "an animal appears" means something different
-    # under "a film with animals" than under "an animal that wears a hat", and
-    # the plan is the only thing carrying the difference.
-    import inspect
-    if "request" not in inspect.signature(verifier.verify).parameters:
-        failures.append("verifier.verify does not take the request, so it judges each "
-                        "requirement with no idea what was asked for")
-    r = verifier.verify.__doc__ or ""
-    probe = run({"findings": [{"requirement": "a hat appears", "verdict": "yes",
-                               "quote": "A rabbit puts her cap on."}]},
-                ["a hat appears"], "A rabbit puts her cap on.")
-    if not probe["accepted"]:
-        failures.append("a supported yes stopped being accepted")
-    if "context, never evidence" not in verifier.VERIFIER_PROMPT:
-        failures.append("the Verifier prompt does not say the request is context rather "
-                        "than evidence, which is how wanting to answer becomes a reason "
-                        "to read a passage generously")
-
-    # Nothing about which phrasings count as a negation may be stored here.
-    vsrc = (_ROOT / "agent" / "verifier.py").read_text()
-    if "nobody" in vsrc and "none|never" in vsrc:
-        failures.append("verifier.py is matching requirements against a stored list of "
-                        "negation words; the plan states the pairing instead")
+    # The self-refutation check went with the scan that supplied its words:
+    # it compared a quote against the vocabulary the Decomposer wrote for an
+    # absence, and there is no scan to write one now. What is left needs no
+    # vocabulary at all.
 
     # A clean identifying note must survive, or every honest yes is punished.
     r = run({"findings": [{"requirement": cond[0], "verdict": "yes",
@@ -448,99 +402,108 @@ def g10_verdicts_need_evidence() -> list[str]:
     return failures
 
 
-def g11_screen_orders_not_filters() -> list[str]:
-    """A scan for an absence must order the candidates, never remove any. Free.
+def g11_two_corpora() -> list[str]:
+    """Retrieval covers what happens and what a film is written about. Free.
 
-    Deleting the flagged half turned a word scan into a verdict. 194 of 316
-    films flag on death vocabulary, and Toy Story flags on "killing" and
-    "murdered" for a belief that turns out to be false, Monsters, Inc. and
-    Zootopia on attempts nobody dies of. All three were dropped from the
-    request before the Verifier -- whose entire job is telling an attempt from
-    an outcome -- could see them.
+    A word scan used to live here, and a keyword filter over the catalog's own
+    tag column. Both are gone: "a movie with a strong female character" matched
+    the keyword column against a free-text tag list and returned zero films,
+    which is indistinguishable from a catalog that holds none.
 
-    The forward direction is different and must keep narrowing: there a match
-    IS the finding, so films without one are genuinely out of scope.
+    What replaced them is two retrievals over two corpora. Plot text narrates
+    events; the rest of a Wikipedia page describes the film. "A strong female
+    character" is written about a film far more often than it is narrated
+    inside one, and looking only at plots is why it was answered badly.
+    """
+    from agent import decomposer, tools
+
+    failures = []
+    if "screen_out" in tools._DISPATCH:
+        failures.append("the lexical scan is still dispatchable")
+    import inspect
+    if "keywords" in inspect.signature(tools.filter_catalog).parameters:
+        failures.append("filter_catalog still takes keywords; the column is a noisy "
+                        "free-text tag list and matched a phrase to zero films")
+    for name in ("PlotRetrieval", "MetadataRetrieval"):
+        if name not in tools.TRACE_NAMES.values():
+            failures.append(f"{name} is not a traced stage")
+    if set(tools.PLOT_SOURCES) & set(tools.METADATA_SOURCES):
+        failures.append("the two retrievals read overlapping corpora, so the split "
+                        "buys nothing")
+
+    props = decomposer.PLAN_SCHEMA["function"]["parameters"]["properties"]
+    for field in ("search_plots", "search_metadata"):
+        if field not in props:
+            failures.append(f"the plan schema does not ask for {field}")
+    if "keywords" in props.get("filter", {}).get("properties", {}):
+        failures.append("the plan can still ask for keywords")
+    if "screen" in props:
+        failures.append("the plan can still ask for a word scan")
+
+    # Retrieval ranks; it never decides. A condition retrieved for and not
+    # checked leaves an answer that can only offer a ranking.
+    plan = decomposer._normalise(
+        {"outcome": "search", "conditions": ["x"], "search_metadata": ["a strong lead"]},
+        "a movie with a strong lead")
+    if plan["verify"] != ["a strong lead"]:
+        failures.append("a condition retrieved for was left unverified; retrieval "
+                        "ranks candidates, it does not qualify them")
+    return failures
+
+
+def g12_filter_actually_filters() -> list[str]:
+    """A filter argument that reports itself applied must have applied. Free.
+
+    Inherited from check_screen.py, which went with the word scan it was
+    written for. These are the two cases where this catalog silently lied: an
+    exclusion matched against the wrong column, and a language stored under an
+    endonym that no English name could reach. Both reported themselves applied
+    while selecting nothing, and an empty result that looks applied reads as a
+    fact about the films.
     """
     from agent import catalog, tools
 
     failures = []
-    words = ["dies", "died", "dead", "killed", "murdered", "perished", "funeral"]
+    df = catalog.movies()
+    total = len(df)
 
-    ctx = tools.ToolContext()
-    tools.filter_catalog(genres=["Animation"], ctx=ctx)
-    pool = set(ctx.working_set or ())
-    r = tools.screen_out(words=words, keep="clear", ctx=ctx)
+    def matched(**kw):
+        return tools.filter_catalog(ctx=tools.ToolContext(), **kw)["matched"]
 
-    if set(ctx.working_set or ()) != pool:
-        failures.append(f"keep='clear' changed the working set from {len(pool)} to "
-                        f"{len(ctx.working_set or ())}; it must order, not remove")
-    if not ctx.preferred:
-        failures.append("keep='clear' recorded no preference, so the walk gains nothing")
-    if len(ctx.preferred) != r["clear"]:
-        failures.append(f"{len(ctx.preferred)} films preferred but {r['clear']} are clear")
+    # A bare title drops every film sharing it; a label drops exactly one.
+    if matched(exclude_titles=["The Jungle Book"]) != total - 2:
+        failures.append("a bare title did not drop both films sharing it")
+    if matched(exclude_titles=["The Jungle Book (1967)"]) != total - 1:
+        failures.append("a 'Title (Year)' label did not drop exactly one film")
 
-    # A flagged film stays reachable -- the whole point.
-    flagged_ids = pool - set(ctx.preferred)
-    if not flagged_ids:
-        failures.append("no film was flagged, so this proves nothing about reachability")
-    for title in ("Toy Story", "Monsters, Inc."):
-        row = catalog.movies()
-        row = row[row["title"] == title]
-        if len(row):
-            mid = int(row.iloc[0]["id"])
-            if mid in pool and mid not in (ctx.working_set or ()):
-                failures.append(f"{title} was removed from the request by a word scan")
+    pixar = matched(studio="Pixar")
+    for form in ("Toy Story", "Toy Story (1995)"):
+        if matched(studio="Pixar", exclude_titles=[form]) != pixar - 1:
+            failures.append(f"excluding {form!r} removed nothing")
 
-    # The forward scan still narrows.
-    ctx2 = tools.ToolContext()
-    tools.filter_catalog(genres=["Animation"], ctx=ctx2)
-    before = len(ctx2.working_set or ())
-    tools.screen_out(words=["train", "trains"], keep="flagged", ctx=ctx2)
-    if len(ctx2.working_set or ()) >= before:
-        failures.append("keep='flagged' did not narrow; a presence match is a finding")
+    # An exclusion the catalog cannot match must be reported, never swallowed.
+    out = tools.filter_catalog(ctx=tools.ToolContext(),
+                               exclude_titles=["A Film That Does Not Exist"])
+    if not out["filters_applied"].get("exclude_titles_unmatched"):
+        failures.append("an unmatchable exclusion was silently ignored")
 
-    # The model writes the list; the presets are not on offer.
-    schema = next(x for x in tools.TOOL_SCHEMAS
-                  if x["function"]["name"] == "screen_out")
-    props = schema["function"]["parameters"]["properties"]
-    if "vocabulary" in props:
-        failures.append("screen_out still offers a fixed `vocabulary`; the word list "
-                        "is written per request now")
-    if "words" not in (schema["function"]["parameters"].get("required") or []):
-        failures.append("screen_out does not require `words`")
-
-    # A ranking is not a verification, and the two must not share a key: the
-    # Answerer wrote "3 verified" about films nothing had read, because the
-    # unverified list arrived under the name `accepted`.
-    from agent import answerer, loop
-    src = (_ROOT / "agent" / "loop.py").read_text()
-    if 'evidence["accepted"] = accepted' in src:
-        failures.append("loop.py reports an unverified ranking as `accepted`; the "
-                        "Answerer cannot tell it from a verified list")
-    if "ranked_not_verified" not in answerer.ANSWERER_PROMPT:
-        failures.append("the Answerer prompt does not say what to do with a ranking "
-                        "nothing verified, so it will describe one as verified")
-
-    # And a short list says so, because that is this design's failure mode.
-    if not tools.screen_out(words=["dies"], keep="clear").get("thin_word_list"):
-        failures.append("a one-word scan for an absence did not warn that it is thin")
-
-    # Nothing about words or phrases ships. A fixed list only ever fits the
-    # requests someone thought of, and both of these grew up fitting each
-    # other rather than any particular question.
-    from rag import screen as rag_screen
-    for gone in ("VOCABULARIES", "BLACKLIST_PHRASES"):
-        if hasattr(rag_screen, gone):
-            failures.append(f"rag/screen.py still ships {gone}; the planner writes "
-                            f"the words and the exclusions per request")
-
-    # The exclusions are the planner's too, and they have to actually apply.
-    hit = rag_screen.screen(["dead"], candidate_ids=None)
-    miss = rag_screen.screen(["dead"], candidate_ids=None,
-                             exclude_phrases=["dead"])
-    if len(miss["flagged"]) >= len(hit["flagged"]):
-        failures.append("exclude_phrases did not remove any match, so a caller "
-                        "cannot correct a false positive it can see")
+    # Every language must be reachable by its English name, with the count the
+    # columns support -- recomputed rather than typed in.
+    for name in ("Hindi", "French", "Spanish", "Mandarin", "Japanese", "English"):
+        pair = catalog.resolve_language(name)
+        if pair is None:
+            failures.append(f"the catalog cannot resolve {name!r}")
+            continue
+        endonym, iso = pair
+        spoken = df["spoken_languages"].apply(
+            lambda ls: any(endonym.lower() == l.lower() for l in ls))
+        original = df["original_language"].astype(str).str.lower() == iso
+        expected = int((spoken | original).sum())
+        got = matched(languages=[name])
+        if got != expected:
+            failures.append(f"languages=[{name!r}] matched {got}, columns support {expected}")
+        if got == 0:
+            failures.append(f"languages=[{name!r}] is unreachable")
     return failures
 
 
@@ -676,9 +639,11 @@ def main() -> int:
          "rank fusion puts coverage above average rank, so greed loses"),
         ("G08", g08_nothing_is_memorised,
          "no words or phrasings are stored anywhere the agent reasons"),
+        ("G12", g12_filter_actually_filters,
+         "a filter that reports itself applied has applied"),
         ("G09", g09_counts, "every displayed count comes from the shipped data"),
-        ("G11", g11_screen_orders_not_filters,
-         "a scan for an absence orders the candidates and removes none"),
+        ("G11", g11_two_corpora,
+         "retrieval covers what happens and what a film is written about"),
         ("G10", g10_verdicts_need_evidence,
          "a verdict without a quote that shows it is not a verdict"),
     ]:

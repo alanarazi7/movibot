@@ -38,6 +38,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import json
 import re
 from dataclasses import dataclass, field
 
@@ -71,16 +72,6 @@ class ToolContext:
     # transcription error in it.
     shortlist: list[int] = field(default_factory=list)
     conditions: list[str] = field(default_factory=list)
-
-    # requirement -> the words the scan looked for on its behalf, as the
-    # Decomposer paired them. Verification uses this to tell a quote that
-    # supports "no character dies" from one that refutes it.
-    deny: dict[str, list[str]] = field(default_factory=dict)
-
-    # Films the lexical screen found clean, best-first. A PRIOR, not a verdict:
-    # it says these are the cheapest candidates to check for an absence, and
-    # nothing more. See screen_out for why it stopped being a filter.
-    preferred: list[int] = field(default_factory=list)
 
     # How many model calls the request can still afford. verify_candidates
     # spends calls inside a single tool call, so without this the loop's cap
@@ -151,7 +142,6 @@ def filter_catalog(
     runtime_max: int | None = None,
     genres: list[str] | None = None,
     exclude_genres: list[str] | None = None,
-    keywords: list[str] | None = None,
     studio: str | None = None,
     languages: list[str] | None = None,
     exclude_english_only: bool = False,
@@ -207,16 +197,6 @@ def filter_catalog(
             lambda gs: not any(g.lower() in unwanted for g in gs)
         )]
         applied["exclude_genres"] = exclude_genres
-
-    # Keywords are OR-ed and substring-matched: the vocabulary is noisy
-    # ("princess", "fairy tale", "royalty" all coexist), so requiring all of
-    # them would usually return nothing.
-    if keywords:
-        wanted = [k.lower() for k in keywords]
-        df = df[df["keywords"].apply(
-            lambda ks: any(w in k.lower() for w in wanted for k in ks)
-        )]
-        applied["keywords"] = keywords
 
     if studio:
         needle = studio.lower()
@@ -358,237 +338,6 @@ def _describe(applied: dict[str, Any]) -> str:
 # Tool 2: lexical screen, for negations
 # ---------------------------------------------------------------------
 
-def screen_out(
-    words: list[str] | None = None,
-    for_requirement: str | None = None,
-    keep: str = "clear",
-    and_words: list[str] | None = None,
-    exclude_phrases: list[str] | None = None,
-    ctx: "ToolContext | None" = None,
-) -> dict[str, Any]:
-    """Scan every plot passage of every candidate for `words`. Free, both ways.
-
-    One pass over the corpus splits the candidates into those where a listed
-    word appears and those where none does; `keep` decides which half survives.
-    Either way the scan is exhaustive over the word list, which is the property
-    neither ranking nor reading can offer: no film escapes it by placing
-    eleventh, and none is missed because the budget ran out at eight synopses.
-
-      keep="clear"    (default) the negation case. "nobody dies", "nothing
-                      scary". Searching for these returns the films that fail
-                      them, because that is what those plots say, so they are
-                      screened instead.
-      keep="flagged"  the presence case. "an animal that wears a hat", "a film
-                      with a train". A concrete noun that would literally be
-                      written down in a plot description is found by scanning
-                      for the word, not by ranking whole passages on overall
-                      similarity -- ranking "an animal that wears a hat"
-                      retrieves animal films, since one incidental word barely
-                      moves a 300-token passage vector.
-
-    keep="clear" ORDERS the working set; it does not shrink it. A word scan
-    cannot tell an attempt from an outcome, so removing the flagged half made
-    the scan into a verdict and put Toy Story, Monsters, Inc. and Zootopia out
-    of reach of a "nobody dies" request over `killing`, `kill` and `murdered`
-    that no character dies of. The clean films become the front of the
-    verification queue instead, and the flagged ones are checked after.
-
-    keep="flagged" does narrow, because there a match is the finding rather
-    than a suspicion.
-    """
-    resolved = screening.resolve_words(words)
-    if not resolved:
-        return {"error": "Pass `words`: the words and phrases a plot might use "
-                         "for the one thing you are scanning for."}
-
-    keep = (keep or "clear").strip().lower()
-    if keep not in ("clear", "flagged"):
-        return {"error": "`keep` must be 'clear' (films where no listed word "
-                         "appears) or 'flagged' (films where one does)."}
-
-    # Always hand the screen an explicit candidate list. Left to infer its own
-    # universe it can only see films that have plot passages, so the four films
-    # with none would disappear from all three buckets rather than being
-    # reported as unverifiable -- they would look considered when they were not.
-    # rag/ does not import the catalog, so the fallback belongs here.
-    candidates = ctx.candidates() if ctx is not None else None
-    if candidates is None:
-        candidates = [int(i) for i in catalog.movies()["id"]]
-
-    result = screening.screen(resolved, candidate_ids=candidates,
-                              and_words=and_words,
-                              exclude_phrases=exclude_phrases)
-
-    # Writing the list per request is more flexible than a fixed vocabulary and
-    # has one failure the fixed one did not: a list too short to cover how the
-    # thing is actually written. Three words for "nobody dies" reports a clean
-    # scan that means almost nothing, and it reports it exhaustively, which is
-    # what makes it convincing. Said here rather than assumed.
-    thin_list = len(resolved) < 6 and keep == "clear"
-
-    clear, flagged = result["clear"], result["flagged"]
-    thin = result["insufficient_text"]
-
-    if ctx is not None:
-        if for_requirement and str(for_requirement).strip():
-            ctx.deny[str(for_requirement).strip()] = list(resolved)
-        if keep == "clear":
-            # ORDERS, never narrows. Deleting the flagged half is what made a
-            # word scan into a verdict: 194 of 316 films flag on the death
-            # vocabulary, and Toy Story flags on "killing" and "murdered" for
-            # a false belief, Monsters, Inc. and Zootopia on an attempt. All
-            # three were removed from the request before the Verifier -- which
-            # exists precisely to tell an attempt from an outcome -- could look
-            # at one of them.
-            #
-            # So the clean films become a preference: CandidateWalk checks them
-            # first because they are the likeliest to pass, and a flagged film
-            # is checked afterwards rather than discarded. The count stays
-            # exhaustive and free, which is the part nothing else can do.
-            ranked = sorted(clear, key=lambda i: -(catalog.rating_of(i) or 0.0))
-            ctx.preferred = ranked
-            ctx.scope_note = (f"{len(ctx.working_set or [])} films "
-                              f"({len(clear)} clear of {len(resolved)} words, "
-                              f"{len(flagged)} flagged, none removed)")
-            ctx.trace.append(ctx.scope_note)
-        else:
-            # The forward scan still narrows. Here a match IS the finding --
-            # "a film with a train" -- so the films without one are genuinely
-            # out of scope rather than merely unproven.
-            ctx.narrow(set(flagged), f"kept the {len(flagged)} films mentioning "
-                                     f"any of {len(resolved)} words")
-
-    def labels(ids: list[int]) -> list[dict[str, Any]]:
-        rows = [(catalog.label_of(i), catalog.rating_of(i)) for i in ids]
-        rows = [(f, r) for f, r in rows if f]
-        rows.sort(key=lambda fr: -(fr[1] or 0))
-        return [{"film": f, "rating": round(r, 2) if r else None} for f, r in rows]
-
-    def with_evidence(ids: list[int]) -> list[dict[str, Any]]:
-        """Films best-rated first, each carrying the passage that matched."""
-        rows = [(i, catalog.label_of(i), catalog.rating_of(i)) for i in ids]
-        rows = [r for r in rows if r[1]]
-        rows.sort(key=lambda r: -(r[2] or 0))
-        return [
-            {
-                "film": lab,
-                "matched": [h["word"] for h in result["evidence"].get(i, [])],
-                "quote": (result["evidence"].get(i) or [{}])[0].get("quote"),
-            }
-            for i, lab, _ in rows
-        ]
-
-    out: dict[str, Any] = {
-        "screened_for": resolved if len(resolved) <= 12 else
-                        resolved[:12] + [f"... and {len(resolved) - 12} more"],
-        **({"together_with": and_words} if and_words else {}),
-        "kept": keep,
-        "clear": len(clear),
-        "flagged": len(flagged),
-        "insufficient_text": len(thin),
-        **({"thin_word_list": (
-            f"Only {len(resolved)} word(s) were scanned for. An absence "
-            "established over a short list is a weak finding stated "
-            "exhaustively, which is the most convincing way to be wrong. If "
-            "the thing has other common wordings, run the scan again with "
-            "them before you rely on `clear`."
-        )} if thin_list else {}),
-        "meaning": (
-            "clear = no listed word appears anywhere in the film's plot text, "
-            f"and it has at least {result['min_screen_tokens']} tokens of plot "
-            "for that absence to be meaningful. flagged = a word appears, which "
-            "may be an attempt, threat or rumour rather than an outcome; read "
-            "the quote before deciding what it shows. insufficient_text = too "
-            "little plot text to screen; these were NOT verified either way."
-        ),
-    }
-
-    if keep == "clear":
-        clear_labels = labels(clear)
-        out["scope"] = "search and reading now cover only the clear films"
-        out["clear_films"] = clear_labels[:PREVIEW_FILMS]
-        if len(clear_labels) > PREVIEW_FILMS:
-            out["clear_note"] = (
-                f"Showing the {PREVIEW_FILMS} best rated of {len(clear_labels)} "
-                "clear films; all of them are in scope."
-            )
-
-        # Evidence only when the flagged set is small enough to be worth
-        # quoting. Beyond that the model should not be resolving flags one by
-        # one anyway -- it should recommend from the clear set.
-        if flagged and len(flagged) <= MAX_FLAGGED_EVIDENCE:
-            out["flagged_films"] = with_evidence(flagged)
-        elif flagged:
-            out["flagged_note"] = (
-                f"{len(flagged)} films flagged -- too many to quote. Recommend "
-                "from the clear set, or narrow further before screening."
-            )
-    else:
-        # The matches ARE the answer here, so they always come back quoted --
-        # a presence claim the model cannot cite is exactly the kind it should
-        # not be making. The quote also carries the part a word list cannot
-        # judge: "the hat lands on Tod" and "Bowler Hat Guy" both match `hat`,
-        # and only the passage says which one involves an animal.
-        matches = with_evidence(flagged)
-        out["scope"] = "search and reading now cover only the matching films"
-        if and_words:
-            # Co-occurrence is proximity, not a relationship. Alice Through the
-            # Looking Glass has a Cheshire Cat and a Hatter in one passage and
-            # no cat in a hat anywhere. A word list cannot close that gap, and
-            # naming the film with a note that the link is unproven is the
-            # failure this whole path exists to avoid -- so say what the next
-            # move is instead of leaving the planner to invent one.
-            out["co_occurrence_warning"] = (
-                "Both word lists appear in these passages. That is proximity, not a "
-                "relationship: the text may pair the two things, or merely mention them "
-                "in the same scene. Read the quote. If it does not plainly show the "
-                "connection, call `read_synopses` on these films with `about` set to the "
-                "connection you need -- and if that does not settle it either, say the "
-                "plot text does not establish it and name nothing. Do not list a film "
-                "alongside a note that the link is unproven."
-            )
-        out["matching_films"] = matches[:PREVIEW_FILMS]
-        out["meaning"] = (
-            "Every plot passage of every candidate was scanned, so this is "
-            "every film in scope whose plot text uses one of these words -- "
-            "exhaustive over the word list, not over the idea: a film can show "
-            "the thing without naming it, and a match may not mean what you "
-            f"want. Read the quote. {len(thin)} film(s) had under "
-            f"{result['min_screen_tokens']} tokens of plot text and were not "
-            "searched either way."
-        )
-        if not matches:
-            out["no_matches"] = (
-                "No film in scope uses any of these words. Plot text records "
-                "events rather than appearance, so a visual detail may simply "
-                "not be written down anywhere -- say that is what happened "
-                "rather than recommending a film you could not verify."
-            )
-        elif len(matches) > PREVIEW_FILMS:
-            out["matching_note"] = (
-                f"Showing the {PREVIEW_FILMS} best rated of {len(matches)} "
-                "matching films; all of them are in scope."
-            )
-
-        # A wide flat match on a presence query is nearly always a request that
-        # paired two things, scanned as one list. The words are matched with
-        # OR, so every film mentioning either one lands here, and answering
-        # from that set means naming films and explaining why they do not fit.
-        # The tool knows this before the planner does, so it says so.
-        if not and_words and len(matches) > MAX_FLAGGED_EVIDENCE:
-            out["consider_pairing"] = (
-                f"{len(matches)} films matched, because these {len(resolved)} words are "
-                "matched with OR: a film needs only one of them. If the request pairs "
-                "two things -- 'a cat that wears a hat', 'a robot on a spaceship' -- put "
-                "one thing's synonyms in `words` and the other's in `and_words`, and only "
-                "films where both land in the same passage come back. Do not answer from "
-                "this wide set by naming a film and noting which half it fails."
-            )
-
-    if thin:
-        out["insufficient_films"] = [catalog.label_of(i) for i in thin][:PREVIEW_FILMS]
-
-    return out
 
 
 # ---------------------------------------------------------------------
@@ -688,9 +437,31 @@ SHORTLIST_PER_CONDITION = 20
 SHORTLIST_ROWS = 15
 
 
+# Two corpora, two questions. Plot text narrates what happens; the rest of a
+# Wikipedia page -- cast, production, reception, themes -- is where a film is
+# described rather than told. "A strong female character" is written about a
+# film far more often than it is narrated inside one, which is why retrieving
+# only over plots answered it badly.
+PLOT_SOURCES = ["mpst", "wiki_plot"]
+METADATA_SOURCES = ["wiki_context", "overview"]
+
+
+def retrieve_plots(conditions=None, top_k=None, ctx=None):
+    """Rank films by what their plot text narrates."""
+    return build_shortlist(conditions=conditions, top_k=top_k,
+                           sources=PLOT_SOURCES, ctx=ctx)
+
+
+def retrieve_metadata(conditions=None, top_k=None, ctx=None):
+    """Rank films by how they are written about, rather than what happens."""
+    return build_shortlist(conditions=conditions, top_k=top_k,
+                           sources=METADATA_SOURCES, ctx=ctx)
+
+
 def build_shortlist(
     conditions: list[str] | None = None,
-    top_k: int = SHORTLIST_PER_CONDITION,
+    top_k: int | None = None,
+    sources: list[str] | None = None,
     ctx: "ToolContext | None" = None,
 ) -> dict[str, Any]:
     """Search EVERY story condition separately, then fuse the rankings.
@@ -714,14 +485,15 @@ def build_shortlist(
     if not wanted:
         return {"error": "build_shortlist needs at least one condition to search for."}
 
-    top_k = max(1, min(int(top_k), MAX_SEARCH_RESULTS))
+    top_k = max(1, min(int(top_k or SHORTLIST_PER_CONDITION), MAX_SEARCH_RESULTS))
+    sources = sources or PLOT_SOURCES
     scoped = ctx.candidates() if ctx is not None else None
 
     lists: dict[str, list[int]] = {}
     passages: dict[tuple[str, int], str] = {}
     for condition in wanted:
         hits = retrieval.search(condition, top_k=top_k, candidate_ids=scoped,
-                                sources=DEFAULT_SOURCES)
+                                sources=sources)
         lists[condition] = [h["movie_id"] for h in hits]
         for h in hits:
             passages[(condition, h["movie_id"])] = h["passage"]
@@ -731,8 +503,16 @@ def build_shortlist(
     fused = shortlist.fuse(lists, ratings=ratings)
 
     if ctx is not None:
-        ctx.shortlist = [c.movie_id for c in fused]
-        ctx.conditions = wanted
+        # Merged with whatever a previous retrieval left, best-first, so two
+        # retrievals over different corpora produce one ordering rather than
+        # the second replacing the first.
+        seen = set()
+        merged = []
+        for mid in [c.movie_id for c in fused] + list(ctx.shortlist):
+            if mid not in seen:
+                seen.add(mid); merged.append(mid)
+        ctx.shortlist = merged
+        ctx.conditions = list(dict.fromkeys(list(ctx.conditions) + wanted))
 
     rows = [shortlist.explain(c, wanted, catalog.label_of(c.movie_id) or str(c.movie_id))
             for c in fused[:SHORTLIST_ROWS]]
@@ -741,6 +521,7 @@ def build_shortlist(
     covered_all = sum(1 for c in fused if c.covered == len(wanted))
     return {
         "conditions": wanted,
+        "over": sources,
         "searched_within": "whole catalog" if scoped is None
                            else f"{len(scoped)} films in scope",
         "candidates": full,
@@ -867,17 +648,10 @@ def verify_candidates(
     else:
         rest = []
 
-    # A lexical screen for an absence puts its clean films first. They are the
-    # likeliest to pass, so the budget reaches an answer sooner -- but the
-    # flagged ones follow rather than being dropped, which is the whole point
-    # of the screen no longer filtering.
-    if ctx is not None and ctx.preferred:
-        pref = [i for i in ctx.preferred if i in set(rest)]
-        rest = pref + [i for i in rest if i not in set(pref)]
     tail = [i for i in rest if i not in set(named)]
     order = named + tail
     if not order:
-        return {"error": "no candidates: call build_shortlist first, or name films."}
+        return {"error": "no candidates: retrieve or filter first, or name films."}
 
     max_accept = max(1, min(int(max_accept), MAX_RECOMMENDATIONS_CEILING))
 
@@ -901,7 +675,6 @@ def verify_candidates(
 
         checked += 1
         result = verifier.verify(label, conditions, _trim(text, MAX_SYNOPSIS_CHARS),
-                                 deny=(ctx.deny if ctx else None),
                                  request=request)
         rows.append(result)
         if result.get("accepted"):
@@ -1021,14 +794,6 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                         "type": "array", "items": {"type": "string"},
                         "description": "Reject any movie carrying one of these genres.",
                     },
-                    "keywords": {
-                        "type": "array", "items": {"type": "string"},
-                        "description": (
-                            "Thematic keywords, ANY may match, substring. "
-                            "e.g. ['princess','royalty']. Good for topics the "
-                            "genre list is too coarse for."
-                        ),
-                    },
                     "studio": {"type": "string", "description": "Production company substring, e.g. 'Pixar'."},
                     "languages": {
                         "type": "array", "items": {"type": "string"},
@@ -1079,107 +844,6 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                     },
                 },
                 "required": [],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "screen_out",
-            "description": (
-                "Scan every plot passage of every candidate for a word list, "
-                "and keep either the films where none of them appears "
-                "(keep='clear', the default) or the films where one does "
-                "(keep='flagged'). Free, and exhaustive over the word list in "
-                "a way ranking cannot be -- no film escapes by placing "
-                "eleventh. Use keep='clear' for an absence: 'nobody dies', "
-                "'nothing scary'. Searching for those returns the films where "
-                "somebody does, because that is what their plots say. Use "
-                "keep='flagged' for the presence of something concrete enough "
-                "to be written down in a plot description -- 'an animal that "
-                "wears a hat', 'a film with a train' -- because ranking that "
-                "request scores whole passages on overall similarity and "
-                "returns animal films, one incidental word being far too small "
-                "to move the vector. Do NOT use either direction for something "
-                "the catalog stores ('not Pixar', 'no musicals'): those are "
-                "filter_catalog arguments. Exhaustive over the word list is "
-                "not the same as settled either way -- a film can narrate the "
-                "event in other words or show the thing without naming it -- "
-                "so quotes come back and you should read them before deciding "
-                "what a match shows. Escalate to read_synopses when it matters "
-                "and the scan left it unresolved. Run it AFTER filter_catalog."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "words": {
-                        "type": "array", "items": {"type": "string"},
-                        "description": (
-                            "**You write this list, for this request.** Every "
-                            "word and phrase a plot summary might use for ONE "
-                            "thing: inflections, synonyms, and the indirect "
-                            "ways it gets written. For a death that is "
-                            "['dies','died','dead','killed','murdered',"
-                            "'perished','funeral','buried','sacrificed',"
-                            "'passes away','loses his life','never returns'] "
-                            "-- and for a hat, ['hat','hats','cap','bonnet',"
-                            "'fez','top hat']. Multi-word phrases work; "
-                            "matching is on word boundaries and "
-                            "case-insensitive. Be generous: the scan is free "
-                            "and exhaustive, so a missed synonym is a missed "
-                            "film, while a spurious one only sends a film to "
-                            "be checked. Ten to twenty entries is normal for "
-                            "an abstract idea, three to six for a concrete "
-                            "object. **Never mix two things into this list.** "
-                            "['cat','hat'] matches a cat OR a hat anywhere in "
-                            "a film, which is 51 films of near-misses; the "
-                            "second thing belongs in `and_words`."
-                        ),
-                    },
-                    "exclude_phrases": {
-                        "type": "array", "items": {"type": "string"},
-                        "description": (
-                            "Phrasings that contain one of your words without "
-                            "meaning it, blanked before matching. **You write "
-                            "these too**, for the words you chose: scanning "
-                            "for death wants ['dead end','deadline','dead "
-                            "heat','kill time','drop dead'], and scanning for "
-                            "'shot' wants ['shot a photograph','camera shot'] "
-                            "only when the question is violence. Nothing is "
-                            "excluded unless you say so. Getting one wrong is "
-                            "cheap in one direction only: a missing phrase "
-                            "leaves a film flagged and therefore checked, "
-                            "while an over-broad phrase can blank a real "
-                            "event, so keep them literal and specific."
-                        ),
-                    },
-                    "and_words": {
-                        "type": "array", "items": {"type": "string"},
-                        "description": (
-                            "A SECOND word list that must appear in the same "
-                            "passage as one from `words`. Use it whenever the "
-                            "request pairs two things -- 'a cat that wears a "
-                            "hat', 'a robot on a spaceship'. Put the synonyms "
-                            "of one thing in `words` and of the other here. "
-                            "Without it the scan matches either word anywhere "
-                            "in a film: cat-or-hat returns 51 films, cat-words "
-                            "alone 27, and cat-with-hat-in-one-passage 2. The "
-                            "first two are lists of near-misses you would have "
-                            "to explain away; the third is the answer."
-                        ),
-                    },
-                    "keep": {
-                        "type": "string",
-                        "enum": ["clear", "flagged"],
-                        "description": (
-                            "Which half survives. 'clear' (default) keeps the "
-                            "films where no listed word appears -- use for an "
-                            "absence. 'flagged' keeps the films where one "
-                            "does, each quoted -- use to find something."
-                        ),
-                    },
-                },
-                "required": ["words"],
             },
         },
     },
@@ -1240,10 +904,11 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
     {
         "type": "function",
         "function": {
-            "name": "build_shortlist",
+            "name": "retrieve_plots",
             "description": (
-                "Search EVERY story condition separately and fuse the "
-                "rankings into one ordered shortlist. **Use this instead of "
+                "Rank films by what their plot text NARRATES. Every "
+                "condition is retrieved separately and the rankings fused "
+                "into one ordered shortlist. **Use this instead of "
                 "search_plots whenever the request has more than one story "
                 "condition.** Searching one condition and reading its top "
                 "hits assumes the others hold in whatever came back, which "
@@ -1292,16 +957,33 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
 ]
 
 # Human-readable trace names, matching the boxes in the Architecture tab.
+# The metadata twin. Same mechanism, different corpus, and the difference is
+# the whole point: a plot narrates events, the rest of a Wikipedia page
+# describes the film.
+_METADATA_SCHEMA = json.loads(json.dumps(
+    next(x for x in TOOL_SCHEMAS if x["function"]["name"] == "retrieve_plots")))
+_METADATA_SCHEMA["function"]["name"] = "retrieve_metadata"
+_METADATA_SCHEMA["function"]["description"] = (
+    "Rank films by how they are WRITTEN ABOUT rather than by what happens: "
+    "cast, production, reception and themes. A film is described as having a "
+    "strong female lead, or as a coming-of-age story, far more often than a "
+    "plot summary narrates either, so a condition about what a film IS belongs "
+    "here and one about what HAPPENS belongs in retrieve_plots. Both may run; "
+    "their rankings merge into one shortlist. One embedding per condition."
+)
+TOOL_SCHEMAS.append(_METADATA_SCHEMA)
+
+
 TRACE_NAMES = {
     "filter_catalog": "CatalogFilter",
+    "retrieve_plots": "PlotRetrieval",
+    "retrieve_metadata": "MetadataRetrieval",
     # Both of these read plot text, and the old names described how rather
     # than what: "LexicalScan" and "SemanticRetrieval" put a word scan and a
     # vector search at arm's length from each other when the useful
     # distinction is exact versus approximate over the same corpus. Fusing
     # several conditions' rankings is something SemanticRetrieval does, not a
     # thing of its own.
-    "screen_out": "LexicalScan",
-    "build_shortlist": "SemanticRetrieval",
     # The TOOL, not the module it calls. read_synopses/Observer already made
     # this distinction and verify_candidates did not, so a tool step was
     # logged under a subagent's name and the Verifier looked like something
@@ -1334,7 +1016,7 @@ def dispatch(name: str, arguments: dict[str, Any],
 # with a list of one, so nothing is lost.
 _DISPATCH = {
     "filter_catalog": filter_catalog,
-    "screen_out": screen_out,
-    "build_shortlist": build_shortlist,
+    "retrieve_plots": retrieve_plots,
+    "retrieve_metadata": retrieve_metadata,
     "verify_candidates": verify_candidates,
 }

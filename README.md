@@ -38,12 +38,12 @@ request calls LLMod.ai, so copy `.env.example` → `.env` and fill in
 `OPENAI_API_KEY` and `OPENAI_BASE_URL`. `python scripts/check_credentials.py`
 reports what is missing without spending anything.
 
-Two checks run free and offline, and are the fastest way to see the project
+One check runs free and offline, and is the fastest way to see the project
 still holds together:
 
 ```bash
-python scripts/check_screen.py    # the word screen's safety property
-python scripts/check_gates.py     # the API contract, the call cap, every displayed count
+python scripts/check_gates.py     # the API contract, the call cap, the filters,
+                                  # and every count the app displays
 ```
 
 ## API

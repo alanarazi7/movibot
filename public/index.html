@@ -769,9 +769,9 @@
 
         <h3>What it can ask for</h3>
         <p>
-          Any of these, in any combination, and some more than once. None involves a
-          text-model call; only <code>SemanticRetrieval</code> reaches a model at all, one
-          embedding per condition, and a condition is a short phrase.
+          Any of these, in any combination. None involves a text-model call; the two
+          retrievals reach a model only for an embedding, one per condition, and a
+          condition is a short phrase.
         </p>
         <div class="data-table">
           <table>
@@ -779,10 +779,10 @@
             <tbody>
               <tr><td><code>CatalogFilter</code></td>
                   <td>Facts the catalog stores &mdash; year, runtime, genre, studio, language, title exclusions. Exact, and it sees every film.</td></tr>
-              <tr><td><code>LexicalScan</code></td>
-                  <td>Words, across every candidate&rsquo;s plot text. The only thing that can address an <em>absence</em>: &ldquo;nobody dies&rdquo; cannot be retrieved for, since retrieval returns the films where somebody does. For an absence it puts the clean films first rather than removing the rest &mdash; a word is not an event, and a threat reads the same as an outcome.</td></tr>
-              <tr><td><code>SemanticRetrieval</code></td>
-                  <td>Meaning, over the same plot text. Each story condition is retrieved separately and the rankings merged, so a film answering every condition moderately comes above one answering a single condition perfectly.</td></tr>
+              <tr><td><code>PlotRetrieval</code></td>
+                  <td>What a film&rsquo;s plot text <em>narrates</em>. Each condition is retrieved separately and the rankings merged, so a film answering every condition moderately comes above one answering a single condition perfectly.</td></tr>
+              <tr><td><code>MetadataRetrieval</code></td>
+                  <td>How a film is <em>written about</em> &mdash; cast, production, reception, themes. &ldquo;A strong female lead&rdquo; is described far more often than it is narrated, so a condition about what a film <em>is</em> goes here rather than to the plot. Both retrievals can run, and their rankings merge into one shortlist.</td></tr>
             </tbody>
           </table>
         </div>
@@ -1678,14 +1678,14 @@
             ? Object.entries(f).map(([k, v]) => `${escapeHtml(k)} ${escapeHtml(String(v))}`).join(', ')
             : 'no filter';
           rows.push(row('🗂️', `Filtered the catalog to <b>${n(r.matched)} films</b> &mdash; ${how}`));
-        } else if (st.module === 'LexicalScan') {
+        } else if (st.module === '__gone__') {
           const what = escapeHtml(String(a.vocabulary || (a.words || []).join(', ') || '?'));
           rows.push(row('🚫', `Scanned every plot for <b>${what}</b>, keeping the `
             + `${escapeHtml(a.keep || 'clear')} half &mdash; <b>${n(r[a.keep] ?? r.kept)} left</b>, `
             + `${n(r.flagged)} flagged, ${n(r.insufficient_text)} with too little text`));
-        } else if (st.module === 'SemanticRetrieval') {
+        } else if (st.module === 'PlotRetrieval' || st.module === 'MetadataRetrieval') {
           const cs = r.conditions || [];
-          rows.push(row('🔎', `Searched <b>${n(cs.length)} conditions separately</b> and merged the `
+          rows.push(row(st.module === 'PlotRetrieval' ? '📖' : '🧠', `Retrieved <b>${n(cs.length)} condition${cs.length===1?'':'s'}</b> over ${st.module === 'PlotRetrieval' ? 'plot text' : 'cast, production and themes'} &mdash; `
             + `rankings &mdash; ${n(r.candidates)} candidates, `
             + `<b>${n(r.matching_every_condition)} matched every one</b>`));
           for (const c of cs) rows.push(sub('· ' + escapeHtml(c)));
@@ -1811,8 +1811,8 @@
 
         const costs = {
           CatalogFilter: 'free',
-          LexicalScan: 'free',
-          SemanticRetrieval: '~$0.0000002 per condition',
+          PlotRetrieval: '~$0.0000002 per condition',
+          MetadataRetrieval: '~$0.0000002 per condition',
           CandidateWalk: 'free \u00b7 sends the Verifier'
         };
 

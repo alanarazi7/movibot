@@ -125,22 +125,21 @@ def execute(prompt: str) -> dict[str, Any]:
         if not result.get("matched"):
             evidence["note"] = "No film matches the catalog constraints."
 
-        if plan["screen"] and result.get("matched"):
-            screen_args = dict(plan["screen"])
-            screen_args.setdefault("keep", "clear")
-            result = tools.screen_out(ctx=ctx, **screen_args)
-            steps.append(_tool_step("LexicalScan", screen_args, ctx, result, budget))
-            evidence["screen"] = {k: result.get(k) for k in
-                                  ("screened_for", "kept", "clear", "flagged",
-                                   "insufficient_text", "thin_word_list")
-                                  if result.get(k) is not None}
-
-        if plan["search"] and (ctx.working_set is None or ctx.working_set):
-            result = tools.build_shortlist(conditions=plan["search"], ctx=ctx)
-            steps.append(_tool_step("SemanticRetrieval",
-                                    {"conditions": plan["search"]}, ctx, result, budget))
-            evidence["shortlist"] = {k: result.get(k) for k in
-                                     ("candidates", "matching_every_condition")}
+        # Two retrievals over two corpora: what happens, and what a film is
+        # written about as being. Their rankings merge into one shortlist, so
+        # a film that places on both comes first.
+        for field, fn, module in (
+            ("search_plots", tools.retrieve_plots, "PlotRetrieval"),
+            ("search_metadata", tools.retrieve_metadata, "MetadataRetrieval"),
+        ):
+            if plan[field] and (ctx.working_set is None or ctx.working_set):
+                result = fn(conditions=plan[field], ctx=ctx)
+                steps.append(_tool_step(module, {"conditions": plan[field]},
+                                        ctx, result, budget))
+                evidence.setdefault("retrieval", {})[module] = {
+                    k: result.get(k) for k in
+                    ("conditions", "candidates", "matching_every_condition")
+                }
 
         # ---- verify ----------------------------------------------------
         if plan["verify"]:
@@ -182,10 +181,14 @@ def execute(prompt: str) -> dict[str, Any]:
             accepted = _best(ctx, plan["max_films"])
             evidence["ranked_not_verified"] = accepted
             evidence["basis"] = (
-                "NOTHING WAS VERIFIED. No condition in this request needs plot "
-                "text, so no film was read. These are the best-rated films "
-                "matching the catalog constraints, and that is all you may say "
-                "about them."
+                "NOTHING WAS VERIFIED. No requirement was given to check, so no "
+                "film was read. "
+                + ("These are the top of the retrieval ranking. A ranking is not "
+                   "evidence: say they are the closest matches, not that they "
+                   "satisfy anything."
+                   if ctx.shortlist else
+                   "These are the best-rated films matching the catalog "
+                   "constraints, and that is all you may say about them.")
             )
 
         # ---- answer, then check ----------------------------------------
@@ -278,9 +281,20 @@ def _check(text: str, accepted: list[str], plan: dict[str, Any]) -> str | None:
 
 
 def _best(ctx: "tools.ToolContext", limit: int) -> list[str]:
-    """The best-rated survivors, for a request with nothing to verify."""
-    ids = sorted(ctx.working_set or (),
-                 key=lambda i: -(catalog.rating_of(i) or 0.0))[:limit]
+    """The films to fall back on when nothing was verified.
+
+    The retrieved ranking when there is one, and only otherwise the best-rated
+    survivors of the filter. Reading the working set first threw the retrieval
+    away: "a strong female character, besides Frozen and Moana" retrieved
+    twenty candidates and answered with the three best-rated films in the
+    catalog, which is the same answer it would have given to no request at
+    all.
+    """
+    if ctx.shortlist:
+        ids = list(ctx.shortlist)[:limit]
+    else:
+        ids = sorted(ctx.working_set or (),
+                     key=lambda i: -(catalog.rating_of(i) or 0.0))[:limit]
     return [catalog.label_of(i) for i in ids if catalog.label_of(i)]
 
 

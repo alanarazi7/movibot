@@ -4,16 +4,13 @@ Every item raised in review is closed. What follows is the record: what the
 agent is, what was decided and why, and what was fixed. Spend to date is
 **$0.36 of $13** — the thirteen-case verification round cost four cents.
 
-Two check scripts run free and offline, and are the fastest way to confirm the
+One check script runs free and offline, and is the fastest way to confirm the
 project still holds together after a change:
 
 ```
-python scripts/check_screen.py    # the screen's one-sided error, title
-                                  # exclusion, the forward scan, co-occurrence,
-                                  # language resolution
 python scripts/check_gates.py     # the /api/execute contract, module-name
-                                  # consistency, the model ids, every count
-                                  # shown in the GUI
+                                  # consistency, the model ids, the filters,
+                                  # and every count shown in the GUI
 ```
 
 ### Decided against

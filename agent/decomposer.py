@@ -100,7 +100,6 @@ PLAN_SCHEMA: dict[str, Any] = {
                         },
                         "genres": {"type": "array", "items": {"type": "string"}},
                         "exclude_genres": {"type": "array", "items": {"type": "string"}},
-                        "keywords": {"type": "array", "items": {"type": "string"}},
                         "studio": {"type": "string"},
                         "languages": {"type": "array", "items": {"type": "string"}},
                         "exclude_titles": {
@@ -109,78 +108,30 @@ PLAN_SCHEMA: dict[str, Any] = {
                         },
                     },
                 },
-                "screen": {
-                    "type": "object",
-                    "description": (
-                        "A word scan over every candidate's plot text. Use it "
-                        "for an ABSENCE -- 'nobody dies', 'nothing scary' -- "
-                        "which cannot be searched for, because searching "
-                        "returns the films where the thing happens. Also use "
-                        "it for a concrete object a plot would name outright: "
-                        "a train, a hat. Omit entirely when the request has "
-                        "neither."
-                    ),
-                    "properties": {
-                        "words": {
-                            "type": "array", "items": {"type": "string"},
-                            "description": (
-                                "Every word and phrase a plot might use for "
-                                "ONE thing: inflections, synonyms, indirect "
-                                "wordings. A death is 'dies', 'killed', "
-                                "'perished', 'funeral', 'buried', "
-                                "'sacrificed', 'passes away'. Be generous -- "
-                                "a missed synonym is a missed film, a "
-                                "spurious one only sends a film to be checked."
-                            ),
-                        },
-                        "exclude_phrases": {
-                            "type": "array", "items": {"type": "string"},
-                            "description": (
-                                "Phrasings carrying one of your words without "
-                                "its meaning: 'dead end', 'deadline', 'kill "
-                                "time'. Nothing is excluded unless you say so."
-                            ),
-                        },
-                        "for_requirement": {
-                            "type": "string",
-                            "description": (
-                                "The entry in `verify` this scan is looking "
-                                "for, copied exactly. Scanning for death words "
-                                "because the request says nobody dies means "
-                                "this is 'no character dies'. It matters: a "
-                                "sentence containing one of your words cannot "
-                                "be the evidence that the thing did not "
-                                "happen, and this is what lets that be "
-                                "checked. Leave empty if the scan is for a "
-                                "presence rather than an absence. Always "
-                                "answer this field: an absence scan whose "
-                                "requirement is left blank cannot be checked "
-                                "for the mistake it exists to catch."
-                            ),
-                        },
-                        "keep": {
-                            "type": "string", "enum": ["clear", "flagged"],
-                            "description": (
-                                "'clear' for an absence: the clean films are "
-                                "checked first and the rest still checked "
-                                "after, because a word scan cannot tell a "
-                                "threat from an outcome. 'flagged' for a "
-                                "presence: there a match is the finding."
-                            ),
-                        },
-                    },
-                    "required": ["words", "keep", "for_requirement"],
-                },
-                "search": {
+                "search_plots": {
                     "type": "array", "items": {"type": "string"},
                     "description": (
-                        "One entry per STORY condition, each phrased as a "
-                        "concrete event the way a plot summary would narrate "
-                        "it: 'snow and ice cover the kingdom', not 'wintry'. "
-                        "Each is searched separately and the rankings fused. "
-                        "Do not put a column fact here, and do not put a pure "
-                        "absence here -- nothing can be searched for by not "
-                        "happening."
+                        "Conditions about what HAPPENS, each phrased as a "
+                        "concrete event the way a plot summary narrates it: "
+                        "'snow and ice cover the kingdom', not 'wintry'. "
+                        "Retrieved over plot text. Do not put a column fact "
+                        "here, and do not put a pure absence here -- nothing "
+                        "can be retrieved for by not happening."
+                    ),
+                },
+                "search_metadata": {
+                    "type": "array", "items": {"type": "string"},
+                    "description": (
+                        "Conditions about what a film IS or is known for, "
+                        "phrased the way someone writing about it would: "
+                        "'a strong female protagonist', 'a coming-of-age "
+                        "story', 'praised for its animation'. Retrieved over "
+                        "cast, production, reception and themes rather than "
+                        "over the plot. Use this whenever the condition is a "
+                        "description of the film rather than an event in it "
+                        "-- those are written about far more often than they "
+                        "are narrated. Both retrievals may be used at once, "
+                        "and their rankings are merged."
                     ),
                 },
                 "verify": {
@@ -243,15 +194,20 @@ phrased -- a negation over a column is still a column lookup.
   these to `verify`: plot text cannot confirm a release year, and a
   requirement nothing can settle makes the whole request fail.
 
-  an absence, or a concrete object -> `screen`, and when it is an absence
-  say which `verify` entry the scan is for, in `screen.for_requirement`.
-  "nobody dies", "nothing scary", "a film with a train". An absence
-  cannot be searched for: embed "no deaths" and you get the films where
-  somebody dies, because that is what those plots say.
+  something that HAPPENS            -> `search_plots`
+  "snow covers the kingdom", "a prince reveals he never loved her".
+  Retrieved over plot text, which narrates events.
 
-  a story, premise or theme        -> `search`
-  "a coming-of-age arc", "snow covers the kingdom". One entry each,
-  phrased as an event a plot would narrate.
+  what a film IS or is known for    -> `search_metadata`
+  "a princess movie", "a strong female protagonist", "a coming-of-age
+  story". Retrieved over cast, production, reception and themes. These
+  are written ABOUT a film far more often than they are narrated inside
+  one, which is why looking for them in the plot finds little.
+
+  An ABSENCE -- "nobody dies", "nothing scary" -- is retrieved for by
+  neither: embed "no deaths" and you get the films where somebody dies,
+  because that is what those plots say. Send it to `verify` alone and
+  let the candidates come from the conditions that can be retrieved.
 
   a claim about what happens       -> `verify`
   Everything the story has to settle, including the absences you also
@@ -261,12 +217,21 @@ phrased -- a negation over a column is still a column lookup.
   Who it is for, what mood it suits. Recorded, not acted on.
 
 **What the request is ABOUT is a condition, and the easiest one to lose.** "A \
-princess movie", "a pirate film", "something with robots" name the subject, \
-and a request whose only condition you route is an exclusion has been read \
-wrong: filtering "besides Frozen and Moana" and nothing else returns the \
-best-rated films in the catalog, which is not an answer to anything. Send the \
-subject to `filter.keywords` when the catalog is likely to tag it, to `verify` \
-so the story is actually checked, or to both.
+princess movie", "a pirate film", "something with robots" name the subject. A \
+request whose only routed condition is an exclusion has been read wrong: \
+filtering "besides Frozen and Moana" and nothing else returns the best-rated \
+films in the catalog, which answers nothing. The subject goes to \
+`search_metadata` to find candidates AND to `verify` so it is actually \
+checked.
+
+**Retrieving is not checking.** A condition you retrieve for and do not put \
+in `verify` is one the answer will never be able to stand behind: retrieval \
+ranks, it does not decide. Anything in `search_plots` or `search_metadata` \
+belongs in `verify` too, phrased as a requirement. Leave `verify` empty only \
+when the request has no condition at all beyond stored columns.
+
+Aim to route every condition somewhere; the only ones that go nowhere are the \
+ones nothing could settle.
 
 **Every condition goes somewhere, and `conditions` lists all of them.** That \
 is the ledger: what you understood the request to be asking. Nothing is left \
@@ -348,10 +313,23 @@ def _normalise(plan: dict[str, Any], request: str) -> dict[str, Any]:
                    if v not in (None, [], "")},
         "screen": {k: v for k, v in (plan.get("screen") or {}).items()
                    if v not in (None, [], "")},
-        "search": [s for s in (plan.get("search") or []) if str(s).strip()],
+        "search_plots": [x for x in (plan.get("search_plots") or []) if str(x).strip()],
+        "search_metadata": [x for x in (plan.get("search_metadata") or [])
+                            if str(x).strip()],
     }
 
     out["verify"] = [v for v in (plan.get("verify") or []) if str(v).strip()]
+
+    # A condition worth retrieving for is a condition worth checking. Left to
+    # the prompt, `verify` came back empty on "a strong female character" and
+    # the answer could only offer a ranking -- retrieval decides which films to
+    # look at, never whether one qualifies. So anything retrieved for that was
+    # not given a requirement becomes one. No vocabulary is involved: it is the
+    # plan's own text, moved between its own fields.
+    retrieved = out["search_plots"] + out["search_metadata"]
+    if retrieved and not out["verify"]:
+        out["verify"] = list(dict.fromkeys(retrieved))
+        out["verify_filled_from_retrieval"] = True
 
     ceiling = tools.MAX_RECOMMENDATIONS_CEILING
     try:

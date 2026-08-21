@@ -275,8 +275,8 @@ def main() -> None:
 
     for k, (name, glyph, fill, line) in enumerate([
         ("CatalogFilter", "\U0001F5C2", FREE_FILL, FREE_LINE),
-        ("LexicalScan", "\U0001F50E", FREE_FILL, FREE_LINE),
-        ("SemanticRetrieval", "\U0001F9E0", MAYBE_FILL, MAYBE_LINE),
+        ("PlotRetrieval", "\U0001F4D6", MAYBE_FILL, MAYBE_LINE),
+        ("MetadataRetrieval", "\U0001F9E0", MAYBE_FILL, MAYBE_LINE),
     ]):
         y0 = 192 + k * 50
         draw.rounded_rectangle(_st((448, y0, 692, y0 + 42)), radius=_s(7),
