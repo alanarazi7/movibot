@@ -40,11 +40,25 @@ from agent import catalog, llm_client, observer, prompts, tools
 # thrashing, and cutting it off is cheaper than letting it continue.
 MAX_ROUNDS = 5
 
-# The one that bounds spend. Five planner rounds plus up to three Observer
-# reads: enough that no observed request has hit it, low enough to state as a
-# guarantee. Raising MAX_ROUNDS without raising this does nothing, which is
-# the right way round -- rounds are a thinking budget, calls are the bill.
-MAX_TOTAL_LLM_CALLS = 8
+# The one that bounds spend. Sized against the busiest request actually
+# observed, which spent six calls (three planner rounds and three Observer
+# reads), so there is real headroom rather than a bound that binds at the
+# worst case already seen.
+#
+# One Observer call adjudicates a whole read, up to MAX_SYNOPSES films, so
+# this is not the limit on how much text gets inspected -- at 12 the worst
+# case still leaves seven reads, which is 56 films, against a catalog of 238
+# and a shortlist that is never more than a few dozen. What actually bounds
+# inspection is MAX_SYNOPSES, per read.
+#
+# The pool is shared, which means a planner that thrashes through five rounds
+# leaves less for the Observer. That is a real tradeoff and it is the reason
+# the number is 12 rather than 8: the slack absorbs a thrashing planner
+# without starving the reader.
+#
+# Raising MAX_ROUNDS without raising this does nothing, which is the right way
+# round -- rounds are a thinking budget, calls are the bill.
+MAX_TOTAL_LLM_CALLS = 12
 
 
 class _Budget:
