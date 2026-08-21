@@ -289,6 +289,46 @@ def execute(prompt: str) -> dict[str, Any]:
                     })
                     continue
 
+                # The hole underneath both of the gates below: they compare the
+                # answer against what verification accepted, and neither can
+                # say anything when verification never ran. Asked for "an
+                # animal that wears a hat" the planner screened, searched, and
+                # then recommended three films straight off the search hits --
+                # no CandidateWalk step in the trace, so every check passed on
+                # an empty record and the greedy route was open after all.
+                #
+                # A search happening means the request had a condition the
+                # catalog cannot settle. Films named on that basis have to be
+                # verified; ranking is not evidence, and a passage that scored
+                # well is not a passage that says the thing.
+                searched = bool(ctx.shortlist)
+                if searched and not verified["ran"] and named and not corrected:
+                    corrected = True
+                    messages.append(message)
+                    messages.append({
+                        "role": "user",
+                        "content": (
+                            f"You named {', '.join(named)} without calling "
+                            "verify_candidates. A search ranks passages, it "
+                            "does not establish that a film satisfies "
+                            "anything, so you have candidates and no "
+                            "evidence. Call verify_candidates with every "
+                            "condition of the request, then answer from its "
+                            "accepted list alone."
+                        ),
+                    })
+                    steps.append({
+                        "module": "Planner",
+                        "round": round_index + 1,
+                        "llm_calls": budget.as_dict(),
+                        "prompt": {"system_prompt": prompts.SYSTEM_PROMPT,
+                                   "user_prompt": "(films named without verification, answer rejected)"},
+                        "response": {"content": answer,
+                                     "rejected": f"named {named} after a search but "
+                                                 f"never called verify_candidates"},
+                    })
+                    continue
+
                 # The inverse failure, and the worse one. Verification accepted
                 # Peter Pan and the answer said "I could not verify any Disney
                 # film" -- a claim contradicted by a tool result in the same
