@@ -103,39 +103,15 @@ Return JSON only: {"findings": [ ... ]}. No prose around it.\
 """
 
 
-# Markers of a note that is arguing rather than identifying. A `yes` carrying
-# one of these is the model telling us, in the same object, that the text does
-# not support the verdict it just gave:
-#
-#   verdict yes, note "Edgar is the animal? No -- Edgar is a butler, not an animal."
-#   verdict yes, note "later scenes depict him with a hat in the film"
-#   verdict yes, note "the Hatter is associated with the hat in the same scene"
-#
-# Three rounds of prompt wording failed to stop this, including one that quoted
-# two of these notes back as examples, so it is checked instead. Only `yes` is
-# examined -- it is the verdict that puts a film in front of someone -- and a
-# hit downgrades to `unclear` rather than to `no`, because what has been shown
-# is an absence of evidence, not evidence of absence.
-#
-# A legitimate `yes` note identifies a subject: "Judy is a rabbit", "Dug is a
-# dog". None of these appear in one.
-_HEDGE_MARKERS = (
-    "not a ", "not an ", "is not", "isn't", "does not", "doesn't", "no—", "no -",
-    "however", "but ", "though", "although",
-    "associated", "implied", "implies", "presumably", "assume", "assuming",
-    "likely", "probably", "seems", "appears to be",
-    "later scene", "later in", "in the film", "outside the text", "elsewhere",
-    "not explicitly", "not named", "not stated", "not shown", "?",
-)
-
-
-def _hedged(note: str) -> str | None:
-    """The marker that gives away a note arguing with its own verdict."""
-    lowered = (note or "").lower()
-    for marker in _HEDGE_MARKERS:
-        if marker in lowered:
-            return marker.strip()
-    return None
+# No stored phrasings anywhere in this module. An earlier version matched a
+# verdict's note against a list of hedging words -- "however", "not a",
+# "associated", "later scene" -- to catch a `yes` that argued against itself.
+# It caught the phrasings that had been seen and missed the rest, which is what
+# any stored list does. What survives are checks that need no vocabulary: a
+# quote must be a literal substring of the text, a decisive verdict must have
+# one, every requirement gets exactly one finding, and an absence cannot be
+# evidenced by a sentence containing the very words the Decomposer wrote for
+# it. Those hold whatever the request is about.
 
 
 def _accepted(findings: list[dict[str, Any]], conditions: list[str]) -> bool:
@@ -256,16 +232,6 @@ def verify(film: str, conditions: list[str], text: str,
                 f["downgraded"] = (
                     f"the quote offered for this absence contains {hit!r}, so it "
                     f"shows the opposite of what the verdict claims"
-                )
-
-        # A `yes` whose note argues against it is not a yes.
-        if f.get("verdict") == "yes":
-            marker = _hedged(str(f.get("note") or ""))
-            if marker:
-                f["verdict"] = "unclear"
-                f["downgraded"] = (
-                    f"the note hedges on {marker!r}, which means the text does not "
-                    f"establish this; a yes that has to be argued for is unclear"
                 )
 
         if f.get("verdict") in ("yes", "no") and not quote:

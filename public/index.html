@@ -1872,28 +1872,12 @@
         }
         railHtml += '</tbody></table></div>';
 
-        railHtml += `<div class="prompt-meta">Curated screen vocabularies</div>
-          <p style="font-size:0.8rem;">
-            The planner may pass its own words, but these exist so answer quality does
-            not depend on whichever synonyms it happens to produce on a given turn.
-          </p>`;
-        for (const [name, words] of Object.entries(d.vocabularies)) {
-          railHtml += `<p style="font-size:0.8rem;margin-bottom:0.2rem;"><strong>${escapeHtml(name)}</strong>
-            &mdash; ${words.length} words</p><div class="word-chips">`;
-          railHtml += words.map(w => `<span>${escapeHtml(w)}</span>`).join('');
-          railHtml += '</div>';
-        }
-
-        railHtml += `<div class="prompt-meta">Idiom blacklist &mdash; ${d.blacklist_phrases.length} phrases</div>
-          <p style="font-size:0.8rem;">
-            Stripped before matching, so <em>&ldquo;the race ends in an absolute dead
-            heat&rdquo;</em> no longer costs <em>Cars</em> its place on a
-            &ldquo;nobody dies&rdquo; request. This list only ever recovers false
-            positives; a missing entry leaves the screen conservative, which is the
-            safe failure.
-          </p><div class="word-chips">`;
-        railHtml += d.blacklist_phrases.map(p => `<span>${escapeHtml(p)}</span>`).join('');
-        railHtml += '</div>';
+        railHtml += `<p class="fineprint">
+          Nothing about words is stored. The Decomposer writes the list a scan looks
+          for and the phrasings to exclude from it, per request, so a scan is only ever
+          as good as the list it was given &mdash; and the tool says so when that list
+          looks too short to trust.
+        </p>`;
         rails.innerHTML = railHtml;
       } catch (err) {
         status.innerHTML = `<span class="error-text">Error: ${escapeHtml(err.message)}</span>`;

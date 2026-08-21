@@ -257,6 +257,9 @@ phrased -- a negation over a column is still a column lookup.
   Everything the story has to settle, including the absences you also
   screened for. The screen finds candidates; only the Verifier decides.
 
+  nothing can settle it            -> `conditions` only
+  Who it is for, what mood it suits. Recorded, not acted on.
+
 **What the request is ABOUT is a condition, and the easiest one to lose.** "A \
 princess movie", "a pirate film", "something with robots" name the subject, \
 and a request whose only condition you route is an exclusion has been read \
@@ -265,10 +268,21 @@ best-rated films in the catalog, which is not an answer to anything. Send the \
 subject to `filter.keywords` when the catalog is likely to tag it, to `verify` \
 so the story is actually checked, or to both.
 
-Not every phrase is a condition. "For a family evening", "for my nephew", \
-"something to relax to" say who is watching, not what happens. No plot text \
-will ever confirm one, so leave them out of `verify` entirely -- send one \
-there and every film comes back unclear and the request returns nothing.
+**Every condition goes somewhere, and `conditions` lists all of them.** That \
+is the ledger: what you understood the request to be asking. Nothing is left \
+out of it.
+
+Where each one goes is a separate question, and some have no stage that can \
+settle them. "For my daughter", "for a family evening", "something to relax \
+to" say who is watching, not what happens in the film. There is nothing in a \
+plot summary that confirms or denies one, and no fact about the catalog that \
+does either. Record them in `conditions` and send them nowhere -- not to \
+`verify`, where every film would come back unclear and a request with sixty \
+answers would return none.
+
+Do not invent a proxy for one. "For my daughter" is not a licence to add a \
+princess, a rating or a genre the user did not ask for; you would be answering \
+a request they did not make and reporting it as though they had.
 
 A condition can appear in two places, and often should: "nobody dies" belongs \
 in `screen` to order the candidates cheaply AND in `verify` to be settled.
@@ -337,14 +351,7 @@ def _normalise(plan: dict[str, Any], request: str) -> dict[str, Any]:
         "search": [s for s in (plan.get("search") or []) if str(s).strip()],
     }
 
-    verify, structured = tools._drop_structured(
-        [v for v in (plan.get("verify") or []) if str(v).strip()]
-    )
-    out["verify"] = verify
-    if structured:
-        # Reported rather than silently dropped: a requirement the plan wanted
-        # checked and cannot be is something a reader of the trace should see.
-        out["verify_dropped"] = structured
+    out["verify"] = [v for v in (plan.get("verify") or []) if str(v).strip()]
 
     ceiling = tools.MAX_RECOMMENDATIONS_CEILING
     try:

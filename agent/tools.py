@@ -802,42 +802,17 @@ def _catalog_facts() -> str:
 CATALOG_FACTS = _catalog_facts()
 
 
-# Conditions plot text can never settle, because they are catalog columns.
-# Sent to the Verifier they come back `unclear` on every film, and since
-# acceptance needs every condition to say yes, one of them makes the request
-# unanswerable: "Disney studio" and "released in 1990 or later" together
-# verified thirteen candidates to zero on a query with a real answer.
+# Nothing here decides what a catalog fact looks like any more. A regex used to
+# match "released in 1990", "runtime under 110 minutes", "a Pixar film" and
+# strip them out of the verification list, because sending a column fact to the
+# Verifier makes an answerable request unanswerable -- plot text cannot confirm
+# a release year, and one unsettleable requirement fails every film.
 #
-# Tight on purpose. "released from prison" and "a character counts to 1990"
-# must not match, so each pattern needs the structural context that makes it a
-# catalog fact rather than a story event.
-_STRUCTURED_CONDITION = re.compile(
-    r"""(
-          \breleased?\s+(in|on|after|before|from|no\s+earlier\s+than)\s+(19|20)\d{2}
-        | \b(19|20)\d{2}\s+or\s+(later|earlier|newer|older)
-        | \bfrom\s+(the\s+)?(19|20)\d0s\b
-        | \brelease\s+year\b
-        | \byears?\s+(19|20)\d{2}\s*\+
-        | ^\s*(19|20)\d{2}\s*\+\s*$
-        | \b(from|after|since|before)\s+(19|20)\d{2}\s*\+?\s*$
-        | ^\s*(a|an|the)?\s*(walt\s+)?(disney|pixar)(\s+(studio|film|movie|production|picture))?\s*$
-        | \bis\s+a\s+(walt\s+)?(disney|pixar)\b
-        | \bproduced\s+by\s+(walt\s+)?(disney|pixar)\b
-        | \bruntime\b
-        | \b(under|over|less\s+than|more\s+than|at\s+most|at\s+least)\s+\d+\s*(minutes|mins)\b
-        | \b\d+\s*minutes\s+(long|or\s+(less|fewer|more))\b
-        | \bspoken\s+language\b
-    )""",
-    re.IGNORECASE | re.VERBOSE,
-)
-
-
-def _drop_structured(conditions: list[str]) -> tuple[list[str], list[str]]:
-    """Split conditions into ones plot text can settle and ones it cannot."""
-    story, structured = [], []
-    for c in conditions:
-        (structured if _STRUCTURED_CONDITION.search(c) else story).append(c)
-    return story, structured
+# It was a stored list of the phrasings someone thought of, and it had already
+# missed "year 1990+" once. The Decomposer is told where column facts belong,
+# and the generic signal below catches what slips through: a requirement that
+# comes back `unclear` on every film checked was never settleable from plot
+# text, whatever it was about, and that needs no vocabulary to notice.
 
 
 def verify_candidates(
@@ -866,18 +841,7 @@ def verify_candidates(
     if not conditions:
         return {"error": "verify_candidates needs the conditions to check against."}
 
-    conditions, structured = _drop_structured(conditions)
-    if not conditions:
-        return {
-            "error": "Every condition given was a catalog fact, not a story fact.",
-            "not_verifiable": structured,
-            "note": (
-                "Year, studio, runtime and language are columns. filter_catalog "
-                "already guaranteed them for every film in scope -- plot text cannot "
-                "confirm them and the Verifier would return `unclear` on all of them. "
-                "Pass only conditions the story settles."
-            ),
-        }
+
 
     # Named films go FIRST, they do not replace the walk. Letting them replace
     # it reopened the exact hole this tool was built to close: the planner named
@@ -966,12 +930,6 @@ def verify_candidates(
 
     return {
         "conditions": conditions,
-        **({"not_verifiable": structured,
-            "not_verifiable_note": (
-                "Dropped before checking: these are catalog facts, not story facts, and "
-                "filter_catalog already guaranteed them for every film in scope. They "
-                "were NOT ignored -- they were enforced earlier and exactly."
-            )} if structured else {}),
         "verified": checked,
         "by_condition": tally,
         **({"unsettleable": unsettleable,

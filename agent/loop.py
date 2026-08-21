@@ -38,18 +38,12 @@ from agent import answerer, catalog, decomposer, llm_client, tools, verifier
 # between checks.
 MAX_TOTAL_LLM_CALLS = 16
 
-# Closing offers, as literal phrasings. Checked rather than asked for: the
-# prompt forbids them and produced "If you want, I can give you two more"
-# anyway. Narrow on purpose -- "I can only stand behind one title" is an honest
-# report and must survive, while "I can give you two more" is the failure.
-FOLLOW_UP_OFFERS = (
-    "if you want", "if you'd like", "if you would like", "if you like",
-    "want me to", "want two more", "want another", "want a few more",
-    "would you like", "let me know", "just ask", "just say the word",
-    "shall i", "happy to", "i can give you", "i can suggest",
-    "i can refine", "i can pull", "i can offer", "i can narrow",
-    "i could give you", "i could suggest",
-)
+# There is no list of closing-offer phrasings here any more. Matching answers
+# against "if you want", "let me know", "happy to" caught those and not the
+# next wording, and a rule that only holds for remembered phrasings is not a
+# rule. The Answerer is told the interaction is stateless; what the code checks
+# is what it can check without knowing any English in advance -- which films
+# were named, against which were verified.
 
 
 class _Budget:
@@ -72,15 +66,6 @@ class _Budget:
         return {"decomposer": self.decomposer, "verifier": self.verifier,
                 "answerer": self.answerer, "total": self.total,
                 "cap": MAX_TOTAL_LLM_CALLS}
-
-
-def _closing_offer(text: str) -> str | None:
-    """The phrase that turns a finished answer into a promise nothing can keep."""
-    lowered = text.lower()
-    for phrase in FOLLOW_UP_OFFERS:
-        if phrase in lowered:
-            return phrase
-    return None
 
 
 def execute(prompt: str) -> dict[str, Any]:
@@ -289,12 +274,6 @@ def _check(text: str, accepted: list[str], plan: dict[str, Any]) -> str | None:
                 f"left out {', '.join(missed)}. Every accepted film qualified; "
                 "name them all.")
 
-    offer = _closing_offer(text)
-    if offer:
-        return (f"Your answer says {offer!r}. There is no next turn -- each "
-                "request arrives with no memory of any other -- so that is a "
-                "promise you cannot keep. Send the same answer with the offer "
-                "deleted and nothing in its place.")
     return None
 
 

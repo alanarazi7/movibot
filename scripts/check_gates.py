@@ -272,52 +272,56 @@ def g07_fusion_beats_greed() -> list[str]:
     return failures
 
 
-def g08_no_follow_up_offers() -> list[str]:
-    """Closing offers are caught, and honest first-person reports are not. Free.
+def g08_nothing_is_memorised() -> list[str]:
+    """No stored words or phrasings anywhere the agent reasons. Free, offline.
 
-    The interaction is stateless: each request arrives with no memory of any
-    other, so "want two more?" is a promise nothing can keep. It is also
-    usually evidence of a second failure, because films offered for later were
-    films that qualified now -- which is exactly what "The Lion King ... If you
-    want, I can give you two more 1990s Disney options" was.
+    Four lists have been deleted from this codebase, each after it failed the
+    same way: curated screen vocabularies, an idiom blacklist, hedging markers
+    the Verifier matched notes against, closing-offer phrasings the loop
+    matched answers against, and a regex deciding what a catalog fact looks
+    like. Every one covered the phrasings someone had thought of and missed
+    the next request.
 
-    The false-positive half of this gate matters as much as the other. "I can
-    only stand behind one title" is an honest report the agent must be able to
-    make, and a detector that rejected it would spend a correction turn
-    punishing the most careful answer in the set.
+    What is allowed is a word list the Decomposer wrote for the request in
+    front of it. What is not allowed is one written in advance, here.
     """
-    from agent import loop
-
-    offers = [
-        "If you want, I can give you two more 1990s Disney options in the same vein.",
-        "Want two more? Just say the word.",
-        "Let me know if you want something funnier.",
-        "Would you like me to narrow this further?",
-        "Happy to refine these.",
-    ]
-    honest = [
-        "I can only stand behind one title here.",
-        "For more options, submit a new request with the criteria you want.",
-        "Only one film verified; the catalog stops at 2017.",
-        "The search covered 76 films, not the whole catalog.",
-        "Nothing under 47 minutes exists in this catalog.",
-    ]
+    import re as _re
 
     failures = []
-    for text in offers:
-        if loop._closing_offer(text) is None:
-            failures.append(f"a follow-up offer went undetected: {text!r}")
-    for text in honest:
-        hit = loop._closing_offer(text)
-        if hit is not None:
-            failures.append(f"an honest report was flagged as an offer on {hit!r}: {text!r}")
+    # The names, not the words. A prompt is allowed to contain "however" -- it
+    # is telling the model something -- and a docstring is allowed to say
+    # "dead end" while explaining why a list of idioms was deleted. What may
+    # not exist is a structure the code matches against.
+    banned = {
+        "agent/verifier.py": ["_HEDGE_MARKERS", "_hedged"],
+        "agent/loop.py": ["FOLLOW_UP_OFFERS", "_closing_offer"],
+        "agent/tools.py": ["_STRUCTURED_CONDITION", "_drop_structured", "VOCABULARIES"],
+        "rag/screen.py": ["VOCABULARIES", "BLACKLIST_PHRASES"],
+    }
+    for path, names in banned.items():
+        src = (_ROOT / path).read_text()
+        code = "\n".join(l for l in src.split("\n")
+                          if not l.lstrip().startswith("#"))
+        for name in names:
+            if name in code:
+                failures.append(f"{path} still carries {name!r}; the Decomposer writes "
+                                f"the words for the request in front of it")
 
-    # The prompt has to say it too. The check is the backstop, not the policy:
-    # a model corrected every time costs a turn every time.
+    # The one word list that is allowed is the model's own, paired to the
+    # requirement it was written for.
+    from agent import decomposer
+    props = decomposer.PLAN_SCHEMA["function"]["parameters"]["properties"]
+    screen = props.get("screen", {}).get("properties", {})
+    for field in ("words", "exclude_phrases", "for_requirement"):
+        if field not in screen:
+            failures.append(f"the plan schema does not ask the Decomposer for "
+                            f"screen.{field}")
+
+    # And statelessness is a prompt rule now, since the check that enforced it
+    # was a list of phrasings.
     from agent import answerer
     if "no conversation" not in answerer.ANSWERER_PROMPT.lower():
-        failures.append("the Answerer prompt no longer says the interaction is "
-                        "stateless, so this check would fire on every answer")
+        failures.append("the Answerer prompt no longer says the interaction is stateless")
     return failures
 
 
@@ -355,12 +359,10 @@ def g10_verdicts_need_evidence() -> list[str]:
     text = "A butler realises he left his hat in the countryside. A rabbit puts her cap on."
     cond = ["an animal that wears a hat"]
 
-    # A yes whose note argues against it.
-    r = run({"findings": [{"requirement": cond[0], "verdict": "yes",
-                           "quote": "A butler realises he left his hat in the countryside.",
-                           "note": "Edgar is a butler, not an animal."}]}, cond, text)
-    if r["accepted"] or r["findings"][0]["verdict"] != "unclear":
-        failures.append("a `yes` whose note contradicts it was accepted")
+    # The note-contradiction case is gone with the list that powered it: a
+    # `yes` whose note argued against it used to be downgraded by matching the
+    # note against stored hedging words, which only ever caught the wordings
+    # already seen. The Verifier prompt still forbids it; nothing checks it.
 
     # A yes with no quote at all is an assertion.
     r = run({"findings": [{"requirement": cond[0], "verdict": "yes", "quote": ""}]},
@@ -672,8 +674,8 @@ def main() -> int:
          "the worst-case call count fits the published cap"),
         ("G07", g07_fusion_beats_greed,
          "rank fusion puts coverage above average rank, so greed loses"),
-        ("G08", g08_no_follow_up_offers,
-         "follow-up offers are caught and honest reports are not"),
+        ("G08", g08_nothing_is_memorised,
+         "no words or phrasings are stored anywhere the agent reasons"),
         ("G09", g09_counts, "every displayed count comes from the shipped data"),
         ("G11", g11_screen_orders_not_filters,
          "a scan for an absence orders the candidates and removes none"),
