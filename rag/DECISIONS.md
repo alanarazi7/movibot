@@ -171,13 +171,13 @@ This is a deliberate decision, not a shortcut. The arithmetic:
 
 | | |
 |---|---|
-| Vectors | 3,159 |
+| Vectors | 3,965 |
 | Matrix size | 19 MB |
 | Brute-force scan of all of them | **~0.5 ms** |
 | Network round trip to a hosted index | 50–200 ms |
 
 A vector database is an index structure that avoids scanning everything. At
-3,159 vectors, scanning everything *is* the fast path — approximate nearest
+3,965 vectors, scanning everything *is* the fast path — approximate nearest
 neighbour would be solving a problem we do not have, and solving it more slowly,
 because the network hop costs more than the scan it replaces. The query has to
 be embedded through the API either way, so a database saves nothing there.
@@ -203,7 +203,7 @@ matched an MPST synopsis.
 
 The vectors and the passage table live in a single compressed `.npz`. They were
 a `.npy` plus a parquet, which meant `pyarrow` in the dependency list -- **124
-MB, half of Vercel's 250 MB serverless limit, to read a 3,159-row table**. The
+MB, half of Vercel's 250 MB serverless limit, to read a 3,965-row table**. The
 table now travels as JSON inside the archive: no columnar engine, no pickle
 (`allow_pickle=False` still holds), and 18.0 MB instead of 23.2.
 

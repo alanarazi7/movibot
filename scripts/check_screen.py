@@ -86,9 +86,14 @@ def check_exclusions() -> list[str]:
         failures.append("excluding by bare title removed nothing")
 
     # A bare title spanning a remake pair drops both; a label drops one.
-    if matched(exclude_titles=["The Jungle Book"]) != 236:
+    # Counted against the catalog rather than against 236 and 237, which were
+    # the answers when the catalog held 238 films. A typed-in total turns a
+    # data change into a guardrail failure, and a guardrail that cries wolf
+    # after every re-preparation is one nobody reads.
+    total = len(catalog.movies())
+    if matched(exclude_titles=["The Jungle Book"]) != total - 2:
         failures.append("bare title did not drop both Jungle Books")
-    if matched(exclude_titles=["The Jungle Book (1967)"]) != 237:
+    if matched(exclude_titles=["The Jungle Book (1967)"]) != total - 1:
         failures.append("label did not drop exactly one Jungle Book")
 
     # An exclusion the catalog cannot match must be reported, never swallowed.
@@ -189,16 +194,36 @@ def check_languages() -> list[str]:
 
     failures = []
 
-    # Every language in the catalog must be reachable by its English name.
-    # English is 235 rather than the 233 with English in `spoken_languages`:
-    # Homeward Bound II and Frank and Ollie carry an empty language list and an
-    # `original_language` of "en", so matching both columns recovers them.
-    for name, count in [("Hindi", 3), ("French", 16), ("Spanish", 12),
-                        ("Mandarin", 4), ("Japanese", 3), ("Korean", 2),
-                        ("Russian", 2), ("Swahili", 1), ("English", 235)]:
+    # Every language in the catalog must be reachable by its English name, and
+    # the count must be the one the columns actually support.
+    #
+    # Recomputed here from spoken_languages and original_language rather than
+    # typed in. The typed-in version was a snapshot of a 238-film catalog and
+    # failed the moment the catalog grew, which said nothing about whether the
+    # language filter still worked -- and the bug this guards against is a
+    # filter that reports itself applied while matching nothing, which no
+    # constant can detect. Deriving the expectation the same way the filter
+    # should, from the other side, keeps the test meaningful at any size.
+    df = catalog.movies()
+    for name in ("Hindi", "French", "Spanish", "Mandarin", "Japanese",
+                 "Korean", "Russian", "Swahili", "English"):
+        pair = catalog.resolve_language(name)
+        if pair is None:
+            failures.append(f"the catalog cannot resolve the language {name!r}")
+            continue
+        endonym, iso = pair
+        spoken = df["spoken_languages"].apply(
+            lambda ls: any(endonym.lower() == l.lower() for l in ls))
+        original = df["original_language"].astype(str).str.lower() == iso
+        expected = int((spoken | original).sum())
         n, _ = matched(languages=[name])
-        if n != count:
-            failures.append(f"languages=['{name}'] matched {n}, expected {count}")
+        if n != expected:
+            failures.append(f"languages=['{name}'] matched {n}, but the columns "
+                            f"support {expected}")
+        if n == 0:
+            failures.append(f"languages=['{name}'] is unreachable -- an empty result "
+                            f"that reports itself as applied reads as a fact about "
+                            f"the films")
 
     # The endonym and the ISO code must agree with the English name.
     for name, endonym, iso in [("Hindi", "हिन्दी", "hi"), ("French", "Français", "fr")]:

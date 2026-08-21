@@ -16,6 +16,14 @@ data_preprocessing/data_full/
 # Course PDFs and the pitch deck: 15 MB, not served by any route.
 docs/
 
+# Build-time accelerator: text -> vector, so re-running ingest never pays
+# twice for an unchanged passage. rag/embed.py is its only reader and only
+# during ingestion; nothing at runtime opens it. It is gitignored, but the CLI
+# uploads the working directory rather than the git tree, so without this line
+# it shipped 19.9 MB to production on every deploy -- nearly half the 50 MB
+# data budget, spent on a file no request can reach.
+data_preprocessing/data_ready/embedding_cache.npz
+
 # Local-only
 .git
 .venv

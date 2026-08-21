@@ -1,6 +1,6 @@
 """The text corpora that can be indexed, and how to load each one.
 
-Until now only MPST synopses were embedded, which is why 159 of 238 films are
+Until now only MPST synopses were embedded, which is why 198 of 316 films are
 semantically searchable while 234 are readable. The gap was an artifact of
 build order rather than a decision: the index was built before the Wikipedia
 cache existed and never revisited.
@@ -76,7 +76,7 @@ CORPORA: dict[str, Corpus] = {
         label="Catalog overview",
         description=(
             "The one-paragraph blurb from the catalog, median 53 words. Thin, "
-            "but it is the only text that exists for every one of the 238 films."
+            "but it is the only text that exists for every one of the 316 films."
         ),
         load=_from_csv("catalog.csv", "id", "overview"),
     ),

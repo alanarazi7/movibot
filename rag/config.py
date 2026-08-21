@@ -59,7 +59,7 @@ FETCH_MULTIPLIER = 5
 # In memory, in a committed .npy scored with numpy. There is no vector database
 # and no switch to enable one.
 #
-# The reasoning is just arithmetic: 3,159 vectors is not a search problem. A
+# The reasoning is just arithmetic: 3,965 vectors is not a search problem. A
 # brute-force dot product over all of them takes about 0.5 ms, which is faster
 # than the network round trip a hosted index would add -- and the query still
 # has to be embedded either way, so a database saves nothing there. What it
@@ -81,7 +81,7 @@ DATA_READY = os.path.join(_ROOT, "data_preprocessing", "data_ready")
 SOURCE_CSV = os.path.join(DATA_READY, "synopses.csv")
 # Vectors and passage table in one compressed .npz. Previously a .npy plus a
 # parquet, which pulled in pyarrow -- 124 MB, half of Vercel's serverless
-# limit, to read a 3,159-row table. The table travels as JSON inside the
+# limit, to read a 3,965-row table. The table travels as JSON inside the
 # archive, so nothing needs a columnar engine and nothing needs pickle.
 INDEX_NPZ = os.path.join(DATA_READY, "chunk_index.npz")
 INDEX_META = os.path.join(DATA_READY, "chunk_index_meta.json")

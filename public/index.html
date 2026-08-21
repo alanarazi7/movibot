@@ -993,7 +993,7 @@
             <table>
               <thead><tr><th>Condition</th><th>Kind</th><th>Turn</th><th>Tool</th><th>Working set</th></tr></thead>
               <tbody>
-                <tr><td>Pixar</td><td>structured</td><td class="n">1</td><td>CatalogFilter</td><td class="n">238 &rarr; 18</td></tr>
+                <tr><td>Pixar</td><td>structured</td><td class="n">1</td><td>CatalogFilter</td><td class="n">316 &rarr; 18</td></tr>
                 <tr><td>besides Toy Story</td><td>structured</td><td class="n">1</td><td>same call</td><td class="n">18 &rarr; 17</td></tr>
                 <tr><td>nobody dies</td><td>negative</td><td class="n">2</td><td>LexicalScreen</td><td class="n">17 &rarr; 7 clear</td></tr>
                 <tr><td>a good one</td><td>ranking</td><td class="n">&mdash;</td><td>rating order</td><td class="n">&mdash;</td></tr>
@@ -1046,7 +1046,7 @@
             Two tools are exhaustive and the rest are not, and the difference decides
             what the agent is entitled to say. <code>filter_catalog</code> and
             <code>screen_out</code> check every candidate, so their findings are
-            complete: 76 films clear on the death screen means all of them, not a
+            complete: 98 films clear on the death screen means all of them, not a
             sample. <code>build_shortlist</code> returns a ranking and
             <code>verify_candidates</code> checks as far down it as the budget allows
             &mdash; at most ten films &mdash; so anything resting on those is the best
@@ -1107,7 +1107,7 @@
       <div class="card">
         <h2>Data</h2>
         <p>
-          238 Disney and Pixar feature films. Open any row for that film's complete
+          316 Disney and Pixar feature films. Open any row for that film's complete
           stored record.
         </p>
 
@@ -1157,7 +1157,7 @@
               <thead><tr><th>Limit</th><th>Consequence</th></tr></thead>
               <tbody>
                 <tr><td>Disney + Pixar only</td><td>No other studio, no general cinema</td></tr>
-                <tr><td>1940&ndash;2017</td><td>Nothing recent, current, or trending</td></tr>
+                <tr><td>1937&ndash;2017</td><td>Nothing recent, current, or trending</td></tr>
                 <tr><td>Above 45 mins</td><td>No shorts or featurettes</td></tr>
                 <tr><td>No cast or crew index</td><td>No reliable &ldquo;starring X&rdquo; or &ldquo;directed by Y&rdquo;</td></tr>
                 <tr><td>Uneven plot text</td><td>A few films have only a short overview, so story-level claims about them cannot be verified</td></tr>
@@ -1173,20 +1173,20 @@
             </div>
             <div class="funnel-row">
               <span>Disney + Pixar only</span>
-              <span class="bar"><span style="width:8.2%"></span></span>
-              <span class="n">304</span>
+              <span class="bar"><span style="width:9.2%"></span></span>
+              <span class="n">420</span>
             </div>
             <div class="funnel-row">
               <span>After duration filter</span>
-              <span class="bar"><span style="width:7.3%"></span></span>
-              <span class="n">238</span>
+              <span class="bar"><span style="width:6.9%"></span></span>
+              <span class="n">316</span>
             </div>
           </div>
           <h4>Duration filter</h4>
           <p>
             Disney and Pixar both release short films alongside features, and a six-minute
             short is never what someone asking for &ldquo;a movie&rdquo; wants. Anything
-            under 45 minutes is dropped, which removes 65 titles; one further row went for a non-positive runtime.
+            under 45 minutes is dropped, which removes 103 titles; one further row went for a non-positive runtime.
           </p>
 
           <h4>Ranking</h4>
@@ -1358,7 +1358,7 @@ C = 6.199 catalog mean    m = 300 vote prior</pre>
           <p>
             The vectors live in memory, in a committed file scored with numpy. There is no
             vector database and no switch to enable one, which is a decision rather than a shortcut:
-            <strong>3,159 vectors is not a search problem</strong>. Scanning all of them takes
+            <strong>3,965 vectors is not a search problem</strong>. Scanning all of them takes
             about <strong>0.5 ms</strong>, against 50&ndash;200 ms for a round trip to a
             hosted index &mdash; and the query has to be embedded through the API either way,
             so a database saves nothing there.
@@ -1701,7 +1701,7 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
       {
         kind: 'answer',
         q: 'An animated film where nobody dies',
-        expect: 'CatalogFilter(genres=[Animation]) then LexicalScreen(death) — 90 animated films split 27 clear / 61 flagged / 2 insufficient_text. The claim test: a clear film may be described as having no death-related terms in its plot text, and must never be upgraded to "nobody dies". Upgrading the screen\'s finding to the user\'s phrasing is the failure.'
+        expect: 'CatalogFilter(genres=[Animation]) then LexicalScreen(death) — 113 animated films split 32 clear / 75 flagged / 2 insufficient_text. The claim test: a clear film may be described as having no death-related terms in its plot text, and must never be upgraded to "nobody dies". Upgrading the screen\'s finding to the user\'s phrasing is the failure.'
       },
       {
         kind: 'answer',

@@ -51,6 +51,18 @@ DEMO_STUDIOS = (
     "Walt Disney Pictures",
     "Walt Disney Animation Studios",
     "Pixar Animation Studios",
+    # The company was called Walt Disney Productions until 1986, and TMDB
+    # credits the films by the name in use at the time. Omitting it did not
+    # trim the catalog at the edges, it removed the canon: Cinderella, Peter
+    # Pan, Bambi, Dumbo, Pinocchio, Sleeping Beauty, Lady and the Tramp, 101
+    # Dalmatians, Alice in Wonderland, Mary Poppins -- 77 feature films, every
+    # one of them what most people mean by "a Disney movie".
+    #
+    # It was invisible because the remakes kept the classics' titles under the
+    # modern studio name, so the catalog held Alice in Wonderland (2010) and
+    # Cinderella (2015) and looked complete. Found by asking why a query about
+    # a flying human, animals and a clock never returned Peter Pan.
+    "Walt Disney Productions",
 )
 
 # Feature-length floor. The Disney/Pixar scope pulls in a long tail of 5-7

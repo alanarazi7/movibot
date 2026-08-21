@@ -104,7 +104,7 @@ def g03_module_names() -> list[str]:
 def g05_runtime_is_structured() -> list[str]:
     """Runtime is reachable as a filter argument, exact, and cited back.
 
-    The catalog has always held a runtime for all 238 films, but no filter
+    The catalog has always held a runtime for all 316 films, but no filter
     argument exposed it, so "under 110 minutes" fell through to plot search --
     which cannot establish a runtime, because no synopsis states one. The
     agent then reported a deterministic fact as unverifiable. This gate holds

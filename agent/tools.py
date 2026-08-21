@@ -2,12 +2,12 @@
 
 Design note -- why four tools, and why in this order:
 
-The catalog is 238 films. At that size the expensive thing is not searching, it
+The catalog is 316 films. At that size the expensive thing is not searching, it
 is reasoning: every model turn costs money and latency. So the tools are ordered
 cheapest-and-most-exhaustive first, and each one hands the next a smaller
 candidate set:
 
-    filter_catalog   columns      238 -> N     free, exact, exhaustive
+    filter_catalog   columns      316 -> N     free, exact, exhaustive
     screen_out       regex        N -> clear   free, one-sided, word-list only
     search_plots     vectors      N -> ~10     one embedding, ~$0.0000002
     read_synopses    full text    <= 8 films   free, but token-heavy
@@ -88,7 +88,7 @@ class ToolContext:
 
 # How many labels come back when a filter matches more than this. The full set
 # is always in scope regardless; this only bounds what is *shown*, and
-# list_all=true lifts it. Not a cost guard -- all 238 labels are ~2,300 tokens.
+# list_all=true lifts it. Not a cost guard -- all 316 labels are ~3,100 tokens.
 PREVIEW_FILMS = 15
 
 # How many flagged films come back with a quote attached. A quote is ~100 tokens
@@ -167,7 +167,7 @@ def filter_catalog(
         df = df[df["release_year"] <= int(year_max)]
         applied["year_max"] = int(year_max)
 
-    # Runtime is a column, and every one of the 238 rows has it. It was
+    # Runtime is a column, and every one of the 316 rows has it. It was
     # reachable only through plot search before this, which cannot establish
     # it: no synopsis states how long its film runs, so "under 110 minutes"
     # scored as a weak thematic match and came back unverifiable. A fact the
@@ -327,7 +327,7 @@ def filter_catalog(
         "scope": "search_plots and read_synopses now cover exactly these films",
     }
     if list_all or matched <= PREVIEW_FILMS:
-        # Labels are ~10 tokens each, so even all 238 costs less than a fifth
+        # Labels are ~10 tokens each, so even all 316 costs less than a fifth
         # of one read_synopses call. Completeness is affordable; hiding matches
         # behind a cap was not a saving worth making.
         out["films"] = labelled
@@ -1020,8 +1020,8 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                 "runtime or studio, which plot search cannot see. Results "
                 "come back best-first by a vote-count-weighted rating, and "
                 "every film comes back with its runtime in minutes. The "
-                "catalog is feature films only (238 Disney/Pixar titles, "
-                "1940-2017, 47 to 172 minutes)."
+                "catalog is feature films only (316 Disney/Pixar titles, "
+                "1937-2017, 47 to 172 minutes)."
             ),
             "parameters": {
                 "type": "object",

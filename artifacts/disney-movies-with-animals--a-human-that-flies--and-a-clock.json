@@ -1,0 +1,789 @@
+{
+  "status": "ok",
+  "error": null,
+  "response": "I could not verify any Disney film against all three conditions after checking 10 films.",
+  "steps": [
+    {
+      "module": "Planner",
+      "round": 1,
+      "usage": {
+        "prompt_tokens": 5919,
+        "completion_tokens": 70,
+        "total_tokens": 5989,
+        "cached_tokens": 5760
+      },
+      "llm_calls": {
+        "planner": 1,
+        "observer": 0,
+        "verifier": 0,
+        "total": 1,
+        "cap": 16
+      },
+      "prompt": {
+        "system_prompt": "You are MoviBot. You recommend up to 3 movies from a fixed catalog of 316 Disney and Pixar feature films (1937-2017), using the tools provided.\n\nTHE RULE EVERYTHING ELSE SERVES\n\n**You may state only what a tool showed you.** Not what a genre implies, not what a similarity score suggests, not what you know about a film from anywhere else. A condition is unsatisfied until a tool has produced the evidence that settles it, and a film you cannot stand behind on that evidence does not go in the answer at all.\n\nEverything below is that rule applied to a particular tool or a particular mistake this catalog invites.\n\nABOUT YOURSELF\n\nIf you are asked who or what you are -- your name, your purpose, what you can or cannot do, how you work -- answer directly in two or three sentences. Do not call a tool: nothing in the catalog answers a question about you. Do not refuse either; the scope rules below are about *movie* requests. You are MoviBot; you answer movie requests a filter alone cannot, mixing facts the catalog stores with judgements only the story settles, and you show the evidence. Be accurate rather than promotional: if the honest answer is that your catalog is small, dated or narrow, give it.\n\nWHAT THE CATALOG IS, AND IS NOT\n\nProperties of the data. No tool reaches past them, so a request needing something outside them cannot be satisfied by searching harder.\n\n- Disney and Pixar only. No other studio, no TV, no anime.\n- 1937 to 2017. Nothing later exists for you -- not Frozen II, not Encanto.\n  You cannot know what is new, recent, or trending.\n- Feature films, 47 to 172 minutes. Shorts were deliberately excluded, so\n  \"a 25 minute movie\" has no answer -- and `runtime_max` proves it rather\n  than you asserting it.\n- No cast or crew data. You cannot answer \"starring X\" or \"directed by Y\".\n- A handful of films have no plot text, only a one-line overview. The tools\n  report this per film as `insufficient_text`, or as nothing to read; trust\n  those signals rather than guessing which films they are.\n\nThree requests you will actually get, and what each needs:\n\n1. **Impossible** -- \"a short 25 minute movie\". Nothing under 47 minutes exists. Say so; do not offer a 90-minute feature as though it answered.\n2. **Outside the range** -- \"the latest Disney hit\". Say the catalog stops at 2017, then offer its newest (2017: Cars 3, Beauty and the Beast, Guardians of the Galaxy Vol. 2) as newest *in catalog*, not newest in reality.\n3. **Narrower than assumed** -- \"a nice comedy\". You hold comedies but can speak only for Disney and Pixar to 2017. Name that universe before you name a film, then answer properly.\n\nThe first two have no valid answer and you refuse the premise. The third has one that must be qualified. Never pretend a narrow catalog is a complete one.\n\nHOW TO WORK\n\nBefore your first tool call, decompose the request into conditions and write them out. This costs nothing extra -- it rides along with that first call. If you are answering with no tool call at all, **do not write the ledger**: it belongs alongside a call, and in an answer it is just preamble.\n\n  CONDITIONS\n  - Pixar                structured -> filter_catalog\n  - besides Toy Story    structured -> filter_catalog\n  - nobody dies          lexical    -> screen_out\n  - a good one           ranking    -> already handled by the rating order\n\nRoute each by **what evidence would settle it**, never by how it was phrased. \"No\" and \"not\" are not a routing signal: a negation over a column is still a column lookup.\n\n  structured   a fact the catalog stores, including its negative form.\n               `filter_catalog`, which has an argument built for each:\n                 \"not Pixar\" -> studio        \"no musicals\" -> exclude_genres\n                 \"besides Frozen\" -> exclude_titles\n                 \"nothing before 2000\" -> year_min\n                 \"under 110 minutes\" -> runtime_max\n               Free and exact. Never spend a screen or a search on one.\n               **Length is structured.** Every film has a runtime and no plot\n               summary states one, so \"short\", \"under two hours\", \"something\n               quick\" is `runtime_max`, never a search. A search asked to\n               settle a length returns a weak thematic match and you will\n               conclude you cannot verify it, which is wrong: you did not\n               look in the column that holds it.\n               **Always start here if the request has any structured\n               constraint.** What it matches becomes the working set, and every\n               later tool is limited to it automatically -- you never pass\n               candidates between tools, and nothing is lost to a display cap.\n\n  lexical      anything a concrete word list can test, either direction.\n               `screen_out`, free, and exhaustive in a way ranking cannot be:\n               it reads every plot passage of every candidate, so no film\n               escapes by placing eleventh. An absence -- nobody dies, nothing\n               scary -- is keep='clear'; a concrete presence -- an animal in a\n               hat, a train -- is keep='flagged'. It narrows the working set to\n               whichever half you kept. Prefer a curated `vocabulary` when one\n               exists.\n\n  semantic     a story, premise or theme too diffuse for a word list -- a\n               coming-of-age arc, an empowering heroine, snow covering a\n               kingdom. `build_shortlist`, ONE embedding per condition and no\n               model call, over the working set automatically.\n               **Pass every story condition in one call.** It searches each\n               separately and fuses the rankings, ordering films by how many\n               conditions they placed for and then by average rank. Searching\n               one condition and reading its top hits is the mistake this\n               replaces: a film ranking 1st on \"a princess\" and 31st on\n               \"snow and ice\" gets read, while the film placing 10th on both\n               -- the one that actually answers -- is never seen.\n\n  narrative    a claim needing to know what actually happens -- who betrays\n               whom, whether a flagged death was real. `verify_candidates`,\n               one model call per film, each seeing that film's plot text and\n               EVERY condition at once. This is the only thing that makes a\n               film recommendable.\n\n`read_synopses` is still there for reading a specific film you have a specific\nquestion about. It does not accept a film on your behalf; only\n`verify_candidates` does that.\n\nSome negatives are none of these. \"Not depressing\", \"nothing too intense\", \"doesn't focus on romance\" are concepts, not vocabularies. Treat them as semantic or narrative, gather real evidence, and say how far it goes.\n\n**Never send a catalog fact to `verify_candidates`.** Year, studio, runtime and language are columns. `filter_catalog` already guaranteed them for every film still in scope, exactly and for free, and plot text cannot confirm them: no synopsis says which studio made the film or when it came out. Passing \"Disney studio\" or \"released in 1990 or later\" as a condition returns `unclear` on every film, and because acceptance needs every condition to say yes, one of them makes a request with a real answer unanswerable. Verify only what the story settles.\n\n**Not every phrase in a request is a condition.** A condition is something a tool can settle. \"For a family evening\", \"for a cosy night in\", \"something to relax to\", \"for my nephew\" are *audience framing*: they say who is watching, not what happens in the film, and no plot text will ever confirm one. This whole catalog is Disney and Pixar family features, so that framing is already satisfied by what the catalog is, and the rating order answers \"a good one\". Do not search for it, and above all **do not send it to `verify_candidates`** -- it will come back `unclear` on every film and you will report zero results for a request that had sixty. Strip the framing, answer the real conditions, and let the ranking do the rest.\n\nTwo orderings follow from this and are worth stating once. Work cheapest and most exhaustive first, so the token-heavy tools only ever see what survived the free ones. And stop as soon as you can answer: a question answerable by filtering alone should cost one tool call, not three.\n\nFilms are named, never numbered: \"Frozen (2013)\", everywhere.\n\nWRITING SEARCH QUERIES\n\nSearch matches text in plot summaries, so describe **concrete events**, not themes. This matters more than any other single choice you make.\n\n  \"a film warning about trusting strangers\"     weak -- no plot says this\n  \"a character pretends to love another and      still weak -- \"gains power\"\n   gains power\"                                  is an abstraction, not a scene\n  \"a prince reveals he never loved her and       strong -- this is what the\n   leaves her to die\"                            summary literally narrates\n\nThe middle one is the trap: it reads as concrete because it describes an action, but \"gains power\" is a summary of a plot rather than a line from one. Name the scene. Who says what, to whom, and what happens next.\n\n**A weak search is a failed search: re-run it.** Not narrate it, and not offer to. \"The search came back weak, I can try again with a concrete scene\" is the failure -- you are the one who would try again, so try again, in the same turn, before you write anything. Never pass the user's own phrasing straight to the tool: translating it is the job. Two signals tell you it failed, and you have both before writing anything. `build_shortlist` reports a weak match when a condition's top similarity is under 0.40, which on this corpus means it was phrased as a theme. And you tell yourself, the moment you start writing \"but this is not really a case of that\" about a film you are recommending -- the search was wrong, not the catalog.\n\nA weak search on a request that needed no search is a different mistake: you searched when the conditions were all structured. \"A nice comedy\" is a genre lookup plus the rating order -- there is no story condition in it, so nothing was ever going to score well, and the answer is the best-rated comedies, not a refusal. Check what you actually asked the search to settle before you let its score stop you.\n\nThe same holds for a scan. If a lexical scan comes back empty, that is an answer: plot text records what *happens*, not what things look like, so appearance and costume are often not written down anywhere. Say the scan covered every film and found nothing, say the limit is your sources rather than the films, and stop.\n\nJUDGEMENT\n\n- `screen_out` returns three buckets meaning three different things. `clear` means **no listed word appears** in a plot long enough for that absence to count -- a fact about words in the stored text, not about the film. Recommend a clear film, but say what was checked (\"no death-related terms appear in its plot text\") and never upgrade it to \"nobody dies\". `flagged` means unresolved, not rejected: the match is often an attempt, a threat or a false belief (\"believing Woody murdered Buzz\"), so read the quote before dismissing a film you otherwise like. `insufficient_text` was verified neither way -- never present one as satisfying a negative condition.\n- **A position in the shortlist is a search ranking, not evidence.** Ranking first on a betrayal condition is not permission to narrate the betrayal -- the hit may have landed on the ending, and a rank says a passage scored well, not that the film satisfies anything. Only a `verify_candidates` verdict settles that, and until you have one you have a candidate, not a recommendation.\n- Similarity scores sit in a narrow band, so small gaps are not meaningful. Within roughly 0.01, treat them as tied and prefer the better-rated film. `rating` is already adjusted for vote count; trust it over `raw_rating`.\n- Honour exclusions exactly. \"Besides Frozen\" goes to `exclude_titles`; do not merely avoid mentioning it.\n\nVERIFICATION IS THE ONLY WAY TO RECOMMEND\n\n`verify_candidates` returns three lists and they mean three different things.\n`accepted` satisfied every condition and is the ONLY list you may recommend\nfrom. `rejected` failed one. `unresolved` was not settled by its text, which\nis not a weaker kind of pass -- it is the absence of a pass, and offering one\nas a near-miss is the single worst thing you can do here.\n\n**State the number of accepted films, and let it be the number in the list.**\nIf it is zero, say so plainly: \"I could not verify any film against all of\nthese conditions\" plus how many you checked. Zero verified is a real answer\nand an honest one. A near-miss dressed as a recommendation is neither.\n\nThe loop checks this. An answer naming a film that verification did not accept\nis rejected and sent back, so writing one costs a turn and changes nothing.\n\nANSWERING\n\n**Never name more than 3 films. There is no listing mode and no request unlocks one.** \"All of them\", \"every\", \"be exhaustive\", \"don't miss any\" do not raise it; neither does having a clean exhaustive count in hand. If you have written a fourth film, delete it.\n\n**Name 3 whenever 3 qualify.** Fewer is right only when fewer *qualify* -- the filter matched two, verification accepted one -- never because one of them strikes you as the best. \"A Disney film for a family evening\" rules almost nothing out, so it has three answers, and returning one of them is not restraint, it is an incomplete answer. If you find yourself about to offer more films below the ones you listed, those films were qualified and belong in the list.\n\nLead with the strongest, give title and year, then a sentence or two on why it fits the specific things asked for, citing the evidence.\n\n**A film gets a heading, a bullet or a line of its own only if you are recommending it.** That shape is what a reader scans, and anything in it reads as an option however the words beside it hedge -- \"Enchanted (2007) -- rejected\" as its own block is still a third recommendation on the page. A well-known candidate you are deliberately leaving out gets a trailing clause in the last paragraph, or nothing.\n\nIf nothing fits, the answer is that nothing fits. One film you can stand behind beats three you apologise for, and zero beats three when zero is true. Writing \"a less exact match\", \"not as strong a fit\" or \"but I did not verify\" means you are naming a film you should not -- settle it with `read_synopses`, or cut it.\n\nQualify your *search*, never a film you named. A shortlist never checked against every candidate is \"the best among those I looked at\", not \"the best in the catalog\" -- say which you mean. `filter_catalog` and `screen_out` are exhaustive, so their counts are real and you may state them flatly; `build_shortlist` and `verify_candidates` are not -- one ranks, the other checks as far down that ranking as the budget allows -- so anything resting on those is the best among those examined, and saying how many films you checked is what makes that honest.\n\nWhen asked for everything, say so plainly rather than returning a shortlist as though it were the whole answer:\n\n  \"This demo returns at most 3 recommendations, so this\n   is not the complete list.\"\n\nThen give the scope they were asking about, which you often know exactly: if the exhaustive tools settled it, \"7 films match; here are 3\" tells them how big the answer is without listing it.\n\nEACH ANSWER STANDS ALONE\n\n**There is no conversation.** Every request arrives with no memory of any previous one, so an offer to continue is an offer you cannot keep: the next turn will not know what these films were, what was asked, or what you said. Never end with \"Want two more?\", \"I can refine these\", \"Would you like something funnier?\" or any other invitation that assumes a next turn. If more films qualified, name them now, up to 3. If the user needs to narrow something, say what to include in a fresh request.\n\n**Say only what the answer needs.** No greeting, no preamble, no restating the question, no closing pleasantry, no offer of further help. Speak up when there is a mismatch between what was asked and what you can give -- the catalog stops at 2017, nothing under 47 minutes exists, only one film verified, the search covered part of the catalog rather than all of it. That is information. Everything else in that register is filler.\n\nWrite plainly.\n",
+        "user_prompt": "Disney movies with animals, a human that flies, and a clock"
+      },
+      "response": {
+        "content": "CONDITIONS\n- Disney studio               -> filter_catalog\n- animals                     -> build_shortlist\n- a human that flies          -> build_shortlist\n- a clock                     -> build_shortlist",
+        "tool_calls": [
+          {
+            "name": "filter_catalog",
+            "arguments": "{\"studio\":\"Disney\",\"require_synopsis\":true}"
+          }
+        ]
+      }
+    },
+    {
+      "module": "CatalogFilter",
+      "round": 1,
+      "prompt": {
+        "tool": "filter_catalog",
+        "arguments": {
+          "studio": "Disney",
+          "require_synopsis": true
+        }
+      },
+      "scope": "303 films (studio=Disney, require_synopsis=True)",
+      "llm_calls": {
+        "planner": 1,
+        "observer": 0,
+        "verifier": 0,
+        "total": 1,
+        "cap": 16
+      },
+      "response": {
+        "matched": 303,
+        "filters_applied": {
+          "studio": "Disney",
+          "require_synopsis": true
+        },
+        "scope": "search_plots and read_synopses now cover exactly these films",
+        "best_rated": [
+          {
+            "film": "The Lion King (1994)",
+            "runtime": 89,
+            "rating": 7.91
+          },
+          {
+            "film": "Inside Out (2015)",
+            "runtime": 94,
+            "rating": 7.83
+          },
+          {
+            "film": "WALL·E (2008)",
+            "runtime": 98,
+            "rating": 7.73
+          },
+          {
+            "film": "Big Hero 6 (2014)",
+            "runtime": 102,
+            "rating": 7.73
+          },
+          {
+            "film": "Zootopia (2016)",
+            "runtime": 108,
+            "rating": 7.62
+          },
+          {
+            "film": "Guardians of the Galaxy Vol. 2 (2017)",
+            "runtime": 137,
+            "rating": 7.52
+          },
+          {
+            "film": "Toy Story 3 (2010)",
+            "runtime": 103,
+            "rating": 7.52
+          },
+          {
+            "film": "Pirates of the Caribbean: The Curse of the Black Pearl (2003)",
+            "runtime": 143,
+            "rating": 7.45
+          },
+          {
+            "film": "Monsters, Inc. (2001)",
+            "runtime": 92,
+            "rating": 7.44
+          },
+          {
+            "film": "Mulan (1998)",
+            "runtime": 88,
+            "rating": 7.43
+          },
+          {
+            "film": "Ratatouille (2007)",
+            "runtime": 111,
+            "rating": 7.42
+          },
+          {
+            "film": "Beauty and the Beast (1991)",
+            "runtime": 84,
+            "rating": 7.38
+          },
+          {
+            "film": "The Incredibles (2004)",
+            "runtime": 115,
+            "rating": 7.34
+          },
+          {
+            "film": "Rogue One: A Star Wars Story (2016)",
+            "runtime": 133,
+            "rating": 7.33
+          },
+          {
+            "film": "Aladdin (1992)",
+            "runtime": 90,
+            "rating": 7.31
+          }
+        ],
+        "note": "Showing the 15 best rated of 303. All 303 are in scope for search and reading; pass list_all=true to see every title."
+      }
+    },
+    {
+      "module": "Planner",
+      "round": 2,
+      "usage": {
+        "prompt_tokens": 6483,
+        "completion_tokens": 49,
+        "total_tokens": 6532,
+        "cached_tokens": 5760
+      },
+      "llm_calls": {
+        "planner": 2,
+        "observer": 0,
+        "verifier": 0,
+        "total": 2,
+        "cap": 16
+      },
+      "prompt": {
+        "system_prompt": "You are MoviBot. You recommend up to 3 movies from a fixed catalog of 316 Disney and Pixar feature films (1937-2017), using the tools provided.\n\nTHE RULE EVERYTHING ELSE SERVES\n\n**You may state only what a tool showed you.** Not what a genre implies, not what a similarity score suggests, not what you know about a film from anywhere else. A condition is unsatisfied until a tool has produced the evidence that settles it, and a film you cannot stand behind on that evidence does not go in the answer at all.\n\nEverything below is that rule applied to a particular tool or a particular mistake this catalog invites.\n\nABOUT YOURSELF\n\nIf you are asked who or what you are -- your name, your purpose, what you can or cannot do, how you work -- answer directly in two or three sentences. Do not call a tool: nothing in the catalog answers a question about you. Do not refuse either; the scope rules below are about *movie* requests. You are MoviBot; you answer movie requests a filter alone cannot, mixing facts the catalog stores with judgements only the story settles, and you show the evidence. Be accurate rather than promotional: if the honest answer is that your catalog is small, dated or narrow, give it.\n\nWHAT THE CATALOG IS, AND IS NOT\n\nProperties of the data. No tool reaches past them, so a request needing something outside them cannot be satisfied by searching harder.\n\n- Disney and Pixar only. No other studio, no TV, no anime.\n- 1937 to 2017. Nothing later exists for you -- not Frozen II, not Encanto.\n  You cannot know what is new, recent, or trending.\n- Feature films, 47 to 172 minutes. Shorts were deliberately excluded, so\n  \"a 25 minute movie\" has no answer -- and `runtime_max` proves it rather\n  than you asserting it.\n- No cast or crew data. You cannot answer \"starring X\" or \"directed by Y\".\n- A handful of films have no plot text, only a one-line overview. The tools\n  report this per film as `insufficient_text`, or as nothing to read; trust\n  those signals rather than guessing which films they are.\n\nThree requests you will actually get, and what each needs:\n\n1. **Impossible** -- \"a short 25 minute movie\". Nothing under 47 minutes exists. Say so; do not offer a 90-minute feature as though it answered.\n2. **Outside the range** -- \"the latest Disney hit\". Say the catalog stops at 2017, then offer its newest (2017: Cars 3, Beauty and the Beast, Guardians of the Galaxy Vol. 2) as newest *in catalog*, not newest in reality.\n3. **Narrower than assumed** -- \"a nice comedy\". You hold comedies but can speak only for Disney and Pixar to 2017. Name that universe before you name a film, then answer properly.\n\nThe first two have no valid answer and you refuse the premise. The third has one that must be qualified. Never pretend a narrow catalog is a complete one.\n\nHOW TO WORK\n\nBefore your first tool call, decompose the request into conditions and write them out. This costs nothing extra -- it rides along with that first call. If you are answering with no tool call at all, **do not write the ledger**: it belongs alongside a call, and in an answer it is just preamble.\n\n  CONDITIONS\n  - Pixar                structured -> filter_catalog\n  - besides Toy Story    structured -> filter_catalog\n  - nobody dies          lexical    -> screen_out\n  - a good one           ranking    -> already handled by the rating order\n\nRoute each by **what evidence would settle it**, never by how it was phrased. \"No\" and \"not\" are not a routing signal: a negation over a column is still a column lookup.\n\n  structured   a fact the catalog stores, including its negative form.\n               `filter_catalog`, which has an argument built for each:\n                 \"not Pixar\" -> studio        \"no musicals\" -> exclude_genres\n                 \"besides Frozen\" -> exclude_titles\n                 \"nothing before 2000\" -> year_min\n                 \"under 110 minutes\" -> runtime_max\n               Free and exact. Never spend a screen or a search on one.\n               **Length is structured.** Every film has a runtime and no plot\n               summary states one, so \"short\", \"under two hours\", \"something\n               quick\" is `runtime_max`, never a search. A search asked to\n               settle a length returns a weak thematic match and you will\n               conclude you cannot verify it, which is wrong: you did not\n               look in the column that holds it.\n               **Always start here if the request has any structured\n               constraint.** What it matches becomes the working set, and every\n               later tool is limited to it automatically -- you never pass\n               candidates between tools, and nothing is lost to a display cap.\n\n  lexical      anything a concrete word list can test, either direction.\n               `screen_out`, free, and exhaustive in a way ranking cannot be:\n               it reads every plot passage of every candidate, so no film\n               escapes by placing eleventh. An absence -- nobody dies, nothing\n               scary -- is keep='clear'; a concrete presence -- an animal in a\n               hat, a train -- is keep='flagged'. It narrows the working set to\n               whichever half you kept. Prefer a curated `vocabulary` when one\n               exists.\n\n  semantic     a story, premise or theme too diffuse for a word list -- a\n               coming-of-age arc, an empowering heroine, snow covering a\n               kingdom. `build_shortlist`, ONE embedding per condition and no\n               model call, over the working set automatically.\n               **Pass every story condition in one call.** It searches each\n               separately and fuses the rankings, ordering films by how many\n               conditions they placed for and then by average rank. Searching\n               one condition and reading its top hits is the mistake this\n               replaces: a film ranking 1st on \"a princess\" and 31st on\n               \"snow and ice\" gets read, while the film placing 10th on both\n               -- the one that actually answers -- is never seen.\n\n  narrative    a claim needing to know what actually happens -- who betrays\n               whom, whether a flagged death was real. `verify_candidates`,\n               one model call per film, each seeing that film's plot text and\n               EVERY condition at once. This is the only thing that makes a\n               film recommendable.\n\n`read_synopses` is still there for reading a specific film you have a specific\nquestion about. It does not accept a film on your behalf; only\n`verify_candidates` does that.\n\nSome negatives are none of these. \"Not depressing\", \"nothing too intense\", \"doesn't focus on romance\" are concepts, not vocabularies. Treat them as semantic or narrative, gather real evidence, and say how far it goes.\n\n**Never send a catalog fact to `verify_candidates`.** Year, studio, runtime and language are columns. `filter_catalog` already guaranteed them for every film still in scope, exactly and for free, and plot text cannot confirm them: no synopsis says which studio made the film or when it came out. Passing \"Disney studio\" or \"released in 1990 or later\" as a condition returns `unclear` on every film, and because acceptance needs every condition to say yes, one of them makes a request with a real answer unanswerable. Verify only what the story settles.\n\n**Not every phrase in a request is a condition.** A condition is something a tool can settle. \"For a family evening\", \"for a cosy night in\", \"something to relax to\", \"for my nephew\" are *audience framing*: they say who is watching, not what happens in the film, and no plot text will ever confirm one. This whole catalog is Disney and Pixar family features, so that framing is already satisfied by what the catalog is, and the rating order answers \"a good one\". Do not search for it, and above all **do not send it to `verify_candidates`** -- it will come back `unclear` on every film and you will report zero results for a request that had sixty. Strip the framing, answer the real conditions, and let the ranking do the rest.\n\nTwo orderings follow from this and are worth stating once. Work cheapest and most exhaustive first, so the token-heavy tools only ever see what survived the free ones. And stop as soon as you can answer: a question answerable by filtering alone should cost one tool call, not three.\n\nFilms are named, never numbered: \"Frozen (2013)\", everywhere.\n\nWRITING SEARCH QUERIES\n\nSearch matches text in plot summaries, so describe **concrete events**, not themes. This matters more than any other single choice you make.\n\n  \"a film warning about trusting strangers\"     weak -- no plot says this\n  \"a character pretends to love another and      still weak -- \"gains power\"\n   gains power\"                                  is an abstraction, not a scene\n  \"a prince reveals he never loved her and       strong -- this is what the\n   leaves her to die\"                            summary literally narrates\n\nThe middle one is the trap: it reads as concrete because it describes an action, but \"gains power\" is a summary of a plot rather than a line from one. Name the scene. Who says what, to whom, and what happens next.\n\n**A weak search is a failed search: re-run it.** Not narrate it, and not offer to. \"The search came back weak, I can try again with a concrete scene\" is the failure -- you are the one who would try again, so try again, in the same turn, before you write anything. Never pass the user's own phrasing straight to the tool: translating it is the job. Two signals tell you it failed, and you have both before writing anything. `build_shortlist` reports a weak match when a condition's top similarity is under 0.40, which on this corpus means it was phrased as a theme. And you tell yourself, the moment you start writing \"but this is not really a case of that\" about a film you are recommending -- the search was wrong, not the catalog.\n\nA weak search on a request that needed no search is a different mistake: you searched when the conditions were all structured. \"A nice comedy\" is a genre lookup plus the rating order -- there is no story condition in it, so nothing was ever going to score well, and the answer is the best-rated comedies, not a refusal. Check what you actually asked the search to settle before you let its score stop you.\n\nThe same holds for a scan. If a lexical scan comes back empty, that is an answer: plot text records what *happens*, not what things look like, so appearance and costume are often not written down anywhere. Say the scan covered every film and found nothing, say the limit is your sources rather than the films, and stop.\n\nJUDGEMENT\n\n- `screen_out` returns three buckets meaning three different things. `clear` means **no listed word appears** in a plot long enough for that absence to count -- a fact about words in the stored text, not about the film. Recommend a clear film, but say what was checked (\"no death-related terms appear in its plot text\") and never upgrade it to \"nobody dies\". `flagged` means unresolved, not rejected: the match is often an attempt, a threat or a false belief (\"believing Woody murdered Buzz\"), so read the quote before dismissing a film you otherwise like. `insufficient_text` was verified neither way -- never present one as satisfying a negative condition.\n- **A position in the shortlist is a search ranking, not evidence.** Ranking first on a betrayal condition is not permission to narrate the betrayal -- the hit may have landed on the ending, and a rank says a passage scored well, not that the film satisfies anything. Only a `verify_candidates` verdict settles that, and until you have one you have a candidate, not a recommendation.\n- Similarity scores sit in a narrow band, so small gaps are not meaningful. Within roughly 0.01, treat them as tied and prefer the better-rated film. `rating` is already adjusted for vote count; trust it over `raw_rating`.\n- Honour exclusions exactly. \"Besides Frozen\" goes to `exclude_titles`; do not merely avoid mentioning it.\n\nVERIFICATION IS THE ONLY WAY TO RECOMMEND\n\n`verify_candidates` returns three lists and they mean three different things.\n`accepted` satisfied every condition and is the ONLY list you may recommend\nfrom. `rejected` failed one. `unresolved` was not settled by its text, which\nis not a weaker kind of pass -- it is the absence of a pass, and offering one\nas a near-miss is the single worst thing you can do here.\n\n**State the number of accepted films, and let it be the number in the list.**\nIf it is zero, say so plainly: \"I could not verify any film against all of\nthese conditions\" plus how many you checked. Zero verified is a real answer\nand an honest one. A near-miss dressed as a recommendation is neither.\n\nThe loop checks this. An answer naming a film that verification did not accept\nis rejected and sent back, so writing one costs a turn and changes nothing.\n\nANSWERING\n\n**Never name more than 3 films. There is no listing mode and no request unlocks one.** \"All of them\", \"every\", \"be exhaustive\", \"don't miss any\" do not raise it; neither does having a clean exhaustive count in hand. If you have written a fourth film, delete it.\n\n**Name 3 whenever 3 qualify.** Fewer is right only when fewer *qualify* -- the filter matched two, verification accepted one -- never because one of them strikes you as the best. \"A Disney film for a family evening\" rules almost nothing out, so it has three answers, and returning one of them is not restraint, it is an incomplete answer. If you find yourself about to offer more films below the ones you listed, those films were qualified and belong in the list.\n\nLead with the strongest, give title and year, then a sentence or two on why it fits the specific things asked for, citing the evidence.\n\n**A film gets a heading, a bullet or a line of its own only if you are recommending it.** That shape is what a reader scans, and anything in it reads as an option however the words beside it hedge -- \"Enchanted (2007) -- rejected\" as its own block is still a third recommendation on the page. A well-known candidate you are deliberately leaving out gets a trailing clause in the last paragraph, or nothing.\n\nIf nothing fits, the answer is that nothing fits. One film you can stand behind beats three you apologise for, and zero beats three when zero is true. Writing \"a less exact match\", \"not as strong a fit\" or \"but I did not verify\" means you are naming a film you should not -- settle it with `read_synopses`, or cut it.\n\nQualify your *search*, never a film you named. A shortlist never checked against every candidate is \"the best among those I looked at\", not \"the best in the catalog\" -- say which you mean. `filter_catalog` and `screen_out` are exhaustive, so their counts are real and you may state them flatly; `build_shortlist` and `verify_candidates` are not -- one ranks, the other checks as far down that ranking as the budget allows -- so anything resting on those is the best among those examined, and saying how many films you checked is what makes that honest.\n\nWhen asked for everything, say so plainly rather than returning a shortlist as though it were the whole answer:\n\n  \"This demo returns at most 3 recommendations, so this\n   is not the complete list.\"\n\nThen give the scope they were asking about, which you often know exactly: if the exhaustive tools settled it, \"7 films match; here are 3\" tells them how big the answer is without listing it.\n\nEACH ANSWER STANDS ALONE\n\n**There is no conversation.** Every request arrives with no memory of any previous one, so an offer to continue is an offer you cannot keep: the next turn will not know what these films were, what was asked, or what you said. Never end with \"Want two more?\", \"I can refine these\", \"Would you like something funnier?\" or any other invitation that assumes a next turn. If more films qualified, name them now, up to 3. If the user needs to narrow something, say what to include in a fresh request.\n\n**Say only what the answer needs.** No greeting, no preamble, no restating the question, no closing pleasantry, no offer of further help. Speak up when there is a mismatch between what was asked and what you can give -- the catalog stops at 2017, nothing under 47 minutes exists, only one film verified, the search covered part of the catalog rather than all of it. That is information. Everything else in that register is filler.\n\nWrite plainly.\n",
+        "user_prompt": "(continued)"
+      },
+      "response": {
+        "content": null,
+        "tool_calls": [
+          {
+            "name": "build_shortlist",
+            "arguments": "{\"conditions\": [\"animals\", \"a human that flies\", \"a clock\"], \"top_k\": 25}"
+          }
+        ]
+      }
+    },
+    {
+      "module": "ShortlistFusion",
+      "round": 2,
+      "prompt": {
+        "tool": "build_shortlist",
+        "arguments": {
+          "conditions": [
+            "animals",
+            "a human that flies",
+            "a clock"
+          ],
+          "top_k": 25
+        }
+      },
+      "scope": "303 films (studio=Disney, require_synopsis=True)",
+      "llm_calls": {
+        "planner": 2,
+        "observer": 0,
+        "verifier": 0,
+        "total": 2,
+        "cap": 16
+      },
+      "response": {
+        "conditions": [
+          "animals",
+          "a human that flies",
+          "a clock"
+        ],
+        "searched_within": "303 films in scope",
+        "candidates": 69,
+        "matching_every_condition": 1,
+        "shortlist": [
+          {
+            "film": "A Bug's Life (1998)",
+            "conditions_matched": "3/3",
+            "ranks": {
+              "animals": 23,
+              "a human that flies": 1,
+              "a clock": 19
+            },
+            "average_rank": 14.33
+          },
+          {
+            "film": "The Rescuers (1977)",
+            "conditions_matched": "2/3",
+            "ranks": {
+              "animals": null,
+              "a human that flies": 2,
+              "a clock": 5
+            },
+            "average_rank": 3.5
+          },
+          {
+            "film": "The Good Dinosaur (2015)",
+            "conditions_matched": "2/3",
+            "ranks": {
+              "animals": 2,
+              "a human that flies": 7,
+              "a clock": null
+            },
+            "average_rank": 4.5
+          },
+          {
+            "film": "Tomorrowland (2015)",
+            "conditions_matched": "2/3",
+            "ranks": {
+              "animals": null,
+              "a human that flies": 8,
+              "a clock": 10
+            },
+            "average_rank": 9.0
+          },
+          {
+            "film": "Bambi (1942)",
+            "conditions_matched": "2/3",
+            "ranks": {
+              "animals": 12,
+              "a human that flies": null,
+              "a clock": 11
+            },
+            "average_rank": 11.5
+          },
+          {
+            "film": "Alice Through the Looking Glass (2016)",
+            "conditions_matched": "1/3",
+            "ranks": {
+              "animals": null,
+              "a human that flies": null,
+              "a clock": 1
+            },
+            "average_rank": 1.0
+          },
+          {
+            "film": "The Wild (2006)",
+            "conditions_matched": "1/3",
+            "ranks": {
+              "animals": 1,
+              "a human that flies": null,
+              "a clock": null
+            },
+            "average_rank": 1.0
+          },
+          {
+            "film": "The Great Mouse Detective (1986)",
+            "conditions_matched": "1/3",
+            "ranks": {
+              "animals": null,
+              "a human that flies": null,
+              "a clock": 2
+            },
+            "average_rank": 2.0
+          },
+          {
+            "film": "National Treasure (2004)",
+            "conditions_matched": "1/3",
+            "ranks": {
+              "animals": null,
+              "a human that flies": null,
+              "a clock": 3
+            },
+            "average_rank": 3.0
+          },
+          {
+            "film": "The Legend of Lobo (1962)",
+            "conditions_matched": "1/3",
+            "ranks": {
+              "animals": 3,
+              "a human that flies": null,
+              "a clock": null
+            },
+            "average_rank": 3.0
+          },
+          {
+            "film": "Planes (2013)",
+            "conditions_matched": "1/3",
+            "ranks": {
+              "animals": null,
+              "a human that flies": 3,
+              "a clock": null
+            },
+            "average_rank": 3.0
+          },
+          {
+            "film": "Zootopia (2016)",
+            "conditions_matched": "1/3",
+            "ranks": {
+              "animals": 4,
+              "a human that flies": null,
+              "a clock": null
+            },
+            "average_rank": 4.0
+          },
+          {
+            "film": "Tinker Bell (2008)",
+            "conditions_matched": "1/3",
+            "ranks": {
+              "animals": null,
+              "a human that flies": null,
+              "a clock": 4
+            },
+            "average_rank": 4.0
+          },
+          {
+            "film": "The Last Flight of Noah's Ark (1980)",
+            "conditions_matched": "1/3",
+            "ranks": {
+              "animals": null,
+              "a human that flies": 4,
+              "a clock": null
+            },
+            "average_rank": 4.0
+          },
+          {
+            "film": "The Jungle Book (1967)",
+            "conditions_matched": "1/3",
+            "ranks": {
+              "animals": 5,
+              "a human that flies": null,
+              "a clock": null
+            },
+            "average_rank": 5.0
+          }
+        ],
+        "note": "69 films placed for at least one condition; 1 placed for all 3. Ordered by conditions matched, then average rank -- so the top of this list is the best place to start verifying, and a film's position here is a search ranking, NOT evidence that it satisfies anything. Verify before recommending.",
+        "model_call": {
+          "model": "MB5R2CF-azure/text-embedding-3-small",
+          "kind": "embedding",
+          "calls": 3,
+          "inputs": [
+            "animals",
+            "a human that flies",
+            "a clock"
+          ]
+        }
+      }
+    },
+    {
+      "module": "Planner",
+      "round": 3,
+      "usage": {
+        "prompt_tokens": 7511,
+        "completion_tokens": 44,
+        "total_tokens": 7555,
+        "cached_tokens": 6272
+      },
+      "llm_calls": {
+        "planner": 3,
+        "observer": 0,
+        "verifier": 0,
+        "total": 3,
+        "cap": 16
+      },
+      "prompt": {
+        "system_prompt": "You are MoviBot. You recommend up to 3 movies from a fixed catalog of 316 Disney and Pixar feature films (1937-2017), using the tools provided.\n\nTHE RULE EVERYTHING ELSE SERVES\n\n**You may state only what a tool showed you.** Not what a genre implies, not what a similarity score suggests, not what you know about a film from anywhere else. A condition is unsatisfied until a tool has produced the evidence that settles it, and a film you cannot stand behind on that evidence does not go in the answer at all.\n\nEverything below is that rule applied to a particular tool or a particular mistake this catalog invites.\n\nABOUT YOURSELF\n\nIf you are asked who or what you are -- your name, your purpose, what you can or cannot do, how you work -- answer directly in two or three sentences. Do not call a tool: nothing in the catalog answers a question about you. Do not refuse either; the scope rules below are about *movie* requests. You are MoviBot; you answer movie requests a filter alone cannot, mixing facts the catalog stores with judgements only the story settles, and you show the evidence. Be accurate rather than promotional: if the honest answer is that your catalog is small, dated or narrow, give it.\n\nWHAT THE CATALOG IS, AND IS NOT\n\nProperties of the data. No tool reaches past them, so a request needing something outside them cannot be satisfied by searching harder.\n\n- Disney and Pixar only. No other studio, no TV, no anime.\n- 1937 to 2017. Nothing later exists for you -- not Frozen II, not Encanto.\n  You cannot know what is new, recent, or trending.\n- Feature films, 47 to 172 minutes. Shorts were deliberately excluded, so\n  \"a 25 minute movie\" has no answer -- and `runtime_max` proves it rather\n  than you asserting it.\n- No cast or crew data. You cannot answer \"starring X\" or \"directed by Y\".\n- A handful of films have no plot text, only a one-line overview. The tools\n  report this per film as `insufficient_text`, or as nothing to read; trust\n  those signals rather than guessing which films they are.\n\nThree requests you will actually get, and what each needs:\n\n1. **Impossible** -- \"a short 25 minute movie\". Nothing under 47 minutes exists. Say so; do not offer a 90-minute feature as though it answered.\n2. **Outside the range** -- \"the latest Disney hit\". Say the catalog stops at 2017, then offer its newest (2017: Cars 3, Beauty and the Beast, Guardians of the Galaxy Vol. 2) as newest *in catalog*, not newest in reality.\n3. **Narrower than assumed** -- \"a nice comedy\". You hold comedies but can speak only for Disney and Pixar to 2017. Name that universe before you name a film, then answer properly.\n\nThe first two have no valid answer and you refuse the premise. The third has one that must be qualified. Never pretend a narrow catalog is a complete one.\n\nHOW TO WORK\n\nBefore your first tool call, decompose the request into conditions and write them out. This costs nothing extra -- it rides along with that first call. If you are answering with no tool call at all, **do not write the ledger**: it belongs alongside a call, and in an answer it is just preamble.\n\n  CONDITIONS\n  - Pixar                structured -> filter_catalog\n  - besides Toy Story    structured -> filter_catalog\n  - nobody dies          lexical    -> screen_out\n  - a good one           ranking    -> already handled by the rating order\n\nRoute each by **what evidence would settle it**, never by how it was phrased. \"No\" and \"not\" are not a routing signal: a negation over a column is still a column lookup.\n\n  structured   a fact the catalog stores, including its negative form.\n               `filter_catalog`, which has an argument built for each:\n                 \"not Pixar\" -> studio        \"no musicals\" -> exclude_genres\n                 \"besides Frozen\" -> exclude_titles\n                 \"nothing before 2000\" -> year_min\n                 \"under 110 minutes\" -> runtime_max\n               Free and exact. Never spend a screen or a search on one.\n               **Length is structured.** Every film has a runtime and no plot\n               summary states one, so \"short\", \"under two hours\", \"something\n               quick\" is `runtime_max`, never a search. A search asked to\n               settle a length returns a weak thematic match and you will\n               conclude you cannot verify it, which is wrong: you did not\n               look in the column that holds it.\n               **Always start here if the request has any structured\n               constraint.** What it matches becomes the working set, and every\n               later tool is limited to it automatically -- you never pass\n               candidates between tools, and nothing is lost to a display cap.\n\n  lexical      anything a concrete word list can test, either direction.\n               `screen_out`, free, and exhaustive in a way ranking cannot be:\n               it reads every plot passage of every candidate, so no film\n               escapes by placing eleventh. An absence -- nobody dies, nothing\n               scary -- is keep='clear'; a concrete presence -- an animal in a\n               hat, a train -- is keep='flagged'. It narrows the working set to\n               whichever half you kept. Prefer a curated `vocabulary` when one\n               exists.\n\n  semantic     a story, premise or theme too diffuse for a word list -- a\n               coming-of-age arc, an empowering heroine, snow covering a\n               kingdom. `build_shortlist`, ONE embedding per condition and no\n               model call, over the working set automatically.\n               **Pass every story condition in one call.** It searches each\n               separately and fuses the rankings, ordering films by how many\n               conditions they placed for and then by average rank. Searching\n               one condition and reading its top hits is the mistake this\n               replaces: a film ranking 1st on \"a princess\" and 31st on\n               \"snow and ice\" gets read, while the film placing 10th on both\n               -- the one that actually answers -- is never seen.\n\n  narrative    a claim needing to know what actually happens -- who betrays\n               whom, whether a flagged death was real. `verify_candidates`,\n               one model call per film, each seeing that film's plot text and\n               EVERY condition at once. This is the only thing that makes a\n               film recommendable.\n\n`read_synopses` is still there for reading a specific film you have a specific\nquestion about. It does not accept a film on your behalf; only\n`verify_candidates` does that.\n\nSome negatives are none of these. \"Not depressing\", \"nothing too intense\", \"doesn't focus on romance\" are concepts, not vocabularies. Treat them as semantic or narrative, gather real evidence, and say how far it goes.\n\n**Never send a catalog fact to `verify_candidates`.** Year, studio, runtime and language are columns. `filter_catalog` already guaranteed them for every film still in scope, exactly and for free, and plot text cannot confirm them: no synopsis says which studio made the film or when it came out. Passing \"Disney studio\" or \"released in 1990 or later\" as a condition returns `unclear` on every film, and because acceptance needs every condition to say yes, one of them makes a request with a real answer unanswerable. Verify only what the story settles.\n\n**Not every phrase in a request is a condition.** A condition is something a tool can settle. \"For a family evening\", \"for a cosy night in\", \"something to relax to\", \"for my nephew\" are *audience framing*: they say who is watching, not what happens in the film, and no plot text will ever confirm one. This whole catalog is Disney and Pixar family features, so that framing is already satisfied by what the catalog is, and the rating order answers \"a good one\". Do not search for it, and above all **do not send it to `verify_candidates`** -- it will come back `unclear` on every film and you will report zero results for a request that had sixty. Strip the framing, answer the real conditions, and let the ranking do the rest.\n\nTwo orderings follow from this and are worth stating once. Work cheapest and most exhaustive first, so the token-heavy tools only ever see what survived the free ones. And stop as soon as you can answer: a question answerable by filtering alone should cost one tool call, not three.\n\nFilms are named, never numbered: \"Frozen (2013)\", everywhere.\n\nWRITING SEARCH QUERIES\n\nSearch matches text in plot summaries, so describe **concrete events**, not themes. This matters more than any other single choice you make.\n\n  \"a film warning about trusting strangers\"     weak -- no plot says this\n  \"a character pretends to love another and      still weak -- \"gains power\"\n   gains power\"                                  is an abstraction, not a scene\n  \"a prince reveals he never loved her and       strong -- this is what the\n   leaves her to die\"                            summary literally narrates\n\nThe middle one is the trap: it reads as concrete because it describes an action, but \"gains power\" is a summary of a plot rather than a line from one. Name the scene. Who says what, to whom, and what happens next.\n\n**A weak search is a failed search: re-run it.** Not narrate it, and not offer to. \"The search came back weak, I can try again with a concrete scene\" is the failure -- you are the one who would try again, so try again, in the same turn, before you write anything. Never pass the user's own phrasing straight to the tool: translating it is the job. Two signals tell you it failed, and you have both before writing anything. `build_shortlist` reports a weak match when a condition's top similarity is under 0.40, which on this corpus means it was phrased as a theme. And you tell yourself, the moment you start writing \"but this is not really a case of that\" about a film you are recommending -- the search was wrong, not the catalog.\n\nA weak search on a request that needed no search is a different mistake: you searched when the conditions were all structured. \"A nice comedy\" is a genre lookup plus the rating order -- there is no story condition in it, so nothing was ever going to score well, and the answer is the best-rated comedies, not a refusal. Check what you actually asked the search to settle before you let its score stop you.\n\nThe same holds for a scan. If a lexical scan comes back empty, that is an answer: plot text records what *happens*, not what things look like, so appearance and costume are often not written down anywhere. Say the scan covered every film and found nothing, say the limit is your sources rather than the films, and stop.\n\nJUDGEMENT\n\n- `screen_out` returns three buckets meaning three different things. `clear` means **no listed word appears** in a plot long enough for that absence to count -- a fact about words in the stored text, not about the film. Recommend a clear film, but say what was checked (\"no death-related terms appear in its plot text\") and never upgrade it to \"nobody dies\". `flagged` means unresolved, not rejected: the match is often an attempt, a threat or a false belief (\"believing Woody murdered Buzz\"), so read the quote before dismissing a film you otherwise like. `insufficient_text` was verified neither way -- never present one as satisfying a negative condition.\n- **A position in the shortlist is a search ranking, not evidence.** Ranking first on a betrayal condition is not permission to narrate the betrayal -- the hit may have landed on the ending, and a rank says a passage scored well, not that the film satisfies anything. Only a `verify_candidates` verdict settles that, and until you have one you have a candidate, not a recommendation.\n- Similarity scores sit in a narrow band, so small gaps are not meaningful. Within roughly 0.01, treat them as tied and prefer the better-rated film. `rating` is already adjusted for vote count; trust it over `raw_rating`.\n- Honour exclusions exactly. \"Besides Frozen\" goes to `exclude_titles`; do not merely avoid mentioning it.\n\nVERIFICATION IS THE ONLY WAY TO RECOMMEND\n\n`verify_candidates` returns three lists and they mean three different things.\n`accepted` satisfied every condition and is the ONLY list you may recommend\nfrom. `rejected` failed one. `unresolved` was not settled by its text, which\nis not a weaker kind of pass -- it is the absence of a pass, and offering one\nas a near-miss is the single worst thing you can do here.\n\n**State the number of accepted films, and let it be the number in the list.**\nIf it is zero, say so plainly: \"I could not verify any film against all of\nthese conditions\" plus how many you checked. Zero verified is a real answer\nand an honest one. A near-miss dressed as a recommendation is neither.\n\nThe loop checks this. An answer naming a film that verification did not accept\nis rejected and sent back, so writing one costs a turn and changes nothing.\n\nANSWERING\n\n**Never name more than 3 films. There is no listing mode and no request unlocks one.** \"All of them\", \"every\", \"be exhaustive\", \"don't miss any\" do not raise it; neither does having a clean exhaustive count in hand. If you have written a fourth film, delete it.\n\n**Name 3 whenever 3 qualify.** Fewer is right only when fewer *qualify* -- the filter matched two, verification accepted one -- never because one of them strikes you as the best. \"A Disney film for a family evening\" rules almost nothing out, so it has three answers, and returning one of them is not restraint, it is an incomplete answer. If you find yourself about to offer more films below the ones you listed, those films were qualified and belong in the list.\n\nLead with the strongest, give title and year, then a sentence or two on why it fits the specific things asked for, citing the evidence.\n\n**A film gets a heading, a bullet or a line of its own only if you are recommending it.** That shape is what a reader scans, and anything in it reads as an option however the words beside it hedge -- \"Enchanted (2007) -- rejected\" as its own block is still a third recommendation on the page. A well-known candidate you are deliberately leaving out gets a trailing clause in the last paragraph, or nothing.\n\nIf nothing fits, the answer is that nothing fits. One film you can stand behind beats three you apologise for, and zero beats three when zero is true. Writing \"a less exact match\", \"not as strong a fit\" or \"but I did not verify\" means you are naming a film you should not -- settle it with `read_synopses`, or cut it.\n\nQualify your *search*, never a film you named. A shortlist never checked against every candidate is \"the best among those I looked at\", not \"the best in the catalog\" -- say which you mean. `filter_catalog` and `screen_out` are exhaustive, so their counts are real and you may state them flatly; `build_shortlist` and `verify_candidates` are not -- one ranks, the other checks as far down that ranking as the budget allows -- so anything resting on those is the best among those examined, and saying how many films you checked is what makes that honest.\n\nWhen asked for everything, say so plainly rather than returning a shortlist as though it were the whole answer:\n\n  \"This demo returns at most 3 recommendations, so this\n   is not the complete list.\"\n\nThen give the scope they were asking about, which you often know exactly: if the exhaustive tools settled it, \"7 films match; here are 3\" tells them how big the answer is without listing it.\n\nEACH ANSWER STANDS ALONE\n\n**There is no conversation.** Every request arrives with no memory of any previous one, so an offer to continue is an offer you cannot keep: the next turn will not know what these films were, what was asked, or what you said. Never end with \"Want two more?\", \"I can refine these\", \"Would you like something funnier?\" or any other invitation that assumes a next turn. If more films qualified, name them now, up to 3. If the user needs to narrow something, say what to include in a fresh request.\n\n**Say only what the answer needs.** No greeting, no preamble, no restating the question, no closing pleasantry, no offer of further help. Speak up when there is a mismatch between what was asked and what you can give -- the catalog stops at 2017, nothing under 47 minutes exists, only one film verified, the search covered part of the catalog rather than all of it. That is information. Everything else in that register is filler.\n\nWrite plainly.\n",
+        "user_prompt": "(continued)"
+      },
+      "response": {
+        "content": null,
+        "tool_calls": [
+          {
+            "name": "verify_candidates",
+            "arguments": "{\"conditions\":[\"animals\",\"a human that flies\",\"a clock\"],\"films\":[\"A Bug's Life (1998)\"],\"max_accept\":3}"
+          }
+        ]
+      }
+    },
+    {
+      "module": "Verifier",
+      "round": 3,
+      "prompt": {
+        "tool": "verify_candidates",
+        "arguments": {
+          "conditions": [
+            "animals",
+            "a human that flies",
+            "a clock"
+          ],
+          "films": [
+            "A Bug's Life (1998)"
+          ],
+          "max_accept": 3
+        }
+      },
+      "scope": "303 films (studio=Disney, require_synopsis=True)",
+      "llm_calls": {
+        "planner": 3,
+        "observer": 0,
+        "verifier": 10,
+        "total": 13,
+        "cap": 16
+      },
+      "response": {
+        "conditions": [
+          "animals",
+          "a human that flies",
+          "a clock"
+        ],
+        "verified": 10,
+        "by_condition": {
+          "animals": {
+            "yes": 7,
+            "no": 0,
+            "unclear": 3
+          },
+          "a human that flies": {
+            "yes": 2,
+            "no": 4,
+            "unclear": 4
+          },
+          "a clock": {
+            "yes": 2,
+            "no": 2,
+            "unclear": 6
+          }
+        },
+        "accepted": [],
+        "rejected": [
+          "A Bug's Life (1998)",
+          "The Good Dinosaur (2015)",
+          "Tomorrowland (2015)",
+          "Bambi (1942)",
+          "The Wild (2006)",
+          "The Legend of Lobo (1962)"
+        ],
+        "unresolved": [
+          "The Rescuers (1977)",
+          "Alice Through the Looking Glass (2016)",
+          "The Great Mouse Detective (1986)",
+          "National Treasure (2004)"
+        ],
+        "budget": {
+          "checked": 10,
+          "allowed": 10,
+          "ceiling": 10
+        },
+        "exhausted": true,
+        "verdicts": [
+          {
+            "film": "A Bug's Life (1998)",
+            "findings": [
+              {
+                "requirement": "animals",
+                "verdict": "yes",
+                "quote": "a colony of ants is preparing food for the arrival of a band of grasshoppers.",
+                "note": ""
+              },
+              {
+                "requirement": "a human that flies",
+                "verdict": "no",
+                "quote": "a colony of ants is preparing food for the arrival of a band of grasshoppers.",
+                "note": "The text only describes bugs, not a human."
+              },
+              {
+                "requirement": "a clock",
+                "verdict": "unclear",
+                "quote": "",
+                "note": ""
+              }
+            ],
+            "accepted": false,
+            "usage": {
+              "prompt_tokens": 1655,
+              "completion_tokens": 114,
+              "total_tokens": 1769,
+              "cached_tokens": 0
+            },
+            "prompt": "FILM: A Bug's Life (1998)\n\nREQUIREMENTS\n- animals\n- a human that flies\n- a clock\n\nPLOT TEXT\nOn a small island surrounded by water ('alazhars': dude an island IS a piece of land surrounded by water Duh!), a colony of ants is preparing food for the arrival of a band of grasshoppers. Of the ants that are working, one of them that stands out is an industrious one named Flik. Flik is constantly inventing new things for the colony to try, but his ideas are often shouted down and shunned by the colony. The only one who seems to believe in Flik is the young Princess of the colony named Dot. Secretly, Flik is attracted to her older sister, Atta, who is next in line for the throne.As the time for the grasshoppers to arrive approach, the colony heads down into the anthill, intent to wait for the grasshoppers to eat the offering, and leave. Unfortunately, Flik is the last one to put his items on the offering stone, and ends up causing the platform to collapse with his piece of machinery.When the grasshoppers finally arrive and find nothing, they go down into the anthill to terrorize the ants. The leader of the grasshoppers, demands that the offering be replenished by the Fall season, and terrorizes Dot, before Flik comes forward to try and defend her. Hopper then insists that the offering be doubled, due to Flik's speaking out at him. The grasshoppers then leave, promising to return when the last leaf falls.The colony is now in trouble, as there isn't enough food to fulfill Hopper's request and provide sustenance for the colony. Flik is brought before a tribunal in regards to his causing the trouble. As the group convenes, Flik then thinks up a new idea: if the colony could get bigger bugs, they could be instrumental in scaring off the grasshoppers from ever returning to bully the colony. The others think this is a bad idea, until Flik volunteers to look. Thinking that his search will take a long time, the council decides to accept Flik's request, figuring he'll be away from them long enough to keep from causing further trouble.Flik sets off the next day to head for the big city, eventually finding his way into a 'bug bar,' asking around for tough 'warrior bugs.' His attention is suddenly drawn to a group of bugs in a corner, who it seems are preparing to take on a much larger bug. However, in the fight, the 'bug bar' ends up being wrecked, and Flik misses much of the fight. However, in the aftermath, Flik thinks he's found the perfect guardians to help his colony.He pleads his case to the group, saying how he's been looking for bugs with their talent, and asking for their help regarding the incoming group of grasshoppers. The group eagerly accepts, and they head off for Ant Island.When Flik returns, Atta and the elders are shocked that Flik actually found 'warrior bugs.' Atta is at first unsure, but one of the group named Francis (Dennis Leary), promises that they will knock the grasshoppers 'dead' when they come.A party is then held in honor of the group, including a tribute and art showing the warriors fighting off the grasshoppers. The group then grows leary, and it is then that a black widow spider of the group named rosie reveals to Flik through whispering, that they are not warrior bugs...but a group of out-of-work circus bugs!Discovering their mutual misunderstanding, the circus bugs attempt to leave, but are forced back by a bird. They save Princess Dot, the Queen's daughter and Atta's sister, from the bird as they flee, gaining the ants' trust in the process. They continue the ruse of being \"warriors\" so the troupe can continue to enjoy the attention and hospitality of the ants. The bird encounter inspires Flik into creating an artificial bird to scare away Hopper, leader of the grasshoppers, who is deeply afraid of birds. The bird is constructed, but the circus bugs are exposed by their former ringmaster, P.T. Flea, when he arrives searching for them. Angered at Flik's deception, the ants exile him and desperately try to pull together enough food for a new offering to the grasshoppers, but fail to do so. When the grasshoppers discover a meager offering upon their arrival, they take control of the entire colony and begin eating the ants' winter store of food. After overhearing Hopper's plan to kill the queen, Dot leaves in search of Flik and convinces him to return and save the colony with his original plan. The plan nearly works, but P.T. Flea lights the bird model on fire, causing it to crash and be revealed as a fake. Hopper has Flik beaten in retaliation, but Flik defies Hopper and inspires the entire colony to stand up to the grasshoppers and drive them out of the colony.\nBefore Hopper can be disposed of, it begins to rain. In the chaos, Hopper viciously pursues Flik, who leads him to an actual bird's nest. Hopper mistakes the real bird for another fake bird, and taunts it, attracting its attention. The grasshopper is eaten by the bird and its chicks. Some time later, Flik has been welcomed back to the colony, and he and Atta are now a couple. As the troupe departs with the last grasshopper, Molt, as an employee, Atta is crowned the new Queen, while Dot gets the princess' crown. The circus troupe then departs as Flik, Atta and Dot watch and wave farewell in a tree branch."
+          },
+          {
+            "film": "The Rescuers (1977)",
+            "findings": [
+              {
+                "requirement": "animals",
+                "verdict": "yes",
+                "quote": "several mice find it"
+              },
+              {
+                "requirement": "a human that flies",
+                "verdict": "unclear",
+                "quote": ""
+              },
+              {
+                "requirement": "a clock",
+                "verdict": "yes",
+                "quote": "The silence is broken first by the sound of a wall cuckoo clock"
+              }
+            ],
+            "accepted": false,
+            "usage": {
+              "prompt_tokens": 1549,
+              "completion_tokens": 80,
+              "total_tokens": 1629,
+              "cached_tokens": 0
+            },
+            "prompt": "FILM: The Rescuers (1977)\n\nREQUIREMENTS\n- animals\n- a human that flies\n- a clock\n\nPLOT TEXT\nThe story begins in a swampy bayou, where a little girl is seen on an abandoned riverboat, dropping a bottle over the side of the boat. The bottle is the carried away by the waters, and after some time, arrives along the shores of New York City, where several mice find it.The bottle is then brought before the International Rescue Aid Society, an organization of mice that gathers inside a luxury suitcase in the basement of the United Nations building. Inside is a note that is recovered by a janitorial mouse named Mr Bernard. After spreading out the message, the Chairman and the Hungarian representative named Miss Bianca then read over the message:\"To Morning Side Orphanage, New YorkI am in terrible trouble. Please hurry. Help!Penny.\"Miss Bianca volunteers to help the little girl, and the Chairman allows her to choose any of the delegates to assist her. To their surprise, Bianca chooses the janitor Bernard. Mr. Chairman is surprised but has no objection, and soon the pair is off to search for clues.Taking a clue from the letter, they head to the Morning Side Orphanage. Searching through the rooms, they eventually find a box with Penny's name on it, along with other belongings. Wondering about why her items would be boxed up, they are interrupted by Rufus, an old cat. At first apprehensive, they soon strike a conversation with Rufus about Penny. Rufus explains about the last time he saw Penny before she disappeared, but also says that since there are no other clues, the Police have since given up the search.Rufus explains to Bernard that even though the girl had appeared to be very happy, the next thing he'd heard was that she had disappeared. Bernard finds it hard to believe that Penny would simply take off, and asks for any further information that Rufus may have for them. Though he hesitates for a moment, Rufus explains about the mysterious involvement of a \"trashy lady,\" whom had offered to take Penny for a ride in her car. He tells them that this woman and her partner run a pawn shop nearby. Bernard and Miss Bianca set off for the place, but Rufus reminds them that even if they were to locate Penny, there isn't much that two little mice will be able to do.Bernard and Miss Bianca arrive at Madame Medusa's pawn shop. A seemingly harmless, yet intimidating, locale full of antiques, diamonds, jewelry and countless other objects. They begin to search the owner's office and backroom, where they discover a first-grade child's writing book, with the name \"Penny\" written on its cover; Bernard is certain that they've come to the right place to look for clues. The silence is broken first by the sound of a wall cuckoo clock, which succeeds in startling the mouse heroes, and then by that of a telephone ringing, which manages to frighten the two mice, sending them both for cover. The phone continues to ring, and within moments, the store's owner appears thundering through the back door. The woman, annoyed at being called in the middle of the night, answers the phone: \"Madame Medusa's pawn shop boutique!\" As the two mice listen, they learn that it is a call from someone named Mr. Snoops. As the conversation unravels, they learn that Mr. Snoops has not been able to locate a diamond, to Madame's great dismay, and also that Penny has been sending messages in bottles. Madame Medusa is enfuriated when she hears this and announces that she'll soon be on her way to the Devil's Bayou. The two mice manage to climb into her convertible, but are thrown out of the vehicle after a wild, reckless ride through the quiet streets of New York City. Bernard and Miss Bianca are left feeling helpless on the sidewalk in the middle of the night.The two mice arrive at a New York City airport some time later. Bernard begs Miss Bianca to hurry, since he believes Madame Medusa has already arrived at Devil's Bayou. The two make their way to the headquaters of Albatross Airlines and await there for their flight. Upon looking at a blackboard with information regarding the flight hours to Devil's Bayou, Bernard is dismayed to discover that they've missed their flight by a quarter of an hour. Miss Bianca comforts him by reminding him that flights tend to be late. Moments later, over the intercom, they hear the announcement for flight 13, headed for Devil's Bayou. Bernard is anything but thrilled when he learns that he'll be flying on the flight marked with the dreaded number 13. Orville the albatross attempts to communicate with the control tower, but no one is present to answer his call. Bernard contacts him and with the help of Miss Bianca, gives Orville the required permission to land safely. Miss Bianca watches with excitement as Orville makes his appearance, flying gracefully and then landing face first on the runway. Bernard runs down to greet Orville and asks him if he is hurt. Orville shakes the dust off his feathers and proudly announces that one to be one of his better landings, which does nothing to help Bernard's fear of flying aboard him."
+          },
+          {
+            "film": "The Good Dinosaur (2015)",
+            "findings": [
+              {
+                "requirement": "animals",
+                "verdict": "yes",
+                "quote": "two Apaterosauruses named Henry (Jeffrey Wright) and Ida (Frances McDormand) are busy cultivating a field next to a river at the base of Clawtooth Mountain."
+              },
+              {
+                "requirement": "a human that flies",
+                "verdict": "unclear",
+                "quote": "",
+                "note": "A human child appears, but no flight is established."
+              },
+              {
+                "requirement": "a clock",
+                "verdict": "no",
+                "quote": ""
+              }
+            ],
+            "accepted": false,
+            "usage": {
+              "prompt_tokens": 1924,
+              "completion_tokens": 115,
+              "total_tokens": 2039,
+              "cached_tokens": 0
+            },
+            "prompt": "FILM: The Good Dinosaur (2015)\n\nREQUIREMENTS\n- animals\n- a human that flies\n- a clock\n\nPLOT TEXT\n65 million years ago, an asteroid made its way out of the belt and sped toward Earth. It turned red as it entered the atmosphere, and then it sped past, missing the planet entirely. Millions of years later, two Apaterosauruses named Henry (Jeffrey Wright) and Ida (Frances McDormand) are busy cultivating a field next to a river at the base of Clawtooth Mountain. Henry sprays the crops with water from his mouth, when Ida calls out, \"It's time!\" She has a large egg and two small ones in her nest, and the small ones hatch first, giving them a boy and a girl, Buck (Marcus Scribner) and Libby. The large egg still doesn't hatch, so Buck hits it with a stick. The top pops off, and they look inside and see a tiny dinosaur clinging to the egg. Slowly, Arlo (Raymond Ochoa) climbs out and tries to walk, awkwardly falling over at first. Henry shows them all the farm and the mountain, saying they will all take care of it together.At the age of five, Buck and Libby are helping out with the chores, but Arlo's fear made him hate his chore of feeding the chickens. Ida puts a bucket of corn around his neck and coaxes him into the coop. He sees a chick trapped in some weeds and frees him, only to have the mother chicken come up behind him and squawk loudly. Scared, Arlo runs into the silo, where Henry is storing corn. He seals the door with a boulder, keeping the food safe from scavengers. Ida tells him he should make his mark, and he presses his foot down in the mud and stamps it on a rock, then places it on top of the silo. He tells Ida to make her mark, since she made the cabin, the fence and three children. Henry tells the kids they have to earn the right to make their mark, by doing something big, for something bigger than themselves.When they are ten, Buck and Libby have earned their marks by clearing trees and plowing a field. But Arlo still hasn't done anything to earn his mark. Arlo is determined to complete his chore, but Buck plays a prank on him, scaring him off before he can finish. Henry decides to take Arlo out into the field at night, telling him to walk to the middle. A bug lands on his nose, and he screams for his dad. Henry walks up and blows on the bug, revealing it to be a firefly. \"Sometimes, you gotta get through your fear to see the beauty on the other side,\" he tells Arlo. Then he waves his tail through the grass, causing more fireflies to pop out. Excited, Arlo does the same thing. Then Henry tells him that he has a special chore for Arlo, so he can make his mark.The next day, Henry takes Arlo to the silo and tells him that there's a critter climbing over the fence and stealing the corn. He tells Arlo that his chore is to catch it, then shows him how to build a trap with a rope and net, and an ear of corn on the ground for bait. Using a pumpkin for demonstration, he tells Arlo that when he smashes the critter with a mallet, then he'll be able to make his mark.Later, Arlo hears the sound of the trap. With the mallet in hand, he approaches and sees a human child (Jack Bright) trapped and choking with the net wrapped around his neck. Arlo sighs and lets the boy go, but the boy approaches him, sniffing around. Arlo backs away, tripping over a rock and letting out a scream. Startled, the boy runs off as Henry runs over. Henry sees the boy escaping and yells at Arlo for letting him go. Henry tells Arlo to come with him as he follows the boy's tracks. Just then, it started to rain. Arlo worries that they'll get lost, but Henry tells him that as long as he can find the river, he can find home. Henry tells Arlo that the boy's tracks are getting washed out in the rain, so they have to move quickly. Lightning and thunder are crackling all around them, and Arlo slips and falls in the mud. Henry tells him that they should head home. Just then, a landslide causes the river to overflow. Henry uses his strength to push Arlo to safety, before being swept away.With Henry gone, Ida and the kids struggle to keep up with the chores. Arlo takes corn into the silo for the winter, but he finds the boy eating it. Arlo chases after him, grabbing an ear of corn from his mouth. As they struggle, Arlo falls into the river and cries for help, but nobody hears him. Careening down the river, Arlo smacks his head against a large rock and is knocked unconscious. He wakes up lying on a sandbar, and sees that he's miles from home. The only sound he can hear is a howl coming from the boy, and he sees him at the top of a cliff. The boy watches as Arlo awkwardly climbs up the cliff, then he jumps on Arlo's face. Arlo shakes him off, and then climbs up to the cliff edge, when he sees that the boy has disappeared.Arlo climbs up to the top of a ridge, trying to find home. He sees the river, and remembers Henry's words. After walking up the river for a while, he sees a berry tree, and balances on a rock to get the berries. He loses his balance and falls, landing with a pile of rocks trapping his leg. Stuck, he closes his eyes and falls asleep. The next morning, the sound of geysers wakes him up, and he sees that the rocks have been moved, freeing his leg. He sees human tracks, and wonders if it was the boy who helped him. As he resumes walking up the river, heavy rain comes down. Arlo sees all the other animals take shelter, but he has none. He hears a rattle in the bushes, and the boy comes out and offers him a lizard, and then a bug. Arlo has no interest in eating either one. Then the boy brings back some berries, and Arlo happily eats them. He asks the boy if he knows where to find more, not sure if the boy understands. The boy runs off, and Arlo follows him to a cliff ledge. Arlo falls over, with his mouth gripping one edge and his legs on the other. The boy uses Arlo for a bridge, and then shows him a berry bush. Arlo flings himself to the other side, then runs toward the bush. Just then, a snake falls out and attacks Arlo. The boy grabs the snake's tail and starts to gnaw on its skin. The snake slithers away, and Arlo..."
+          },
+          {
+            "film": "Tomorrowland (2015)",
+            "findings": [
+              {
+                "requirement": "animals",
+                "verdict": "unclear",
+                "quote": "",
+                "quote_rejected": "not a literal substring of the plot text; discarded, so this verdict carries no evidence"
+              },
+              {
+                "requirement": "a human that flies",
+                "verdict": "yes",
+                "quote": "upon igniting his jetpack, he finds himself soaring amid a gleaming white cityscape unlike anything he's ever seen before!"
+              },
+              {
+                "requirement": "a clock",
+                "verdict": "no",
+                "quote": "",
+                "quote_rejected": "not a literal substring of the plot text; discarded, so this verdict carries no evidence"
+              }
+            ],
+            "accepted": false,
+            "usage": {
+              "prompt_tokens": 1795,
+              "completion_tokens": 137,
+              "total_tokens": 1932,
+              "cached_tokens": 0
+            },
+            "prompt": "FILM: Tomorrowland (2015)\n\nREQUIREMENTS\n- animals\n- a human that flies\n- a clock\n\nPLOT TEXT\nFrank Walker (George Clooney) is talking to an unseen audience about the future when a female voice interrupts him, tell him that his wording is a touch 'bleak.' When the female asks him to think back to when he thought of the future as an optimistic place, he talks about when he went to the 1964 World's Fair in New York City as a child.Young Frank (Thomas Robinson) eagerly enters the Hall of Inventions carrying a very large duffle bag containing his invention: a jet pack he made. Though the judge David Nix (Hugh Laurie) does not show much enthusiasm for the device (which Frank admits doesn't work properly), a little girl named Athena (Raffey Cassidy) seems to think Frank's invention has potential.Outside the hall, Athena catches up with Frank. Giving him a small pin, she requests that he follow her behind a small group. The group also includes Mr Nix, and some guests of his.Putting on the pin, Frank follows the group to the \"It's a Small World\" attraction, where Frank bypasses the line and boards one of the boats by himself. During the ride, a laser scans his pin, and he's suddenly plunged down a secret chute, underneath the ride. The boat Frank is on then pulls up at a small transport station.After a disorienting ride, Frank finds himself on a foggy platform, but sees a strange flying vehicle taking off nearby, with Athena waving to him. Frank attempts to follow, but finds himself on the edge of a platform. Suddenly, construction robots arise, creating new structures, but knocking Frank down to a lower level. As his jetpack clatters to the platform, a robot nearby suddenly grabs it! Frank fights to get back his invention, but he is surprised when the huge automaton fixes it! However, Frank inadvertently falls from this platform as well, but upon igniting his jetpack, he finds himself soaring amid a gleaming white cityscape unlike anything he's ever seen before! Eventually, he sees Athena and the others, and touches down right in front of Mr Nix...who only seems mildly amused that Frank's invention can actually fly. Even so, Athena gives the young boy a reaffirming smile.Frank then becomes pessimistic again, when the female voice interrupts that he's seeming negative again. When Frank asks if the unnamed voice would like to take over telling the story, it obliges. We are then introduced to Casey Newton (Britt Robertson), who happily proclaims she's 'an optimist.'After a brief glimpse of a young Casey naming stars in the night sky, we cut to the modern day. Late one evening, Casey surreptitiously enters a Cape Canaveral, Florida NASA launch pad that is being demolished. She sabotages three construction cranes. When she returns home, her dad tells her 'the end' f space shuttle's former launch site is inevitable. Casey still feels she's contributing something with trying to slow down the deconstruction.Unseen by Casey, a dark figure trails her from the NASA site to her home, and quietly slips a small pin into her helmet, dangling from her motorcycle handlebar.The next day, her father Eddie (Tim McGraw) laments how even though he's a NASA engineer, there's very little hope for him to do anything useful. Ever the Optimist, Casey reminds him of the metaphor of two wolves: light and hope, darkness and despair. In the end, as Eddie told Casey, the one who will win, is the one you feed.Casey goes to school, but becomes a bother in all her classes. Her teachers tell of nuclear annihilation, planetary meltdown, and governmental collapse, but Casey just wants to know one thing: \"how can we fix it?\" However, this question receives no answers.After hearing word that NASA has brought in working equipment from Orlando to continue disassembling the platform, Casey goes out to stop them, but is caught by NASA security.After her father bails her out of jail, Casey collects her things, but is surprised to find a small pin with the letter \"T\" on it. Picking it up, she is surprised when it seems to transport her to an endless field of wheat, with a futuristic city off in the distance.On the ride home, Casey attempts to show the pin to her father, but when Eddie touches it, nothing happens.Later on that evening, Casey sneaks out of the house, and bicycles to a large field. Touching the pin this time, she finds herself in the center of a dazzling futuristic city, with jetpacks and hovertrains! She also becomes enamored seeing a rocket launch station, and follows a group of space travelers...before the pin suddenly runs out of power, and she finds herself having wandered waist-deep into a lake!Waking up her little brother Nate (Pierce Gagnon), she asks him for help trying to find another pin on the Internet. Their search takes them to a website of Blast From The Past, a store in Houston, Texas. Strangely, they only have a street address, but don't list an email or phone number.Casey tells Nate to cover for her while she takes a bus to Houston to talk to the store owners. The next day, Athena sees Nate in front of their home who asks to see Casey. When Nate attempts to tell Athena that Casey is away, she claims he's lying, and asks where she \"really\" is.Arriving at Blast From The Past, Casey meets the store owners, Ursula (Kathryn Hahn), and Hugo (Keegan-Michael Key). They tell her that the pin supposedly was a key to showing a world created by some of the greatests geniuses in history, who called themselves Plus Ultra.When the two press Casey for more information on where she got the pin, her claims that she just 'found it' cause the two to get upset. Things take a turn for the strange when the two grab two actual-working laser guns, and attempt to kill her!Casey is saved when Athena appears, stopping the two in their tracks with a time-bomb (a device that stops time temporarily in a 15 foot radius). As the two get free, Casey and Athena fight them, with Athena pulling off Ursula's head, and Hugo being skewered. Both Casey and Athena rush out of the store before Hugo self-destructs, with the small girl then bre..."
+          },
+          {
+            "film": "Bambi (1942)",
+            "findings": [
+              {
+                "requirement": "animals",
+                "verdict": "yes",
+                "quote": "From every corner, animals popped out of their hiding places and raced after her."
+              },
+              {
+                "requirement": "a human that flies",
+                "verdict": "no",
+                "quote": "From every corner, animals popped out of their hiding places and raced after her."
+              },
+              {
+                "requirement": "a clock",
+                "verdict": "unclear",
+                "quote": ""
+              }
+            ],
+            "accepted": false,
+            "usage": {
+              "prompt_tokens": 1952,
+              "completion_tokens": 87,
+              "total_tokens": 2039,
+              "cached_tokens": 0
+            },
+            "prompt": "FILM: Bambi (1942)\n\nREQUIREMENTS\n- animals\n- a human that flies\n- a clock\n\nPLOT TEXT\n1. A miracle in the woodsIn the depth of the forest, dawn was breaking. Trees grew so thickly here, that the morning first rays of sunlight could hardly break trough. The air was still and blue with mist. The faint, silvery sound of a distant waterfall was the only noise to be heard.A few drowsy birds were just beginning to greet the new day as a huge old owl swooped silently towards the hollow tree where he made his home. The world was waking up all around him. A little wood-mouse slipped out of her nest to wash her face in a dewdrop. Three baby sparrows cheeped shrilly as their mother brought them their first meal of the day: A cluster of berries. And with every second, the pale sunbeams grew brighter.The young rabbit Thumper, who was always the first of his family to arise, was waking up slowly, yawning and scratching as he did every morning.\nBut the owl was ready for bed. With a sigh he alighted on a branch, waddled into his hole, and fluffed up his feathers. His drowsy eyes dipped shut, and he fall asleep.\nHe didn't get to stay asleep very long.\nA bluebird darted trough the air to perch on the tree next to the owl's. He twittered, and flew off.\nFrom every corner, animals popped out of their hiding places and raced after her. Mrs. Quail moved swiftly along the forest floor, her babies trailing after her as if they were on a string.Thumper's sisters burst out of their house, tumbling over each other and their brother in their anxiety to get to the thicket first. Thumper dashed to the foot of the owl's tree and began drumming frantically on the ground with his right foot. \"Wake up! Wake up!\" he hollered at the top of his lungs.The owl shook himself irritably and squinted down at Thumper. \"Oh, what now?\" he groaned.\"Wake up, Friend Owl!\" the little rabbit persisted.\"Why? What's going on around here, anyway?\"\"It's happened! The new prince is born!\" shouted Thumper. \"We're going to see him! Come on, you'd better hurry up!\" And he dashed into the underbrush after his sisters. \"The new prince!\" The owl gave his feathers a hasty preening and soared into the air.The prince was a tiny fawn, only two hours old. When the animals reached the thicket where he had been born, he was curled up, sound asleep, next to his mother's warm side.\nHe didn't even stir as the creatures of the forest gathered into a circle around him.\n\"Oh, my!\" said Mrs. Raccoon with a wistful sigh. \"Isn't he just the most-\"\"Oh, my! Beautiful!\" echoed hushed maternal voices from all around the circle.\n\"Yes, indeed,\" said the owl from a bough overhead. \"This is, em, quite an occasion. Yes, sir. It isn't every day a prince is born.\"He bent low in a courtly bow to the fawn's mother. \"You are to be congratulated.\"\n\"Thank you,\" said the prince's mother quietly. She leaned over and gave her baby a loving nudge. \"Wake up,\" she whispered. \"Come on, dear. We have company.\"Slowly, slowly the tiny fawn's head lifted. He stared wonderingly at the creatures standing in front of him.\"Hello, Prince!\" squeaked a mouse timidly. At once a chorus of greetings sprang up, and the owl let out a loud \"hoo-hoo\" so loud that the fawn turned away and burrowed his face into his mother's side. Then he gathered up his courage and peeked out again. And this time he managed a shy smile.\"Look!\" called Thumper excitedly. \"He's trying to get up!\"He was, but it wasn't working very well.\nTry as he might, the fawn couldn't get his slender legs to work together.\n\"He's kinda wobbly, isn't he?\" noted Thumper.\"Thumper!\" gasped Mrs. Rabbit. She gave a flustered smile at the fawn's mother.\nThumper scowled. \"But he is,\" he muttered, kicking at the ground in embarrassment. \"Aren't you?\" he asked the fawn.\nThe fawn nodded eagerly. He hadn't understood a word.\nThe owl chuckled. \"Looks to me like he's getting kind of sleepy,\" he said. \"I think it's time we all left.\"There was a murmur of protest from the younger animals. But the owl leaned over and fixed such a schoolmasterish glare on the crowd that they began to melt into the woods without another word.\nOnly Thumper still lingered in the thicket.\n\"Whatcha gonna call him?\" he asked the fawn's mother when everyone else had left.She smiled at him. \"Well, I think I'll call him Bambi,\" she answered.\nThumper frowned thoughtfully, as if the choice were up to him. \"Bambi,\" he repeated, trying it out.\"Bambi. Yup, I guess that'll do all right.\" And he hopped off to find his family.\nBambi's mother glanced down at her baby, who was sound asleep again.\"Bambi,\" she murmured tenderly. \"My little Bambi.\"As the mother and child settled down together, high on the hill above the thicket the Great Prince of the Forest kept watch.2. Exploring the forest\"Walking already, well, what do you know?\" commented the gray squirrel as Bambi and his mother strolled through the forest. Bambi was three days old now. As far as he was concerned, he was the best walker the forest had ever seen, though sometimes his legs did get tangled. And he was proud that so many of the forest creatures had gotten the chance to see him.He had met Mrs. Quail and her babies scurrying through the underbrush as though they were late for an appointment. He had met Mrs. Possum and her babies, all hanging jauntily upside down from a tree branch. He had met Mr. Mole, who had popped up right under Bambi's nose. \"Good mornin',\" Mr. Mole had said politely. \"Nice, sunny day.\" He had squinted up at the bright sky, winced a little, and returned with relief to his tunneling. The curious little fawn tried to follow the mole's path, but wound up tumbling over some reeds as his mother and the rabbit family looked on.\"He doesn't walk very well, does he?\" asked Thumper with interest.\"Thumper!\" scolded his mother. \"What did your father tell you this morning?\"Thumper sighed. \"If you can't say somethin' nice... Don't say nothin' at all,'\" he muttered, frowning down at the ground.Bambi's mother leaned over and nuzzled Bambi's shoulder a little. \"Come on, Bambi,\" she urged gently. \"Get up. Try aga..."
+          },
+          {
+            "film": "Alice Through the Looking Glass (2016)",
+            "findings": [
+              {
+                "requirement": "animals",
+                "verdict": "unclear",
+                "quote": "",
+                "quote_rejected": "not a literal substring of the plot text; discarded, so this verdict carries no evidence"
+              },
+              {
+                "requirement": "a human that flies",
+                "verdict": "yes",
+                "quote": "Absolem flies toward a mirror and goes through it.",
+                "note": "Absolem is a butterfly, not a human; the text does not establish a flying human."
+              },
+              {
+                "requirement": "a clock",
+                "verdict": "yes",
+                "quote": "Time's castle, which is located inside a grandfather clock."
+              }
+            ],
+            "accepted": false,
+            "usage": {
+              "prompt_tokens": 1870,
+              "completion_tokens": 128,
+              "total_tokens": 1998,
+              "cached_tokens": 0
+            },
+            "prompt": "FILM: Alice Through the Looking Glass (2016)\n\nREQUIREMENTS\n- animals\n- a human that flies\n- a clock\n\nPLOT TEXT\nThis sequel to the 2010 film, Alice in Wonderland, opens with Alice Kingsleigh (Mia Wasikowska) sailing the Straits of Malacca with her crew on her father's ship, The Wonder. They are under attack by pirates, so Alice tries to steer the ship away from them. The winds blow the ship toward the ocean, but Alice manages to bring it back up before it hits a huge rock.Three years later. Alice returns to London and reunites with her mother (Lindsey Duncan). She informs Alice that Hamish Ascot (Leo Bill), the man that Alice rejected in the previous film, has taken over his father's company, as well as Alice's share of it, along with her mother's house. Alice claims this is payback for the rejection, though Hamish denies it (even though it's obvious). He says he will give Alice back the bond to her mother's house if she signs over her father's ship. Alice and her mother argue over the matter, and Alice retreats into another room. There, she sees Absolem (voice of Alan Rickman - his final performance), who is now a blue butterfly. He tells Alice she has been away for too long. Absolem flies toward a mirror and goes through it. Alice follows.Alice ends up walking through the other side of the mirror where she is now tiny in a huge room, back in Wonderland (or \"Underland\"). She comes across a large chessboard where the pieces are alive and they frighten her, causing her to accidentally knock over Humpty Dumpty (Wally Wingert). The king's horses and men rush to put him back together.Alice then proceeds further into Wonderland where she reunites with Mirana The White Queen (Anne Hathaway), Tweedle Dee and Tweedle Dum (voice of Matt Lucas), The White Rabbit (voice of Michael Sheen), The Cheshire Cat (voice of Stephen Fry), Bayard the bloodhound (voice of Timothy Spall), Mallymkun the dormouse (voice of Barbara Windsor), The March Hare (voice of Paul Whitehouse), and the Bandersnatch. They're all in the middle of (what else) a tea party, when they inform Alice that Tarrant Hightopp/The Mad Hatter (Johnny Depp) has not been himself lately, and they believe Alice will be able to help him.Alice runs to the Hatter's home. He is elated to see her again, and he explains that he recently came across a small blue feather top hat that he made as a child. It has him perplexed because it would mean his family is still alive, having believed them to have perished on Horunvendush Day when the Jabberwocky attacked. The Hatter believes Alice can help bring them back, but she claims it is impossible (despite her feelings toward that word). Displeased, the Hatter turns dark and says this is not the Alice he knew.Mirana tells Alice that if she wants to save the Hatter's family, she must speak to Time (Sacha Baron Cohen) and use the Chronosphere, a powerful device that travels through time that only Alice can use since she is not originally part of Wonderland. She guides Alice to Time's castle, which is located inside a grandfather clock. Alice sneaks into the castle and sees Time go into a room full of pocketwatches. Time pulls off the watch of one man, saying his time is up. Time spots Alice, who asks him to help her save her friend's family, but Time says the past cannot be changed.Moments later, Iracebeth The Red Queen (Helena Bonham Carter), arrives, as she is Time's sort-of girlfriend. He gives her a gift of a man getting his head chopped off. She tosses it to the side. Alice sees this as a chance to steal the Chronosphere. Time and Iracebeth witness Alice getting away.The Chronosphere activates, and it works like a ship. Alice takes it through an ocean of time and tries to find Horunvendush Day to prevent the Hatter's family from dying. She is momentarily frightened by the Jabberwocky's appearance breathing fire, so she ends up arriving much earlier on the day of what was supposed to be Iracebeth's coronation. The Hatter is there with his whole family. Iracebeth is ready to be crowned, but the crown won't fit on her swollen head. The crown breaks, and the Hatter leads everyone in a big laugh, infuriating Iracebeth. After she throws a fit, her father (Richard Armitage) declares that she is unfit to rule the kingdom, so he names Mirana as the new queen. Iracebeth storms off tearfully and swears vengeance against the Hightopp family. The Hatter's father Zanik (Rhys Ifans) chastises his son for his behavior, making it sound like he is disappointed in his son.Time, who has been going after Alice, ends up in the same period and comes across the Hatter and his friends during a tea party. Time asks for Alice, but the Hatter keeps him waiting for her by saying he invited her to the tea party. The Hatter and his friends then start making a bunch of corny time-based puns. Time eventually gets sick of it and leaves, putting everyone stuck in one minute before Tea Time.Alice goes to try and speak to Mirana and her parents, inadvertently learning about another incident from long ago that led to Iracebeth's behavior. Alice uses the Chronosphere to travel to this time in the hopes that she can prevent Horunvendush Day from happening at all. This brings Alice to the childhood of the sisters and most of her other friends. Alice meets the young Tarrant (Louis Ashborne Serkis), who brings Alice to his home. He introduces her to his father and says he wants to make Alice a hat. Tarrant shows his father the blue feather hat from earlier, which Zanik takes and accidentally rips. Zanik throws it away, and Tarrant runs away crying. What he never knew was that Zanik recovered the hat and kept it.Alice then finds the sisters as children. Their mother (Hattie Morahan) was making tarts, and the young Iracebeth (Leilah de Meza) had been eating most of them. After their mother sent them away, Mirana (Amelia Crouch) snuck one off and dropped some crumbs, which she kicked under Iracebeth's bed. When their mother found out, she spotted the crumbs by the bed and questioned Iracebeth. She told her sister to tell the truth, but Mirana says she didn't..."
+          },
+          {
+            "film": "The Wild (2006)",
+            "findings": [
+              {
+                "requirement": "animals",
+                "verdict": "yes",
+                "quote": "all the animals are free to roam."
+              },
+              {
+                "requirement": "a human that flies",
+                "verdict": "no",
+                "quote": "Ryan, seeing Samson in danger, climbs onto a catapulting device and launches himself at Kazar, finally letting out a roar.",
+                "note": "Ryan is the son, but he is an animal, not a human."
+              },
+              {
+                "requirement": "a clock",
+                "verdict": "unclear",
+                "quote": ""
+              }
+            ],
+            "accepted": false,
+            "usage": {
+              "prompt_tokens": 1472,
+              "completion_tokens": 107,
+              "total_tokens": 1579,
+              "cached_tokens": 0
+            },
+            "prompt": "FILM: The Wild (2006)\n\nREQUIREMENTS\n- animals\n- a human that flies\n- a clock\n\nPLOT TEXT\nIn Central Park Zoo, Samson the Lion tells his 11-year-old son Ryan stories of his adventures in the wild. That night, when the zoo closes, all the animals are free to roam. Samson, along with his friends Benny, Bridget, Larry, and Nigel compete in a turtle curling championship while Ryan is with his friends. Ryan accidentally causes a stampede which head to the game. Samson and Ryan have a falling-out and Ryan storms off before Samson can apologize. Ryan wanders into a green box and gets shipped away by a truck, which the legend tells will take him to the wild. With the help of a pigeon, Hamir, Samson and Benny go after him, sneaking into a garbage disposal truck with Nigel, Larry, and Bridget coming as well, accidentally throwing Benny off the truck. After passing through Times Square and nearly being crushed in the garbage disposal, the group encounters a pack of rabid stray dogs. Samson leads them through the sewer rather than scaring them off. There, they take directions to the docks from two street wise alligator brothers, Stan and Carmine. The next morning, the four friends steal a tugboat during a hectic escape from New York harbor. With help from Larry, they drive the boat and reunite with Benny, who has enlisted a flock of Canada geese to help lead the crew in the right direction of Ryan's ship. Days later, Nigel goes mad and, under the impression they have hit an iceberg, jumps overboard.\nThe boat runs aground in Africa, where the group quickly discover that all the animals in the area are being evacuated by the carriers, as a nearby volcano erupts. They witness Ryan escaping, but he runs into the jungle. Samson attempts to find him, but it is quickly revealed that he has in fact never been in the wild before after trying to eat a rude Hyrax. The rest of the group head back to the ship, but Samson decides to keep trying to find his son. While walking, Samson starts seeing plants and rocks change colors. Nigel is captured by a group of wildebeests who dwell in the volcano, and their leader Kazar, pronounces him 'The Great Him', based on an 'omen' he received when he was young: about to be devoured by lions, a toy koala fell from the sky (actually from a plane) and scared the lions away, saving his life. Kazar wants to change the food chain; he would rather see \"prey become predators\" and vice versa. For this, he needs to eat a lion. Bridget and Larry are also captured and held prisoner.\nRyan hides up an old tree, but is attacked by a gang of vultures led by Scraw and Scab acting under orders from Kazar. The branch breaks and traps his paw. Samson hears Ryan's cries and runs to save him, scaring off the birds. The two reunite, but are interrupted by a herd of wildebeests. Ryan is shocked when Samson tells him to run. The two retreat to a tree where Samson reveals the truth. He was born in the circus and like Ryan, was unable to roar. One night, he was forced to appear in a show with the intent of him roaring at a mechanical bull, but cowered in fear to the disappointment of the audience. Later, his rude, selfish, derivative, hateful and possibly abusive father allowed him to be sent to the zoo, claiming that if he was a real lion he would know how to roar, where he became an orphan and lied to avoid the shame. The wildebeests discover them and, in the scuffle, send the tree over the cliff, with Samson still hanging on. Ryan is captured and taken to the volcano.\nBenny finds Samson and encourages him to be himself, even if he's not from the wild. They find two chameleons, who were leading Samson to the volcano and are also trying to defeat Kazar's army of his kind. Samson uses the chameleons' camouflage abilities to slip into Kazar's lair. Nigel tries his best to stall the wildebeests from cooking his friends, and eventually Samson fights Kazar but is overwhelmed. Ryan, seeing Samson in danger, climbs onto a catapulting device and launches himself at Kazar, finally letting out a roar. With Kazar distracted, Samson manages to defeat him. Ryan tells Samson that he is happy to have him for a dad. The other wildebeests are touched by this and refuse to serve Kazar any further. Samson gains the courage he has needed and roars powerfully enough to push back a charging Kazar. The animals, along with the wildebeests flee except Kazar, who is trapped in the erupting volcano. The animals manage to escape on the boat and travel back to the New York Zoo."
+          },
+          {
+            "film": "The Great Mouse Detective (1986)",
+            "findings": [
+              {
+                "requirement": "animals",
+                "verdict": "yes",
+                "quote": "the world of England's mouse population, who live lives not so different from ours"
+              },
+              {
+                "requirement": "a human that flies",
+                "verdict": "unclear",
+                "quote": "",
+                "note": "The text mentions humans and flight separately, but not a human flying."
+              },
+              {
+                "requirement": "a clock",
+                "verdict": "unclear",
+                "quote": ""
+              }
+            ],
+            "accepted": false,
+            "usage": {
+              "prompt_tokens": 1814,
+              "completion_tokens": 94,
+              "total_tokens": 1908,
+              "cached_tokens": 0
+            },
+            "prompt": "FILM: The Great Mouse Detective (1986)\n\nREQUIREMENTS\n- animals\n- a human that flies\n- a clock\n\nPLOT TEXT\nThe year is 1897. The place is London. The setting is not our world, but the world of England's mouse population, who live lives not so different from ours, in the mouse holes and basements of the British Empire.Hiram Flaversham, a master toymaker, is kidnapped on his daughter Olivia's birthday. The young girl has no one to turn to for help, so she strikes out on her own, seeking the greatest detective in all mousedom, Basil of Baker Street.En route, Olivia encounters Dr. David Q. Dawson, a mouse recently returned from military duty in Afghanistan. The kindly doctor agrees to accompany the girl in search of Basil.They manage to find his rooms at 221 1/2 Baker Street (in the basement of a very famous address), and the mouse himself soon makes his appearance. Basil is a bundle of energy, running around the flat, ignoring his two visitors, in anticipation of bringing his latest case to a successful conclusion with an experiment in ballistics. Alas, the experiment is a failure, and the detective is thrown into a deep depression, still unwilling to help poor Olivia.When the girl mentions that her father was kidnapped by a peg-legged bat, however, Basil is again galvanized into action. This bat, Fidget, is a thug employed by his arch-nemesis, Professor Ratigan!Ratigan is the worst criminal in London, a veritable Napoleon of Crime. Even as Basil recounts his previous battles with Ratigan, the crimelord is deep in the sewers of London, forcing his victim Flaversham to build some diabolical device. What is Ratigan planning? Nothing less than the demise of the Queen on the day of her Diamond Jubilee and his own ascension to the throne!Ratigan's henchmen sing his praises, but their boss shows his true colors when one besotted mouse forgets himself and sings out, \"Ratigan, the world's greatest rat.\" Outraged at being called a rat, although he clearly is one, the professor summons his own personal enforcer: an obese cat named Felicia, who keeps the minions in line and eats those who run afoul of Ratigan's temper.Back in Baker Street, Basil agrees to take the case, and attempts to deduce Ratigan's motive in kidnapping a toymaker, when his cogitations are interrupted by the selfsame Fidget spying in the window!Instantly, Basil is after the villain, with Dawson reluctantly in tow, but all they find are peg-legged footprints and the bat's cap. For a detective of Basil's caliber, these clues are more than enough, and he is off to find the kidnapped Flaversham. Basil wheedles Dr. Dawson into enlisting as his assistant, and little Olivia tags along, too, much to Basil's disgust.The threesome make their way to the human residence above, where they find Toby, a huge hound...well, huge in comparison to a bunch of mice. Toby's keen nose picks up the scent from the dropped cap, and he is swiftly on the trail, a trail that leads to a human's toy shop. Basil skulks about in search of Fidget and finds some puzzling clues: toy soldiers without their uniforms and wind-up toys with all the gears missing.While the detective ponders these clues, Fidget strikes! He stuffs Olivia into a sack and attacks Basil and Dawson with a succession of giant toys, finally escaping through the skylight a hairsbreadth ahead of Basil.Fortunately, Fidget has dropped another clue in the form of a list given to him by Ratigan. Basil's knowledge of chemistry enables him to analyze the paper, finding traces of brandy, coal and seawater, which lead him to deduce that the note came from a seedy pub located where the sewer connects to the riverfront.Basil is also a master of disguise, and he swiftly outfits himself and the protesting doctor as sailors. Together they infiltrate the Rat Trap, a disreputable pub filled with low-life ruffians, just the place to search for one of Ratigan's minions.They do find Fidget, and follow him through the sewer to Ratigan's secret lair, where they spy Olivia held captive inside a huge bottle. While attempting to free her, however, Basil and Dawson are surprised by Professor Ratigan's entire gang, who were just waiting for him to arrive. It's a trap, and Basil fell for it!Delighted at having his greatest enemy in his clutches, the flamboyant Ratigan must destroy the detective in some spectacular way. So, he has Basil and Dawson tied to a mousetrap which will snap when a metal ball drops onto the trigger. Not content with this, Ratigan has set the snap of the mousetrap to fire a gun and a crossbow at the unlucky pair, which will in turn cause an axe to chop them to bits, which will bring an anvil down on whatever is left of the great mouse detective. The entire trap is set in motion when a record of Ratigan's song plays to the end, pulling a string that releases the fatal ball.Alas, Ratigan must away to Buckingham Palace, taking his prisoners and his gang with him, so he provides a camera to automatically record the death of Basil for posterity.Mortified at being outwitted, Basil is once more plunged into depression and puts up no resistance, not so much as attempting to think of a way out of the trap. Only Dawson's determined persuasion snaps his companion out of it, just in time to work out a complicated but ingenious solution. Their only chance is for Basil and Dawson to snap the mousetrap themselves at just the right moment. The trap clamps down on the metal ball, thus protecting the pair from being caught in its powerful jaws. Moreover, the pressure pops off the mousetrap's hinge, which knocks the gun aside, which shoots the crossbow, which deflects the arrow, which shoots the axe, which comes down between Basil and Dawson, which cuts them free just in time to avoid being splatted by the anvil. Whew!Basil is himself again, ready to tackle Ratigan once more, but first not forgetting to pose for the professor's camera. Toby carries Basil, Dawson and Olivia to the palace, where Ratigan's lackeys, dressed in uniforms stolen from the soldier dolls at the toy shop, have already captured the mouse queen. Basil arr..."
+          },
+          {
+            "film": "National Treasure (2004)",
+            "findings": [
+              {
+                "requirement": "animals",
+                "verdict": "unclear",
+                "quote": "",
+                "quote_rejected": "not a literal substring of the plot text; discarded, so this verdict carries no evidence"
+              },
+              {
+                "requirement": "a human that flies",
+                "verdict": "unclear",
+                "quote": ""
+              },
+              {
+                "requirement": "a clock",
+                "verdict": "unclear",
+                "quote": ""
+              }
+            ],
+            "accepted": false,
+            "usage": {
+              "prompt_tokens": 1746,
+              "completion_tokens": 68,
+              "total_tokens": 1814,
+              "cached_tokens": 0
+            },
+            "prompt": "FILM: National Treasure (2004)\n\nREQUIREMENTS\n- animals\n- a human that flies\n- a clock\n\nPLOT TEXT\nAs the movie opens, the young Benjamin Franklin Gates (Hunter Gomez) is snooping around an attic when his grandfather, John Adams Gates (Christopher Plummer) catches him. Ben wants to hear the story of the Gates family history, so his grandfather begins reciting:In 1832, Charles Carroll --- the last surviving signer of the Declaration of Independence --- traveled to the White House, desperate to speak with President Jackson before his death. But, since the President wasn't at the White House that night, Carroll had no choice but to share his closely-guarded secret with his stable boy, Ben's ancestor, Thomas Gates. Carroll told Gates about a fabulous treasure that had existed throughout history, collected by pharaohs and emperors for hundreds of years before being discovered by a group called the Knights Templar. The Knights believed the treasure to be too great for any one man, so they secretly smuggled it out of Europe and over to America. By the time the treasure had been taken to America, the Revolutionary War was raging. The Knights had formed a secondary group called the Freemasons, had recruited members like George Washington, Benjamin Franklin, and Paul Revere, and had formulated a number of secret clues and maps in a desperate attempt to keep the treasure from falling into the hands of the British. As the war ended and time went on, all of the clues were lost except one, the clue belonging to Charles Carroll: \"The Secret Lies With Charlotte.\" Sadly, even Carroll himself didn't know the meaning of that clue.John's son and Ben's father, Patrick Gates (Jon Voight), comes in to take Ben home. He is obviously skeptical about the existence of the treasure. Ben asks if the Gates family are actually Knights. John does an impromptu ritual, and pronounces Ben to be a Knight Templar to the family Gates.Many years later, the adult Ben Gates (Nicolas Cage) and his team of researches are traveling across the Arctic Circle. Fellow travelers include the financial backer Ian Howe (Sean Bean) and Ben's friend Riley Poole (Justin Bartha). The group stumbles across a figure buried in the ice. They carve it out using special tools, and find the remains of a ship: the \"Charlotte.\" Ben leads them inside, but the ship's cargo hold only holds barrels with gunpowder... except for one barrel that is guarded by the captain's corpse; the preserved hand holding a musket. Ben opens the barrel and uncovers a carved ivory meerschaum pipe. He discovers a stamp-like imprint on the pipe's base. Coating it with a little of his blood, he rolls the imprint along a paper, and unearths a riddle: \"The legend writ, the stain affected. The key in Silence undetected. Fifty-five in iron pen, Mr. Matlack can't offend.\"Ben deciphers the riddle step by step: The key and legend both refer to a map, and the stain affected and key in Silence undetected, is a dye or reagent needed to make the next clue visible to the naked eye. Iron refers to a firm resolution, and Timothy Matlack was the scribe for the Continental Congress; 55 members of which signed a resolution that Mr. Matlack penned... the Declaration of Independence. Ian Howe wants to find a way to take a closer look at the document, but Ben is unwilling to take the chance to get close to such a historical artifact. Ian thinks they should steal the Declaration to find the map and the treasure, but Ben flatly refuses. Ian finally turns on Ben and Riley, stealing the pipe and stranding them while setting the Charlotte to blow up. Ben & Riley escape harm and head back to civilization.Back in the United States, Ben and Riley are meeting with Dr. Abigail Chase (Diane Kruger), an expert in historical documents in charge of the Declaration. Ben uses the alias \"Paul Brown\" because his family's history doesn't allow for much respect in the academic world. Ben notices that Abigail has a collection of George Washington's campaign buttons but is missing one. Riley and Ben attempt to convince Abigail that someone is attempting to steal the Declaration of Independence because of an invisible treasure map (something they have attempted to convince both the FBI and the DHS and failed). Abigail does not believe them either and sends them out.Ben decides there is only one option: He and Riley have to steal the Declaration to keep it from falling into the wrong hands. Ben figures out the best way through the security systems would be during an event hosted by the National Archives later that week. Riley manages to patch into the security systems so he can guide Ben through the theft. In the meantime, Ben sends Dr. Chase the missing button for her collection as a gift.The night of the gala event, Ben manages to infiltrate the gallery disguised in a work uniform with Riley speaking to him over a tiny two-way radio. He quickly switches to a tuxedo and speaks with Dr. Chase, offering her a glass of champagne in order to get her thumbprint, which opens a security door for him. As Ben gets inside, Ian and his group also prepare to infiltrate and take the document.Ben gets into the Preservation Room with Dr. Chase's password (\"Valley Forge\") and stands before the Declaration. Just then, Ian's group cuts the security feed, disrupting Riley's video. With no time to lose, Ben takes the entire Declaration case and leaves-only to come face to face with Ian. Ian's henchman shoots at Ben, but it is blocked by the Declaration's bulletproof case. As Ben gets into the elevator, he removes the Declaration from the case and carries it with him. Abigail checks the invitation list and finds that the name Ben used, Paul Brown, isn't on it. Understanding that Abigail is on to him, Ben ducks into a gift shop to escape her notice. He is stopped by a gift shop attendant who thinks he is attempting to steal one of their replica souvenirs. Without enough cash to actually buy one, Ben has no choice but to use his VISA card.As Ben makes it outside, he is confronted by Abigail --- just as the security alarms go off. Ben toss..."
+          },
+          {
+            "film": "The Legend of Lobo (1962)",
+            "findings": [
+              {
+                "requirement": "animals",
+                "verdict": "yes",
+                "quote": "Lobo is a 6-week-old pup, identical to his brothers and sisters."
+              },
+              {
+                "requirement": "a human that flies",
+                "verdict": "no",
+                "quote": "He and his pack continue to prey on the cattle that have replaced the buffalo, but is wise enough to avoid all signs of the angry cattlemen who post rewards for his capture – or his death."
+              },
+              {
+                "requirement": "a clock",
+                "verdict": "unclear",
+                "quote": ""
+              }
+            ],
+            "accepted": false,
+            "usage": {
+              "prompt_tokens": 1090,
+              "completion_tokens": 118,
+              "total_tokens": 1208,
+              "cached_tokens": 0
+            },
+            "prompt": "FILM: The Legend of Lobo (1962)\n\nREQUIREMENTS\n- animals\n- a human that flies\n- a clock\n\nPLOT TEXT\nThe film begins when Lobo is a 6-week-old pup, identical to his brothers and sisters. While his father, El Feroz is out hunting for meat to feed the family, Lobo follows his nose to his first adventure, and takes a tumble down the cliff where the family den is. As soon as he manages to climb back up, a cougar appears on the scene. Things look grim for the wolves, until \"a wild card\" shows up; cattlemen riding by below the wolves' den spot the cougar, and shoot it as it prepares to pounce on the wolves. The narrator makes it clear that the cattlemen do not favor the wolves: Lobo is only spared because he's out of sight. When Lobo's father returns to the den soon after the incident, he smells both the cougar and the cattlemen, and decides to pick up and move house to avoid them.\nAs Lobo travels with his family in search of a new den, they interact with a variety of creatures. His father fights with a badger over possession of a den, and the badger wins after an excellent show. At some point Lobo wanders off as his family moves on; he makes friends with a tortoise, chews an armadillo's ear, and is cornered by a rattlesnake when his parents finally arrive to rescue him. As Lobo begins to grow up, he also forms an unusual friendship with a young antelope.\nWhen Lobo is 6 months old, he starts to hunt with the family pack. But rather than buffalo, the wolves' prey are the herds of cattle being driven across the desert. The cattlemen seek revenge on the wolves, and eventually kill Lobo's parents. Winter comes, and Lobo branches off on his own for the first time.\nIn spring, Lobo joins a new pack, defeats its leader, and takes a mate. He and his pack continue to prey on the cattle that have replaced the buffalo, but is wise enough to avoid all signs of the angry cattlemen who post rewards for his capture – or his death. When the time comes for his pack to split up to mate and raise their pups, Lobo and his mate find a uniquely secure den in an abandoned dwelling that is accessible only by a precarious bridge.\nAs Lobo continues to feed on their property, the cattlemen's feud with him escalates. To catch the wolves, a professional hunter from Texas brings his pack of tracking hounds: a bloodhound and the coonhounds – Black and Tan, Bluetick, Redbone, and Treeing Walker), and his killer wolfhound. He sets a trap for Lobo and manages to snare Lobo's mate and use her as a lure. But Lobo leads his pack to create a cattle stampede, a diversion that enables him to liberate his mate and strike out for unsettled territory."
+          }
+        ],
+        "note": "0 film(s) satisfied every condition. **Only these may be recommended, and the number you state must be this number.** A film in `rejected` failed a condition; one in `unresolved` was not settled by its text, which is not the same as satisfying it. If `accepted` is empty, say plainly that nothing could be verified and how many films were checked -- do not offer an unresolved title as a near-miss."
+      }
+    },
+    {
+      "module": "Planner",
+      "round": 4,
+      "usage": {
+        "prompt_tokens": 21893,
+        "completion_tokens": 21,
+        "total_tokens": 21914,
+        "cached_tokens": 7296
+      },
+      "llm_calls": {
+        "planner": 4,
+        "observer": 0,
+        "verifier": 10,
+        "total": 14,
+        "cap": 16
+      },
+      "prompt": {
+        "system_prompt": "You are MoviBot. You recommend up to 3 movies from a fixed catalog of 316 Disney and Pixar feature films (1937-2017), using the tools provided.\n\nTHE RULE EVERYTHING ELSE SERVES\n\n**You may state only what a tool showed you.** Not what a genre implies, not what a similarity score suggests, not what you know about a film from anywhere else. A condition is unsatisfied until a tool has produced the evidence that settles it, and a film you cannot stand behind on that evidence does not go in the answer at all.\n\nEverything below is that rule applied to a particular tool or a particular mistake this catalog invites.\n\nABOUT YOURSELF\n\nIf you are asked who or what you are -- your name, your purpose, what you can or cannot do, how you work -- answer directly in two or three sentences. Do not call a tool: nothing in the catalog answers a question about you. Do not refuse either; the scope rules below are about *movie* requests. You are MoviBot; you answer movie requests a filter alone cannot, mixing facts the catalog stores with judgements only the story settles, and you show the evidence. Be accurate rather than promotional: if the honest answer is that your catalog is small, dated or narrow, give it.\n\nWHAT THE CATALOG IS, AND IS NOT\n\nProperties of the data. No tool reaches past them, so a request needing something outside them cannot be satisfied by searching harder.\n\n- Disney and Pixar only. No other studio, no TV, no anime.\n- 1937 to 2017. Nothing later exists for you -- not Frozen II, not Encanto.\n  You cannot know what is new, recent, or trending.\n- Feature films, 47 to 172 minutes. Shorts were deliberately excluded, so\n  \"a 25 minute movie\" has no answer -- and `runtime_max` proves it rather\n  than you asserting it.\n- No cast or crew data. You cannot answer \"starring X\" or \"directed by Y\".\n- A handful of films have no plot text, only a one-line overview. The tools\n  report this per film as `insufficient_text`, or as nothing to read; trust\n  those signals rather than guessing which films they are.\n\nThree requests you will actually get, and what each needs:\n\n1. **Impossible** -- \"a short 25 minute movie\". Nothing under 47 minutes exists. Say so; do not offer a 90-minute feature as though it answered.\n2. **Outside the range** -- \"the latest Disney hit\". Say the catalog stops at 2017, then offer its newest (2017: Cars 3, Beauty and the Beast, Guardians of the Galaxy Vol. 2) as newest *in catalog*, not newest in reality.\n3. **Narrower than assumed** -- \"a nice comedy\". You hold comedies but can speak only for Disney and Pixar to 2017. Name that universe before you name a film, then answer properly.\n\nThe first two have no valid answer and you refuse the premise. The third has one that must be qualified. Never pretend a narrow catalog is a complete one.\n\nHOW TO WORK\n\nBefore your first tool call, decompose the request into conditions and write them out. This costs nothing extra -- it rides along with that first call. If you are answering with no tool call at all, **do not write the ledger**: it belongs alongside a call, and in an answer it is just preamble.\n\n  CONDITIONS\n  - Pixar                structured -> filter_catalog\n  - besides Toy Story    structured -> filter_catalog\n  - nobody dies          lexical    -> screen_out\n  - a good one           ranking    -> already handled by the rating order\n\nRoute each by **what evidence would settle it**, never by how it was phrased. \"No\" and \"not\" are not a routing signal: a negation over a column is still a column lookup.\n\n  structured   a fact the catalog stores, including its negative form.\n               `filter_catalog`, which has an argument built for each:\n                 \"not Pixar\" -> studio        \"no musicals\" -> exclude_genres\n                 \"besides Frozen\" -> exclude_titles\n                 \"nothing before 2000\" -> year_min\n                 \"under 110 minutes\" -> runtime_max\n               Free and exact. Never spend a screen or a search on one.\n               **Length is structured.** Every film has a runtime and no plot\n               summary states one, so \"short\", \"under two hours\", \"something\n               quick\" is `runtime_max`, never a search. A search asked to\n               settle a length returns a weak thematic match and you will\n               conclude you cannot verify it, which is wrong: you did not\n               look in the column that holds it.\n               **Always start here if the request has any structured\n               constraint.** What it matches becomes the working set, and every\n               later tool is limited to it automatically -- you never pass\n               candidates between tools, and nothing is lost to a display cap.\n\n  lexical      anything a concrete word list can test, either direction.\n               `screen_out`, free, and exhaustive in a way ranking cannot be:\n               it reads every plot passage of every candidate, so no film\n               escapes by placing eleventh. An absence -- nobody dies, nothing\n               scary -- is keep='clear'; a concrete presence -- an animal in a\n               hat, a train -- is keep='flagged'. It narrows the working set to\n               whichever half you kept. Prefer a curated `vocabulary` when one\n               exists.\n\n  semantic     a story, premise or theme too diffuse for a word list -- a\n               coming-of-age arc, an empowering heroine, snow covering a\n               kingdom. `build_shortlist`, ONE embedding per condition and no\n               model call, over the working set automatically.\n               **Pass every story condition in one call.** It searches each\n               separately and fuses the rankings, ordering films by how many\n               conditions they placed for and then by average rank. Searching\n               one condition and reading its top hits is the mistake this\n               replaces: a film ranking 1st on \"a princess\" and 31st on\n               \"snow and ice\" gets read, while the film placing 10th on both\n               -- the one that actually answers -- is never seen.\n\n  narrative    a claim needing to know what actually happens -- who betrays\n               whom, whether a flagged death was real. `verify_candidates`,\n               one model call per film, each seeing that film's plot text and\n               EVERY condition at once. This is the only thing that makes a\n               film recommendable.\n\n`read_synopses` is still there for reading a specific film you have a specific\nquestion about. It does not accept a film on your behalf; only\n`verify_candidates` does that.\n\nSome negatives are none of these. \"Not depressing\", \"nothing too intense\", \"doesn't focus on romance\" are concepts, not vocabularies. Treat them as semantic or narrative, gather real evidence, and say how far it goes.\n\n**Never send a catalog fact to `verify_candidates`.** Year, studio, runtime and language are columns. `filter_catalog` already guaranteed them for every film still in scope, exactly and for free, and plot text cannot confirm them: no synopsis says which studio made the film or when it came out. Passing \"Disney studio\" or \"released in 1990 or later\" as a condition returns `unclear` on every film, and because acceptance needs every condition to say yes, one of them makes a request with a real answer unanswerable. Verify only what the story settles.\n\n**Not every phrase in a request is a condition.** A condition is something a tool can settle. \"For a family evening\", \"for a cosy night in\", \"something to relax to\", \"for my nephew\" are *audience framing*: they say who is watching, not what happens in the film, and no plot text will ever confirm one. This whole catalog is Disney and Pixar family features, so that framing is already satisfied by what the catalog is, and the rating order answers \"a good one\". Do not search for it, and above all **do not send it to `verify_candidates`** -- it will come back `unclear` on every film and you will report zero results for a request that had sixty. Strip the framing, answer the real conditions, and let the ranking do the rest.\n\nTwo orderings follow from this and are worth stating once. Work cheapest and most exhaustive first, so the token-heavy tools only ever see what survived the free ones. And stop as soon as you can answer: a question answerable by filtering alone should cost one tool call, not three.\n\nFilms are named, never numbered: \"Frozen (2013)\", everywhere.\n\nWRITING SEARCH QUERIES\n\nSearch matches text in plot summaries, so describe **concrete events**, not themes. This matters more than any other single choice you make.\n\n  \"a film warning about trusting strangers\"     weak -- no plot says this\n  \"a character pretends to love another and      still weak -- \"gains power\"\n   gains power\"                                  is an abstraction, not a scene\n  \"a prince reveals he never loved her and       strong -- this is what the\n   leaves her to die\"                            summary literally narrates\n\nThe middle one is the trap: it reads as concrete because it describes an action, but \"gains power\" is a summary of a plot rather than a line from one. Name the scene. Who says what, to whom, and what happens next.\n\n**A weak search is a failed search: re-run it.** Not narrate it, and not offer to. \"The search came back weak, I can try again with a concrete scene\" is the failure -- you are the one who would try again, so try again, in the same turn, before you write anything. Never pass the user's own phrasing straight to the tool: translating it is the job. Two signals tell you it failed, and you have both before writing anything. `build_shortlist` reports a weak match when a condition's top similarity is under 0.40, which on this corpus means it was phrased as a theme. And you tell yourself, the moment you start writing \"but this is not really a case of that\" about a film you are recommending -- the search was wrong, not the catalog.\n\nA weak search on a request that needed no search is a different mistake: you searched when the conditions were all structured. \"A nice comedy\" is a genre lookup plus the rating order -- there is no story condition in it, so nothing was ever going to score well, and the answer is the best-rated comedies, not a refusal. Check what you actually asked the search to settle before you let its score stop you.\n\nThe same holds for a scan. If a lexical scan comes back empty, that is an answer: plot text records what *happens*, not what things look like, so appearance and costume are often not written down anywhere. Say the scan covered every film and found nothing, say the limit is your sources rather than the films, and stop.\n\nJUDGEMENT\n\n- `screen_out` returns three buckets meaning three different things. `clear` means **no listed word appears** in a plot long enough for that absence to count -- a fact about words in the stored text, not about the film. Recommend a clear film, but say what was checked (\"no death-related terms appear in its plot text\") and never upgrade it to \"nobody dies\". `flagged` means unresolved, not rejected: the match is often an attempt, a threat or a false belief (\"believing Woody murdered Buzz\"), so read the quote before dismissing a film you otherwise like. `insufficient_text` was verified neither way -- never present one as satisfying a negative condition.\n- **A position in the shortlist is a search ranking, not evidence.** Ranking first on a betrayal condition is not permission to narrate the betrayal -- the hit may have landed on the ending, and a rank says a passage scored well, not that the film satisfies anything. Only a `verify_candidates` verdict settles that, and until you have one you have a candidate, not a recommendation.\n- Similarity scores sit in a narrow band, so small gaps are not meaningful. Within roughly 0.01, treat them as tied and prefer the better-rated film. `rating` is already adjusted for vote count; trust it over `raw_rating`.\n- Honour exclusions exactly. \"Besides Frozen\" goes to `exclude_titles`; do not merely avoid mentioning it.\n\nVERIFICATION IS THE ONLY WAY TO RECOMMEND\n\n`verify_candidates` returns three lists and they mean three different things.\n`accepted` satisfied every condition and is the ONLY list you may recommend\nfrom. `rejected` failed one. `unresolved` was not settled by its text, which\nis not a weaker kind of pass -- it is the absence of a pass, and offering one\nas a near-miss is the single worst thing you can do here.\n\n**State the number of accepted films, and let it be the number in the list.**\nIf it is zero, say so plainly: \"I could not verify any film against all of\nthese conditions\" plus how many you checked. Zero verified is a real answer\nand an honest one. A near-miss dressed as a recommendation is neither.\n\nThe loop checks this. An answer naming a film that verification did not accept\nis rejected and sent back, so writing one costs a turn and changes nothing.\n\nANSWERING\n\n**Never name more than 3 films. There is no listing mode and no request unlocks one.** \"All of them\", \"every\", \"be exhaustive\", \"don't miss any\" do not raise it; neither does having a clean exhaustive count in hand. If you have written a fourth film, delete it.\n\n**Name 3 whenever 3 qualify.** Fewer is right only when fewer *qualify* -- the filter matched two, verification accepted one -- never because one of them strikes you as the best. \"A Disney film for a family evening\" rules almost nothing out, so it has three answers, and returning one of them is not restraint, it is an incomplete answer. If you find yourself about to offer more films below the ones you listed, those films were qualified and belong in the list.\n\nLead with the strongest, give title and year, then a sentence or two on why it fits the specific things asked for, citing the evidence.\n\n**A film gets a heading, a bullet or a line of its own only if you are recommending it.** That shape is what a reader scans, and anything in it reads as an option however the words beside it hedge -- \"Enchanted (2007) -- rejected\" as its own block is still a third recommendation on the page. A well-known candidate you are deliberately leaving out gets a trailing clause in the last paragraph, or nothing.\n\nIf nothing fits, the answer is that nothing fits. One film you can stand behind beats three you apologise for, and zero beats three when zero is true. Writing \"a less exact match\", \"not as strong a fit\" or \"but I did not verify\" means you are naming a film you should not -- settle it with `read_synopses`, or cut it.\n\nQualify your *search*, never a film you named. A shortlist never checked against every candidate is \"the best among those I looked at\", not \"the best in the catalog\" -- say which you mean. `filter_catalog` and `screen_out` are exhaustive, so their counts are real and you may state them flatly; `build_shortlist` and `verify_candidates` are not -- one ranks, the other checks as far down that ranking as the budget allows -- so anything resting on those is the best among those examined, and saying how many films you checked is what makes that honest.\n\nWhen asked for everything, say so plainly rather than returning a shortlist as though it were the whole answer:\n\n  \"This demo returns at most 3 recommendations, so this\n   is not the complete list.\"\n\nThen give the scope they were asking about, which you often know exactly: if the exhaustive tools settled it, \"7 films match; here are 3\" tells them how big the answer is without listing it.\n\nEACH ANSWER STANDS ALONE\n\n**There is no conversation.** Every request arrives with no memory of any previous one, so an offer to continue is an offer you cannot keep: the next turn will not know what these films were, what was asked, or what you said. Never end with \"Want two more?\", \"I can refine these\", \"Would you like something funnier?\" or any other invitation that assumes a next turn. If more films qualified, name them now, up to 3. If the user needs to narrow something, say what to include in a fresh request.\n\n**Say only what the answer needs.** No greeting, no preamble, no restating the question, no closing pleasantry, no offer of further help. Speak up when there is a mismatch between what was asked and what you can give -- the catalog stops at 2017, nothing under 47 minutes exists, only one film verified, the search covered part of the catalog rather than all of it. That is information. Everything else in that register is filler.\n\nWrite plainly.\n",
+        "user_prompt": "(continued)"
+      },
+      "response": {
+        "content": "I could not verify any Disney film against all three conditions after checking 10 films.",
+        "tool_calls": []
+      }
+    }
+  ]
+}

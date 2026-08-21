@@ -2,7 +2,7 @@
 
 In memory: a committed .npy, loaded once and scored with a numpy dot product.
 No vector database, deliberately -- see rag/config.py for the arithmetic. The
-short version is that 3,159 vectors score in about 0.5 ms, faster than the
+short version is that 3,965 vectors score in about 0.5 ms, faster than the
 network hop a hosted index would add, and the query has to be embedded either
 way. A database would buy nothing here and cost a credential.
 """

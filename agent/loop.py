@@ -57,7 +57,7 @@ MAX_ROUNDS = 5
 #
 # One Observer call adjudicates a whole read, up to MAX_SYNOPSES films, so
 # this is not the limit on how much text gets inspected -- at 12 the worst
-# case still leaves seven reads, which is 56 films, against a catalog of 238
+# case still leaves seven reads, which is 56 films, against a catalog of 316
 # and a shortlist that is never more than a few dozen. What actually bounds
 # inspection is MAX_SYNOPSES, per read.
 #
@@ -238,7 +238,7 @@ def execute(prompt: str) -> dict[str, Any]:
                 # quoted the "at most three" line underneath them, which is
                 # what an instruction looks like when it has become boilerplate.
                 # Counting is exact -- every film is named "Title (Year)" and
-                # the catalog knows all 238 -- so the loop can simply refuse to
+                # the catalog knows all 316 -- so the loop can simply refuse to
                 # return an over-long answer, and pay one turn to fix it.
                 named = catalog.labels_in(answer)
 

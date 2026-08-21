@@ -2,7 +2,7 @@
 
 Read from the prepared CSVs in data_preprocessing/data_ready/, loaded once and
 cached in-process. There is no database, for the same reason there is no vector
-database: the catalog is 238 rows and 181 KB, and it loads in about 2 ms. A
+database: the catalog is 316 rows and 240 KB, and it loads in about 2 ms. A
 bulk read plus Python-side filtering is simpler and faster than round-tripping
 a query per request, and it needs no credentials -- so the whole agent is
 runnable from a fresh clone.
@@ -58,7 +58,8 @@ def _parse_list_columns(df: pd.DataFrame) -> pd.DataFrame:
 def movies() -> pd.DataFrame:
     """The structured catalog: one row per feature film, list columns parsed.
 
-    Shorts under 45 minutes were dropped at preparation time and
+    Shorts under 45 minutes were dropped at preparation time (the shortest
+    survivor runs 47) and
     `weighted_rating` was precomputed there, so both ranking guardrails hold
     here without this module re-deriving them.
     """
@@ -77,7 +78,7 @@ def movies() -> pd.DataFrame:
 def _synopsis_index() -> dict[int, str]:
     """movie_id -> long plot text, best source first.
 
-    MPST synopsis where we have one (159 of 238), else the cached Wikipedia
+    MPST synopsis where we have one (198 of 316), else the cached Wikipedia
     Plot section. Wikipedia is read from the offline cache scraped at
     preparation time, never fetched live: live fetches are slow, rate-limited,
     and would make an agent turn's latency depend on a third party.
@@ -120,8 +121,8 @@ def _by_id() -> dict[int, dict[str, Any]]:
     """id -> label and rating, built once.
 
     A dict rather than a DataFrame filter per lookup: the lexical screen labels
-    up to 238 films in a single tool call, and `df[df.id == x]` scans the whole
-    table every time. Same answer, one pass instead of 238.
+    up to 316 films in a single tool call, and `df[df.id == x]` scans the whole
+    table every time. Same answer, one pass instead of 316.
     """
     return {
         int(r.id): {
@@ -137,7 +138,7 @@ def label_of(movie_id: int) -> str | None:
 
     This is how films are addressed everywhere the model can see. Titles alone
     are not unique -- the catalog holds four remake pairs, including two
-    Beauty and the Beasts -- but title with year is unique across all 238, so
+    Beauty and the Beasts -- but title with year is unique across all 316, so
     it can replace the numeric id in every tool signature. Ids are plumbing;
     nothing is served by spending prompt tokens on them.
     """
@@ -249,7 +250,7 @@ def labels_in(text: str) -> list[str]:
     """Every catalog film named in a block of prose, in the order they appear.
 
     Exact because films are always written "Title (Year)" and there are only
-    238 of them. Used to check the recommendation ceiling: an instruction the
+    316 of them. Used to check the recommendation ceiling: an instruction the
     model can read past twice is better enforced by counting.
     """
     # _labels() keys are lowercased, so match against a lowered copy and read

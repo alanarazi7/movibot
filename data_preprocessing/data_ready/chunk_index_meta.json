@@ -1,8 +1,8 @@
 {
   "model": "MB5R2CF-azure/text-embedding-3-small",
   "embedding_dim": 1536,
-  "num_chunks": 3159,
-  "num_movies": 238,
+  "num_chunks": 3965,
+  "num_movies": 316,
   "sources": [
     "mpst",
     "wiki_plot",
@@ -11,13 +11,13 @@
   ],
   "debug": false,
   "passages_by_source": {
-    "mpst": 1254,
-    "wiki_context": 841,
-    "wiki_plot": 826,
-    "overview": 238
+    "mpst": 1514,
+    "wiki_context": 1091,
+    "wiki_plot": 1044,
+    "overview": 316
   },
   "chunk_tokens": 300,
   "overlap_ratio": 0.2,
   "min_chunk_tokens": 50,
-  "source_tokens": 778082
+  "source_tokens": 969410
 }

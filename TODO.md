@@ -84,7 +84,7 @@ POST /api/execute        returns exactly status / error / response / steps
        └─ Planner        one prompt, 3,056 tokens + 2,634 of schemas, every
                          round. Round 1 also writes the condition ledger, at
                          no extra cost
-            ├─ filter_catalog     238 -> N by column.  Free, exhaustive
+            ├─ filter_catalog     316 -> N by column.  Free, exhaustive
             ├─ screen_out         N -> the half you keep.  Free, exhaustive
             ├─ build_shortlist    every condition searched separately, then
                                   fused by coverage, then average rank.
@@ -108,11 +108,11 @@ a tool that can be called greedily is a tool the prompt has to argue with.
 - **Working set in Python.** `filter_catalog` records every matching id in a
   request-scoped `ToolContext`; search and read scope to it automatically.
   Nothing is passed between tools, and no match is lost to a display cap.
-- **Films addressed by name.** `Title (Year)` is unique across all 238, so no
+- **Films addressed by name.** `Title (Year)` is unique across all 316, so no
   id enters the prompt. A filter response is 373 tokens where it was 13,791.
-- **Four corpora, 3,159 passages, 1536-dim, scored in memory.** Search covers
+- **Four corpora, 3,965 passages, 1536-dim, scored in memory.** Search covers
   the two plot-bearing ones by default.
-- **Data**: 238 films × 26 columns from committed CSVs (2 ms); 234 readable in
+- **Data**: 316 films × 26 columns from committed CSVs (2 ms); 307 readable in
   full, 4 overview-only; no database of any kind.
 - **The scan runs both ways.** `screen_out` reads every plot passage of every
   candidate and keeps either half. Backwards for an absence — embedding "nobody
