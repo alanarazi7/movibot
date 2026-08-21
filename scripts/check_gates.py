@@ -345,6 +345,55 @@ def g07_fusion_beats_greed() -> list[str]:
     return failures
 
 
+def g08_no_follow_up_offers() -> list[str]:
+    """Closing offers are caught, and honest first-person reports are not. Free.
+
+    The interaction is stateless: each request arrives with no memory of any
+    other, so "want two more?" is a promise nothing can keep. It is also
+    usually evidence of a second failure, because films offered for later were
+    films that qualified now -- which is exactly what "The Lion King ... If you
+    want, I can give you two more 1990s Disney options" was.
+
+    The false-positive half of this gate matters as much as the other. "I can
+    only stand behind one title" is an honest report the agent must be able to
+    make, and a detector that rejected it would spend a correction turn
+    punishing the most careful answer in the set.
+    """
+    from agent import loop
+
+    offers = [
+        "If you want, I can give you two more 1990s Disney options in the same vein.",
+        "Want two more? Just say the word.",
+        "Let me know if you want something funnier.",
+        "Would you like me to narrow this further?",
+        "Happy to refine these.",
+    ]
+    honest = [
+        "I can only stand behind one title here.",
+        "For more options, submit a new request with the criteria you want.",
+        "Only one film verified; the catalog stops at 2017.",
+        "The search covered 76 films, not the whole catalog.",
+        "Nothing under 47 minutes exists in this catalog.",
+    ]
+
+    failures = []
+    for text in offers:
+        if loop._closing_offer(text) is None:
+            failures.append(f"a follow-up offer went undetected: {text!r}")
+    for text in honest:
+        hit = loop._closing_offer(text)
+        if hit is not None:
+            failures.append(f"an honest report was flagged as an offer on {hit!r}: {text!r}")
+
+    # The prompt has to say it too. The check is the backstop, not the policy:
+    # a model corrected every time costs a turn every time.
+    from agent import prompts
+    if "no conversation" not in prompts.SYSTEM_PROMPT.lower():
+        failures.append("the system prompt no longer tells the model the interaction "
+                        "is stateless, so the gate below would fire on every answer")
+    return failures
+
+
 def g09_counts() -> list[str]:
     """Every figure the GUI states, recomputed from the shipped artifacts.
 
@@ -480,6 +529,8 @@ def main() -> int:
          "the total model-call cap binds planner, Observer and Verifier"),
         ("G07", g07_fusion_beats_greed,
          "rank fusion puts coverage above average rank, so greed loses"),
+        ("G08", g08_no_follow_up_offers,
+         "follow-up offers are caught and honest reports are not"),
         ("G09", g09_counts, "every displayed count comes from the shipped data"),
     ]:
         failures = fn()

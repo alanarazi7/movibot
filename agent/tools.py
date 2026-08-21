@@ -788,9 +788,34 @@ def verify_candidates(
         else:
             unresolved.append(label)
 
+    # Per-condition tallies. A condition that comes back `unclear` on every
+    # film it was checked against is almost never a fact about those films --
+    # it is a condition plot text cannot settle, like "fits a family evening".
+    # Saying so lets the planner drop it and answer on the rest, instead of
+    # reporting zero results for a request that had plenty.
+    tally: dict[str, dict[str, int]] = {
+        c: {"yes": 0, "no": 0, "unclear": 0} for c in conditions
+    }
+    for row in rows:
+        for f in row.get("findings") or []:
+            cell = tally.get(f.get("requirement"))
+            if cell is not None and f.get("verdict") in cell:
+                cell[f["verdict"]] += 1
+
+    unsettleable = [c for c, t in tally.items()
+                    if checked >= 3 and t["unclear"] >= checked and t["yes"] == 0]
+
     return {
         "conditions": conditions,
         "verified": checked,
+        "by_condition": tally,
+        **({"unsettleable": unsettleable,
+            "unsettleable_note": (
+                "Every film checked came back `unclear` on these, which means plot "
+                "text cannot settle them -- they are not story facts. Do NOT report "
+                "zero results because of one. Drop them, say you could not judge "
+                "them from plot text, and answer on the conditions that remain."
+            )} if unsettleable else {}),
         "accepted": accepted,
         "rejected": rejected,
         "unresolved": unresolved,

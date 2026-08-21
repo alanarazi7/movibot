@@ -107,6 +107,42 @@ class _Budget:
                 "cap": MAX_TOTAL_LLM_CALLS}
 
 
+# Closing offers, as literal phrasings. Checked rather than asked for, because
+# the ceiling taught this lesson already: a rule the model can read past twice
+# is not a rule. Two of these -- "If you want, I can give you two more 1990s
+# Disney options" -- were produced by a prompt that already forbade them.
+#
+# Deliberately narrow. Each pattern is an OFFER of future work, not merely a
+# first-person verb: "I can only stand behind one title" is an honest report
+# and must survive, while "I can give you two more" is the failure. When in
+# doubt the pattern is left out -- a missed offer costs a little polish, and a
+# false positive costs a correction turn on a good answer.
+FOLLOW_UP_OFFERS = (
+    "if you want", "if you'd like", "if you would like", "if you like",
+    "want me to", "want two more", "want another", "want a few more",
+    "would you like", "let me know", "just ask", "just say the word",
+    "shall i", "happy to", "i can give you", "i can suggest",
+    "i can refine", "i can pull", "i can offer", "i can narrow",
+    "i could give you", "i could suggest",
+)
+
+
+def _closing_offer(answer: str) -> str | None:
+    """The phrase that turns a finished answer into an unkeepable promise.
+
+    Returns the matched phrase, or None. There is no conversation here: the
+    next request arrives with no memory of this one, so "want two more?" is a
+    promise the agent cannot keep -- and it is usually evidence of a second
+    failure, because films it offers to name later were films it could have
+    named now.
+    """
+    lowered = answer.lower()
+    for phrase in FOLLOW_UP_OFFERS:
+        if phrase in lowered:
+            return phrase
+    return None
+
+
 def execute(prompt: str) -> dict[str, Any]:
     """Answer one user request.
 
@@ -250,6 +286,84 @@ def execute(prompt: str) -> dict[str, Any]:
                                      "rejected": f"named {unverified}, "
                                                  f"accepted was "
                                                  f"{sorted(verified['accepted'])}"},
+                    })
+                    continue
+
+                # Under-delivery. "A Disney movie from the 1990s" matched 61
+                # films and came back with one, which is not restraint: the
+                # request ruled almost nothing out, so it had three answers.
+                # Prompt wording did not hold this -- the same failure appeared
+                # after the rule was written -- so it is checked here.
+                #
+                # Armed only when a tool established a pool this size AND
+                # nothing narrowed the field to fewer. If verification ran and
+                # accepted two, two is the honest answer and this must stay
+                # quiet; that is the difference between a short answer and an
+                # incomplete one.
+                pool = len(ctx.working_set) if ctx.working_set is not None else 0
+                enough_verified = (not verified["ran"]
+                                   or len(verified["accepted"]) >= prompts.MAX_RECOMMENDATIONS)
+                if (not corrected and named
+                        and len(named) < prompts.MAX_RECOMMENDATIONS
+                        and pool >= prompts.MAX_RECOMMENDATIONS
+                        and enough_verified):
+                    corrected = True
+                    messages.append(message)
+                    messages.append({
+                        "role": "user",
+                        "content": (
+                            f"You named {len(named)} film(s) from a pool of "
+                            f"{pool}, and nothing ruled the others out. Give "
+                            f"{prompts.MAX_RECOMMENDATIONS}, best first, each "
+                            "with the same kind of evidence. Fewer is right "
+                            "only when fewer qualify, not when one strikes "
+                            "you as best. Do not add an offer to supply more."
+                        ),
+                    })
+                    steps.append({
+                        "module": "Planner",
+                        "round": round_index + 1,
+                        "llm_calls": budget.as_dict(),
+                        "prompt": {"system_prompt": prompts.SYSTEM_PROMPT,
+                                   "user_prompt": "(under-delivered, answer rejected)"},
+                        "response": {"content": answer,
+                                     "rejected": f"named {len(named)} of "
+                                                 f"{prompts.MAX_RECOMMENDATIONS} "
+                                                 f"from a pool of {pool}"},
+                    })
+                    continue
+
+                # An offer to continue is two failures wearing one coat: a
+                # promise no next turn can keep, and proof that qualifying
+                # films were withheld from the list. Both are fixed by the
+                # same correction, so they share a check.
+                offer = _closing_offer(answer)
+                if offer and not corrected:
+                    corrected = True
+                    messages.append(message)
+                    messages.append({
+                        "role": "user",
+                        "content": (
+                            f"Your answer says {offer!r}. There is no next "
+                            "turn: each request arrives with no memory of any "
+                            "other, so that is a promise you cannot keep. If "
+                            "you were holding back films that qualify, name "
+                            f"them now, up to {prompts.MAX_RECOMMENDATIONS} "
+                            "in total, with the same evidence for each. "
+                            "Otherwise send the same answer with the offer "
+                            "deleted and nothing put in its place. No closing "
+                            "pleasantry."
+                        ),
+                    })
+                    steps.append({
+                        "module": "Planner",
+                        "round": round_index + 1,
+                        "llm_calls": budget.as_dict(),
+                        "prompt": {"system_prompt": prompts.SYSTEM_PROMPT,
+                                   "user_prompt": "(follow-up offer, answer rejected)"},
+                        "response": {"content": answer,
+                                     "rejected": f"offered a follow-up ({offer!r}); "
+                                                 f"the interaction is stateless"},
                     })
                     continue
 
