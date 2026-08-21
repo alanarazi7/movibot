@@ -1325,8 +1325,14 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
 # Human-readable trace names, matching the boxes in the Architecture tab.
 TRACE_NAMES = {
     "filter_catalog": "CatalogFilter",
-    "screen_out": "LexicalScreen",
-    "build_shortlist": "ShortlistFusion",
+    # Both of these read plot text, and the old names described how rather
+    # than what: "PlotScan" and "PlotRetrieval" put a word scan and a
+    # vector search at arm's length from each other when the useful
+    # distinction is exact versus approximate over the same corpus. Fusing
+    # several conditions' rankings is something PlotRetrieval does, not a
+    # thing of its own.
+    "screen_out": "PlotScan",
+    "build_shortlist": "PlotRetrieval",
     # The TOOL, not the module it calls. read_synopses/Observer already made
     # this distinction and verify_candidates did not, so a tool step was
     # logged under a subagent's name and the Verifier looked like something

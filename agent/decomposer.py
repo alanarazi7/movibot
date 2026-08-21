@@ -1,4 +1,4 @@
-"""QueryDecomposer: the one place a request is interpreted.
+"""Decomposer: the one place a request is interpreted.
 
 It reads the user's words once and returns a plan -- which columns to filter
 on, which words to scan for, which story conditions to search, and which
@@ -197,7 +197,7 @@ PLAN_SCHEMA: dict[str, Any] = {
 }
 
 DECOMPOSER_PROMPT = f"""\
-You are the QueryDecomposer inside MoviBot, a Disney and Pixar film \
+You are the Decomposer inside MoviBot, a Disney and Pixar film \
 recommender. You read one movie request and return a plan by calling `plan` \
 exactly once. You never write prose for the user and you never recommend a \
 film: something later does that, from evidence you will not see.
@@ -205,7 +205,7 @@ film: something later does that, from evidence you will not see.
 **You are a part of MoviBot, not a thing the user talks to.** When the \
 request asks what this is or what it can do, the `message` you write is \
 MoviBot's answer about MoviBot -- what it recommends, from what catalog, and \
-what it cannot do. Never mention the QueryDecomposer, the Verifier, or any \
+what it cannot do. Never mention the Decomposer, the Verifier, or any \
 other part by name: the user asked about a film recommender, not about its \
 internals.
 
@@ -275,7 +275,7 @@ def decompose(request: str) -> dict[str, Any]:
         # No plan is not an empty plan. Answering anyway would mean answering
         # a request nothing has read.
         return {"plan": None, "usage": usage,
-                "error": "the QueryDecomposer returned no plan",
+                "error": "the Decomposer returned no plan",
                 "raw": (message.content or "")[:500]}
 
     try:

@@ -35,7 +35,7 @@ final size and resampled down. Nothing here is sized for a slide; it is sized
 for that column.
 
 There is deliberately no data layer. Drawing one meant either a store per tool,
-which is false -- LexicalScreen and PlotSearch read the same passage index --
+which is false -- PlotScan and PlotSearch read the same passage index --
 or a shared bus, which implies every tool reads every store and is equally
 false. The counts live in the Architecture tab and /api/rag/info instead.
 
@@ -58,7 +58,7 @@ OUTPUT_PATH = os.path.join(_ROOT, "assets", "architecture.png")
 # actually gets. SS only buys resampling quality: the image is drawn SS times
 # larger and shrunk back down at save time, so curves and small type stay clean
 # on a retina display and survive the browser's own scaling.
-WIDTH, HEIGHT = 918, 836
+WIDTH, HEIGHT = 918, 600
 SS = 2
 
 BG = (255, 255, 255)
@@ -236,9 +236,8 @@ def main() -> None:
     # boxes it explains are stacked.
     entries = [
         (PAID_FILL, PAID_LINE, "text-model call"),
-        (MAYBE_FILL, MAYBE_LINE, "embedding call \u00b7 ~$0.0000002 each"),
-        (FREE_FILL, FREE_LINE, "pure Python \u00b7 free"),
-        (IO_FILL, IO_LINE, "local data \u00b7 read from disk once"),
+        (MAYBE_FILL, MAYBE_LINE, "embedding call"),
+        (FREE_FILL, FREE_LINE, "pure Python"),
     ]
     lw = max(_width(draw, label, 14) for _, _, label in entries)
     lx = WIDTH - 36 - lw - 20
@@ -247,94 +246,55 @@ def main() -> None:
         _swatch(draw, lx, ly, fill, line)
         _text(draw, (lx + 20, ly - 2), label, MUTED, 14)
 
-    # ---- the pipeline --------------------------------------------------
-    # A fixed route, drawn as one. Which stages run depends only on which
-    # fields the plan filled in, so two runs of the same request produce the
-    # same shape of trace; what varies is what the films turn out to say.
-    request = (30, 196, 190, 286)
-    decomp  = (222, 176, 410, 306)
-    stages  = (445, 150, 690, 332)
-    walk    = (222, 396, 410, 526)
-    answer  = (445, 396, 690, 526)
-    reply   = (725, 396, 882, 526)
+    # ---- the agent -----------------------------------------------------
+    # Drawn as a choice, not a chain. The operations sit in a box the
+    # Decomposer reaches into: it asks for the ones the request needs, with
+    # the arguments it wrote, and a request that needs one of them touches
+    # one. Laying them out as three consecutive boxes drew a conveyor belt
+    # and said something about the agent that is not true.
+    request = (30, 196, 178, 286)
+    decomp  = (212, 176, 392, 306)
+    ops     = (432, 142, 700, 340)
+    verify  = (212, 420, 480, 550)
+    answer  = (528, 420, 728, 550)
+    reply   = (762, 420, 888, 550)
 
     _box(draw, request, "Request", ("natural language,", "mixed constraints"),
-         title_size=21, sub_size=14)
-
-    _box(draw, decomp, "QueryDecomposer", ("reads it once,", "returns a plan"),
-         fill=PAID_FILL, line=PAID_LINE, title_size=19, sub_size=14)
-
-    # The three stages share a frame because they are one pass, not three
-    # decisions: the plan says which of them have anything to do.
-    _dashed_rect(draw, stages)
-    _text(draw, (462, 164), "PLAN DRIVES THESE", MUTED, 13, bold=True)
-    for k, (name, sub, fill, line) in enumerate([
-        ("CatalogFilter", "columns \u00b7 exact", FREE_FILL, FREE_LINE),
-        ("LexicalScreen", "word scan \u00b7 every plot", FREE_FILL, FREE_LINE),
-        ("ShortlistFusion", "one embedding per condition", MAYBE_FILL, MAYBE_LINE),
-    ]):
-        y0 = 188 + k * 46
-        draw.rounded_rectangle(_st((462, y0, 673, y0 + 38)), radius=_s(7),
-                               fill=fill, outline=line, width=_s(1))
-        _text(draw, (474, y0 + 4), name, INK, 16, bold=True)
-        _text(draw, (474, y0 + 21), sub, MUTED, 12)
-
-    _box(draw, walk, "CandidateWalk", ("best first, until 3 pass", "or 10 are read"),
-         fill=FREE_FILL, line=FREE_LINE, title_size=21, sub_size=14)
-    _box(draw, answer, "Answerer", ("writes the reply from", "what was accepted"),
-         fill=PAID_FILL, line=PAID_LINE, title_size=21, sub_size=14)
-    _box(draw, reply, "Reply", ("with the evidence", "it checked"),
          title_size=20, sub_size=13)
+    _box(draw, decomp, "Decomposer", ("reads the request,", "decides what it needs"),
+         fill=PAID_FILL, line=PAID_LINE, title_size=21, sub_size=14)
 
-    # The Verifier hangs off the walk: one call per film, which is where a
-    # verifying request spends nearly all of its money.
-    verifier = (222, 578, 690, 646)
-    draw.rounded_rectangle(_st(verifier), radius=_s(9),
-                           fill=PAID_FILL, outline=PAID_LINE, width=_s(2))
-    _text(draw, (244, 592), "Verifier", INK, 21, bold=True)
-    _text(draw, (244 + _width(draw, "Verifier", 21, True) + 16, 598),
-          "one film \u00b7 every condition \u00b7 quotes what decides it",
-          MUTED, 14)
-
-    _arrow(draw, (192, 241), (218, 241))
-    _arrow(draw, (412, 241), (441, 241), fill=CYCLE, width=3)
-    # down the right of the stage frame and back left into the walk
-    _elbow(draw, [(567, 334), (567, 360), (316, 360), (316, 392)],
-           fill=CYCLE, width=3)
-    _arrow(draw, (316, 528), (316, 574), fill=CYCLE, width=3)
-    _elbow(draw, [(690, 612), (706, 612), (706, 500), (688, 500)],
-           fill=CYCLE, width=3)
-    _label(draw, 400, 366, "candidates", colour=MUTED, size=13)
-    _label(draw, 250, 552, "one call per film", colour=MUTED, size=13)
-    _label(draw, 620, 552, "verdicts", colour=MUTED, size=13)
-    _arrow(draw, (692, 461), (721, 461), fill=CYCLE, width=3)
-
-    # The check sits on the last edge because it is the last thing that
-    # happens, and it is the only thing that can stop a reply.
-    _label(draw, 694, 434, "answer check", colour=FREE_LINE, size=12, bold=True)
-
-    # ---- what the stages read -----------------------------------------
-    # The data layer, which every earlier picture left out. It is not a step
-    # and nothing calls it; it is what the stages are reading when they look
-    # free, and the reason they are.
-    panel = (36, 690, 882, 806)
-    draw.rounded_rectangle(_st(panel), radius=_s(11), fill=PANEL_FILL,
-                           outline=PANEL_LINE, width=_s(2))
-    _text(draw, (60, 709), "LOCAL DATA", MUTED, 15, bold=True)
-    _text(draw, (60 + _width(draw, "LOCAL DATA", 15, True) + 12, 710),
-          "committed to the repo \u00b7 loaded once \u00b7 nothing fetched at request time",
-          FAINT, 14)
-
-    for k, (name, sub) in enumerate([
-        ("Catalog", f"{len(catalog.movies())} films \u00b7 columns, ratings, runtimes"),
-        ("Passage index", f"{store.coverage()['chunks']:,} vectors of plot text "
-                          f"\u00b7 {store.coverage()['dim']}-dim"),
+    _dashed_rect(draw, ops)
+    _text(draw, (448, 156), "ASKS FOR WHAT THE REQUEST NEEDS", MUTED, 12, bold=True)
+    _text(draw, (448, 174), "any of them, some more than once", FAINT, 12)
+    for k, (name, sub, fill, line) in enumerate([
+        ("CatalogFilter", "stored columns \u00b7 exact", FREE_FILL, FREE_LINE),
+        ("PlotScan", "words, over every plot", FREE_FILL, FREE_LINE),
+        ("PlotRetrieval", "meaning \u00b7 one embedding per condition",
+         MAYBE_FILL, MAYBE_LINE),
     ]):
-        x0 = 60 + k * 420
-        draw.rounded_rectangle(_st((x0, 736, x0 + 396, 786)), radius=_s(8),
-                               fill=IO_FILL, outline=IO_LINE, width=_s(1))
-        _text(draw, (x0 + 16, 746), name, INK, 17, bold=True)
-        _text(draw, (x0 + 16, 766), sub, MUTED, 13)
+        y0 = 198 + k * 46
+        draw.rounded_rectangle(_st((448, y0, 684, y0 + 38)), radius=_s(7),
+                               fill=fill, outline=line, width=_s(1))
+        _text(draw, (460, y0 + 4), name, INK, 16, bold=True)
+        _text(draw, (460, y0 + 21), sub, MUTED, 12)
+
+    _box(draw, verify, "Verifier",
+         ("one film at a time, until enough", "pass or the candidates run out"),
+         fill=PAID_FILL, line=PAID_LINE, title_size=21, sub_size=13)
+    _box(draw, answer, "Answerer", ("drafts the reply from", "what was verified"),
+         fill=PAID_FILL, line=PAID_LINE, title_size=21, sub_size=13)
+    _box(draw, reply, "Reply", ("with the evidence", "behind it"),
+         title_size=19, sub_size=13)
+
+    _arrow(draw, (180, 241), (208, 241))
+    _arrow(draw, (394, 241), (428, 241), fill=CYCLE, width=3)
+    # candidates fall out of the operations box into verification
+    _elbow(draw, [(566, 342), (566, 376), (346, 376), (346, 416)],
+           fill=CYCLE, width=3)
+    _label(draw, 420, 382, "candidates", colour=MUTED, size=13)
+    _arrow(draw, (482, 485), (524, 485), fill=CYCLE, width=3)
+    _arrow(draw, (730, 485), (758, 485), fill=CYCLE, width=3)
 
     # Saved at full SS resolution rather than resampled back down. The browser
     # caps it at the container width either way, so the layout sizes above are
@@ -348,7 +308,7 @@ def main() -> None:
     # a reader needs in order to follow the picture.
     print(f"  call cap: {loop.MAX_TOTAL_LLM_CALLS} model calls, "
           f"{tools.MAX_VERIFICATIONS} verifications (not shown)")
-    print(f"  roles: QueryDecomposer, Verifier, Answerer")
+    print(f"  roles: Decomposer, Verifier, Answerer")
     print(f"  stages: {', '.join(sorted(tools.TRACE_NAMES.values()))}")
 
 

@@ -197,7 +197,7 @@ def prompts_endpoint():
         # silently stops matching the one that runs.
         "roles": [
             {
-                "name": "QueryDecomposer",
+                "name": "Decomposer",
                 "does": "reads the request once and returns the plan every later stage runs on",
                 "calls": "one per request",
                 "prompt": agent_decomposer.DECOMPOSER_PROMPT,

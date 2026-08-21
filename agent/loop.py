@@ -1,31 +1,30 @@
-"""MoviBot's pipeline: decompose, execute, verify, answer, check.
+"""MoviBot: decompose, narrow, verify, answer.
 
-    request -> QueryDecomposer -> [ filter -> screen -> shortlist -> walk ]
-            -> Verifier x N -> Answerer -> answer check -> reply
+    request -> Decomposer -> the operations it asked for -> Verifier x N
+            -> Answerer -> checked against what was verified -> reply
 
-Three model roles, and everything between them is ordinary Python. The
-QueryDecomposer reads the request once and returns a plan; the stages run in a
-fixed order driven by that plan's fields; the Verifier settles one film at a
-time against every condition; the Answerer writes the reply from what was
-accepted, and cannot reach anything else.
+The Decomposer reads the request and decides what evidence it needs. The
+operations it asks for narrow the catalog to candidates without a text-model
+call. The Verifier reads one film at a time, against every condition at once,
+until enough have passed or the candidates run out. The Answerer drafts the
+reply from what was verified and cannot reach anything else.
 
-**The route is fixed and the evidence is not.** Which stages run depends only
-on which fields the plan filled in, so two runs of the same request produce
-the same shape of trace. What varies is what the films turn out to say.
+**What varies is what the request needs.** A question answerable from columns
+asks for one operation; one mixing a studio, an absence and two story
+conditions asks for three and reads ten films. What does not vary is the
+standard of evidence: a film is named only if its own plot text was checked
+against every condition of the request.
 
-Cost per request:
+Cost:
 
-    1 model call    QueryDecomposer
-    <= MAX_VERIFICATIONS   one per candidate film, stopping early once enough
-                           are accepted
-    1 model call    Answerer, plus at most one more if the check rejects it
+    1 text-model call      Decomposer
+    <= MAX_VERIFICATIONS   one per film read, stopping early once enough pass
+    1 text-model call      Answerer, plus at most one more if the check rejects
     <= MAX_TOTAL_LLM_CALLS in total, enforced here rather than requested
 
-The last thing that happens is a check, not a model call. An answer may not
-name a film verification did not accept, omit one it did, name more films than
-the ceiling, or offer a follow-up this API cannot honour. Each failure costs
-one correction call. The Answerer decides how the reply reads; it does not
-decide what counts as checked.
+The last thing that happens is a check, not a model call. A reply may not name
+a film that was not verified, omit one that was, name more films than were
+asked for, or offer a follow-up this API cannot honour.
 """
 
 from __future__ import annotations
@@ -113,7 +112,7 @@ def execute(prompt: str) -> dict[str, Any]:
         budget.decomposer += 1
         plan = got.get("plan")
         steps.append({
-            "module": "QueryDecomposer",
+            "module": "Decomposer",
             "usage": got.get("usage"),
             "llm_calls": budget.as_dict(),
             "prompt": {"system_prompt": decomposer.DECOMPOSER_PROMPT,
@@ -145,7 +144,7 @@ def execute(prompt: str) -> dict[str, Any]:
             screen_args = dict(plan["screen"])
             screen_args.setdefault("keep", "clear")
             result = tools.screen_out(ctx=ctx, **screen_args)
-            steps.append(_tool_step("LexicalScreen", screen_args, ctx, result, budget))
+            steps.append(_tool_step("PlotScan", screen_args, ctx, result, budget))
             evidence["screen"] = {k: result.get(k) for k in
                                   ("screened_for", "kept", "clear", "flagged",
                                    "insufficient_text", "thin_word_list")
@@ -153,7 +152,7 @@ def execute(prompt: str) -> dict[str, Any]:
 
         if plan["search"] and (ctx.working_set is None or ctx.working_set):
             result = tools.build_shortlist(conditions=plan["search"], ctx=ctx)
-            steps.append(_tool_step("ShortlistFusion",
+            steps.append(_tool_step("PlotRetrieval",
                                     {"conditions": plan["search"]}, ctx, result, budget))
             evidence["shortlist"] = {k: result.get(k) for k in
                                      ("candidates", "matching_every_condition")}

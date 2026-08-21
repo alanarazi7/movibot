@@ -60,7 +60,7 @@ def g03_module_names() -> list[str]:
         failures.append(f"agent_info stages {sorted(stages)} != TRACE_NAMES {sorted(traced)}")
     if set(arch.get("tool_modules") or []) != traced:
         failures.append("tool_modules disagrees with TRACE_NAMES")
-    for name in ("QueryDecomposer", "Verifier", "Answerer"):
+    for name in ("Decomposer", "Verifier", "Answerer"):
         if name not in roles:
             failures.append(f"agent_info does not declare the {name} role")
     overlap = roles & stages
@@ -81,8 +81,14 @@ def g03_module_names() -> list[str]:
 
     # The diagram draws these names; a rename that misses it leaves the picture
     # describing a component nobody can find in a trace.
+    # The picture draws the roles and the operations the Decomposer can ask
+    # for. CandidateWalk is not among them: it is how verification works its
+    # way down the candidates, not something anyone chooses, and drawing it as
+    # a peer said otherwise. It is still traced, which is why it is a module
+    # name at all.
     diagram = (_ROOT / "scripts" / "generate_architecture_diagram.py").read_text()
-    for name in traced | {"QueryDecomposer", "Verifier", "Answerer"}:
+    drawn = (traced - {"CandidateWalk"}) | {"Decomposer", "Verifier", "Answerer"}
+    for name in drawn:
         if f'"{name}"' not in diagram:
             failures.append(f"the architecture diagram does not draw {name!r}")
 

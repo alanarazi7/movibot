@@ -6,7 +6,7 @@ catalog, cannot run a tool, and cannot reach a film that is not in front of
 it. That is the point: the last thing to touch the answer is the thing with
 the least freedom.
 
-Splitting it from the QueryDecomposer is what stopped one prompt doing two
+Splitting it from the Decomposer is what stopped one prompt doing two
 jobs. Deciding what to look for and describing what was found need different
 instructions, different inputs, and -- when either goes wrong -- different
 fixes. Sharing a prompt meant every change to the routing rules was also a
