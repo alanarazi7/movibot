@@ -10,7 +10,9 @@ Classic RAG fails on queries like *"bring me a not-too-old Disney movie with no 
 
 ## How it works
 
-MoviBot is a **ReAct agent whose exit is gated on evidence**: a planner model reasons, calls tools, observes what came back, and decides whether to go again or answer, bounded at `MAX_ROUNDS = 5` planner rounds and `MAX_TOTAL_LLM_CALLS = 16` model calls per query. Every tool is available on every turn and none is mandatory; the planner skips whatever a request does not need. What it cannot do is answer with a film it did not verify — the loop checks that before returning, the same way it checks the recommendation ceiling.
+A **Planner** model runs in a bounded loop: it reads the request, breaks it into conditions, and chooses which tools to call, bounded at `MAX_ROUNDS = 5` planner rounds and `MAX_TOTAL_LLM_CALLS = 16` model calls per query. Every tool is available on every round and none is mandatory; nothing in the code sequences them.
+
+A round that requests no tool is the planner's **attempt** at an answer, not the answer. `agent/loop.py` checks it first, and a failure costs one correction round: it may not name a film verification did not accept, omit one it did, name films after a search without verifying them, exceed the recommendation ceiling, or offer a follow-up this stateless API cannot honour. The planner decides the route; it does not decide whether a film it recommends was checked.
 
 | Tool | Answers from | Narrows | Cost |
 |---|---|---|---|

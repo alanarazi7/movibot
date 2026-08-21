@@ -757,61 +757,39 @@
 
       <div class="card">
         <h2>How it works</h2>
-        <p>
-          One ReAct loop: <strong>reason &rarr; act &rarr; observe &rarr; stop?</strong>,
-          for at most five planner rounds and <strong>twelve model calls in
-          total</strong>. Those are different numbers because the planner is not the
-          only thing that calls a model: a synopsis read sends the Observer, so one
-          round can cost two calls. The total is the one that bounds the bill, it is
-          enforced in <code>agent/loop.py</code> rather than asked for in a prompt, and
-          its last call is reserved for the planner so a request that runs out of
-          budget still returns an answer. Every tool is on the table on every turn. The
-          planner chooses which to call, with what arguments, how many at once, and
-          when it has enough to answer. <strong>Two things cost money, and one of them is
-          not the planner</strong> &mdash; each planner round is one call, and each
-          film the Verifier checks is another. Three of the five tools are free;
-          <code>build_shortlist</code> spends one embedding per condition, about two
-          millionths of a dollar each, and <code>verify_candidates</code> spends a
-          text call per film it reads. A typical request is three planner rounds and
-          three or four verifications.
-        </p>
-        <p>
-          <strong>The answer is gated on evidence, not on the model&rsquo;s
-          confidence.</strong> Two checks stand between the final message and the
-          reply: it may not name more films than the ceiling, and it may not name a
-          film that verification did not accept. Both are checked in
-          <code>agent/loop.py</code> rather than asked for in the prompt, and each
-          costs one correction turn. The second is what makes a shortcut pointless
-          &mdash; skipping verification produces films with no verdicts, and no
-          answer can be built out of them.
-        </p>
-        <p>
-          <strong>The cheapest-first ordering is a preference, not a path.</strong>
-          Nothing in <code>agent/loop.py</code> sequences the tools; the order is
-          policy, argued for in the system prompt, and the planner departs from it
-          whenever a request calls for something else. When it does follow the order,
-          each call hands the next a smaller candidate set, so the token-heavy tool
-          only ever sees what survived the free ones. A question answerable by
-          filtering alone costs two model turns and never touches the other three.
-          The candidate set lives in Python between calls and never enters the prompt.
-        </p>
-      </div>
-
-      <div class="card">
-        <h2>How it works</h2>
 
         <p class="lede">
-          One bounded loop: the <b>Planner</b> reads the request, calls whatever tools
-          it needs, and stops when it can answer. What it cannot do is answer with a
-          film it did not check &mdash; the loop verifies that before replying.
+          Three kinds of thing do the work, and the diagram above is laid out around
+          them: a <b>Planner</b> that decides, <b>tools</b> that fetch and filter, and
+          <b>readers</b> that judge plot text. A fourth step, the <b>answer check</b>,
+          decides whether what the planner wrote is allowed to reach you.
         </p>
 
-        <h3>The loop</h3>
+        <h3>The Planner</h3>
         <p>
-          <b>Reason</b> &rarr; <b>Act</b> &rarr; <b>Observe</b> &rarr; <b>Stop?</b>
-          Every tool is on the table on every turn. The planner picks which to call and
-          when it has enough; the loop ends on the turn that asks for no tool, and that
-          turn is the answer. Nothing in the code sequences the tools.
+          The only part that is asked to think. It is one model call per round: it reads
+          the request, breaks it into conditions, and chooses which tools to call with
+          which arguments. Nothing in the code sequences those tools &mdash; the planner
+          picks, in any order, as many at once as it likes.
+        </p>
+        <p>
+          A round that asks for a tool continues; a round that asks for none is the
+          planner&rsquo;s attempt at an answer. It gets at most five rounds and the
+          request as a whole gets at most sixteen model calls, counting the readers.
+        </p>
+
+        <h3>The answer check</h3>
+        <p>
+          An attempt is not yet a reply. Before anything is returned, the loop checks
+          it against what actually happened during the request, and a failure costs one
+          correction round. It may not name a film verification did not accept, omit one
+          it did, name films after a search without verifying them, name more films than
+          the ceiling, or offer a follow-up this stateless API cannot honour.
+        </p>
+        <p>
+          This is why the picture has a box there rather than an arrow. The planner
+          decides the route; it does not decide whether a film it recommends was
+          checked.
         </p>
 
         <h3>Five tools &mdash; the planner calls these</h3>

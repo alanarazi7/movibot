@@ -57,7 +57,7 @@ OUTPUT_PATH = os.path.join(_ROOT, "assets", "architecture.png")
 # actually gets. SS only buys resampling quality: the image is drawn SS times
 # larger and shrunk back down at save time, so curves and small type stay clean
 # on a retina display and survive the browser's own scaling.
-WIDTH, HEIGHT = 900, 1150
+WIDTH, HEIGHT = 912, 1150
 SS = 2
 
 BG = (255, 255, 255)
@@ -225,7 +225,7 @@ def main() -> None:
     img = Image.new("RGB", (WIDTH * SS, HEIGHT * SS), BG)
     draw = ImageDraw.Draw(img)
 
-    title = "MoviBot ReAct Architecture"
+    title = "MoviBot Architecture"
     _text(draw, (36, 26), title, INK, 32, bold=True)
     popcorn = _emoji("\U0001F37F", 30)
     if popcorn is not None:
@@ -246,9 +246,12 @@ def main() -> None:
         _text(draw, (lx + 20, ly - 2), label, MUTED, 14)
 
     # ---- the loop ------------------------------------------------------
-    # The frame is left unlabelled: the title says ReAct, and the two edge
-    # labels say what continues the cycle and what ends it. The turn bound is
-    # a real fact but it is a cost guard, not part of reading the picture.
+    # Boxes carry MODULE names, not the ReAct vocabulary. "Reason / Act /
+    # Observe / Stop?" described the shape but named nothing a reader could
+    # find again: the trace says Planner, the tools say CatalogFilter, and the
+    # assignment asks for the diagram and the steps to use the same words. It
+    # also left out the one step that now decides whether an answer is
+    # returned at all, which made the picture flattering as well as vague.
     frame = (210, 130, 680, 555)
     _dashed_rect(draw, frame)
 
@@ -257,18 +260,18 @@ def main() -> None:
     observe = (490, 385, 655, 510)
     stop = (235, 385, 425, 510)
 
-    _box(draw, reason, "Reason", ("Planner \u00b7 one call", "every turn"),
+    _box(draw, reason, "Planner", ("one model call,", "every round"),
          fill=PAID_FILL, line=PAID_LINE, title_size=27, sub_size=15)
-    _box(draw, act, "Act", ("run the tools", "it asked for"),
+    _box(draw, act, "Tools", ("the five below,", "any order, any round"),
          title_size=27, sub_size=15)
-    _box(draw, observe, "Observe", ("a reader answers,", "else appended"),
+    _box(draw, observe, "Readers", ("a tool sends one", "when it reads plots"),
          fill=MAYBE_FILL, line=MAYBE_LINE, title_size=27, sub_size=15)
-    _box(draw, stop, "Stop?", ("did this turn ask", "for a tool?"),
-         title_size=27, sub_size=15)
-    # The exit condition is the model's own output, not a scripted check: a
-    # turn that requests a tool continues the loop, and a turn that requests
-    # none IS the answer. That is what "the model decides when to stop" means
-    # mechanically, so the two edges have to say which way round it is.
+    _box(draw, stop, "Asked for", ("a tool this round?", ""),
+         title_size=25, sub_size=15)
+    # The exit condition is the model's own output: a round that requests a
+    # tool continues the loop, and a round that requests none is its attempt at
+    # an answer. Whether that attempt is returned is the next box's decision,
+    # not the model's.
 
     # Clockwise, with the return edge closing it. Without that edge the same
     # four boxes read as four stages.
@@ -279,24 +282,45 @@ def main() -> None:
     _label(draw, 390, 343, "Yes  →  loop again", colour=CYCLE, size=16, bold=True)
 
     # ---- request in, answer out ----------------------------------------
+    # The check is a box because it is a step, and the only one that can stop
+    # an answer reaching the user. Drawing it as an edge said the loop falls
+    # out into a reply, which was true before the gates and is the single most
+    # misleading thing the old picture said.
     request = (20, 187, 185, 287)
+    check = (705, 175, 878, 300)
     answer = (705, 385, 878, 510)
 
     _box(draw, request, "User request",
          ("natural language,", "mixed constraints"), title_size=20, sub_size=14)
+    _box(draw, check, "Answer check",
+         ("every film verified?", "count right? no offer?"),
+         fill=FREE_FILL, line=FREE_LINE, title_size=20, sub_size=13)
     _box(draw, answer, "Final answer",
          ("with the evidence", "it actually checked"), title_size=20, sub_size=14)
 
     _arrow(draw, (187, 237), (231, 237))
 
-    # "Yes" leaves the loop from Stop?, under the frame, and comes up into the
-    # answer -- so the one exit from the cycle is a decision, not a fall-through.
-    # It runs right of x=390 so the tool connector, which drops on the left, has
-    # nothing to cross.
-    _elbow(draw, [(390, 512), (390, 590), (791, 590), (791, 514)],
+    # "No" leaves the loop from the decision box, under the frame, and comes up
+    # into the check rather than into the answer. Right of x=390 so the tool
+    # connector, which drops on the left, has nothing to cross.
+    # Right of the answer box, not through it. Routed at x=892 because the
+    # obvious path -- straight up at x=791 -- crossed "Final answer" on its way
+    # to the check, drawing a line that said the attempt reaches the reader
+    # before anything has looked at it.
+    _elbow(draw, [(390, 512), (390, 600), (892, 600), (892, 237), (882, 237)],
            fill=CYCLE, width=3)
-    _label(draw, 600, 590, "No  →  this turn is the answer",
+    _label(draw, 520, 600, "No  →  this round is an attempt",
            colour=CYCLE, size=16, bold=True)
+
+    # Pass, and it is the reply. Fail, and the planner gets one turn to fix it,
+    # which is why this edge goes back into the frame instead of ending here.
+    _arrow(draw, (791, 302), (791, 381), fill=CYCLE, width=3)
+    _label(draw, 800, 343, "passes", colour=CYCLE, size=15, bold=True)
+
+    _elbow(draw, [(705, 237), (692, 237), (692, 118), (330, 118), (330, 172)],
+           fill=CYCLE, width=3)
+    _label(draw, 430, 118, "fails  →  one correction round",
+           colour=CYCLE, size=15, bold=True)
 
     # ---- tools ---------------------------------------------------------
     # An inventory, not a chain: every tool is available on every turn. Left to
