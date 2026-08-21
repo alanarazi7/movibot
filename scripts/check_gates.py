@@ -163,6 +163,114 @@ def g04_models() -> list[str]:
     return failures
 
 
+def g06_call_budget() -> list[str]:
+    """The total-call cap holds against a model that never stops calling tools.
+
+    Free, offline and hermetic: the model, the Observer and the tool dispatch
+    are all stubbed, so this drives the real loop with a fake adversary rather
+    than paying to discover the bound. Stubbing dispatch matters -- the first
+    version of this gate called the real read_synopses, which needs an
+    embedding, raised without credentials, and returned an error the loop
+    treated as "nothing to observe". The gate passed while exercising none of
+    the code it exists to check.
+
+    The adversary is the worst case on purpose: every planner turn asks to read
+    synopses, so every round tries to spend two calls. What is asserted is that
+    the cap binds the SUM. A round limit alone lets this exact adversary spend
+    eleven calls while honestly reporting five rounds.
+    """
+    from agent import llm_client, loop, observer, tools
+
+    failures = []
+
+    class _Call:
+        def __init__(self, name, arguments):
+            self.id = "stub"
+            self.function = type("F", (), {"name": name, "arguments": arguments})()
+
+    class _Msg:
+        def __init__(self, calls):
+            self.content = None if calls else "Final answer, no film named."
+            self.tool_calls = calls
+
+    calls = {"planner": 0, "observer": 0}
+
+    def fake_complete(messages, tools=None):
+        calls["planner"] += 1
+        # Keep asking to read, forever, unless the loop withholds the schemas.
+        if tools is None:
+            return _Msg([]), {"total_tokens": 0}
+        return _Msg([_Call("read_synopses",
+                           '{"films": ["Inside Out (2015)"], "about": "anything"}')]), \
+            {"total_tokens": 0}
+
+    def fake_dispatch(name, arguments, ctx=None):
+        return {"synopses": [{"film": "Inside Out (2015)",
+                              "synopsis": "Riley moves to San Francisco."}]}
+
+    def fake_observe(question, synopses):
+        calls["observer"] += 1
+        return {"findings": [{"film": "Inside Out (2015)", "verdict": "unclear",
+                              "quote": ""}], "usage": {"total_tokens": 0},
+                "prompt": "stub"}
+
+    saved = (llm_client.complete, observer.observe, tools.dispatch,
+             llm_client.is_configured)
+    llm_client.complete = fake_complete
+    observer.observe = fake_observe
+    tools.dispatch = fake_dispatch
+    llm_client.is_configured = lambda: True
+    try:
+        result = loop.execute("read everything you can, repeatedly")
+    finally:
+        (llm_client.complete, observer.observe, tools.dispatch,
+         llm_client.is_configured) = saved
+
+    total = calls["planner"] + calls["observer"]
+    cap = loop.MAX_TOTAL_LLM_CALLS
+
+    # The gate must exercise the path it claims to. An adversary that never
+    # reaches the Observer proves nothing about a cap that spans both.
+    if calls["observer"] == 0:
+        failures.append("the adversary never triggered an Observer call, so this gate "
+                        "is not testing the sum it claims to test")
+    if total > cap:
+        failures.append(f"the adversary spent {total} model calls "
+                        f"({calls['planner']} planner + {calls['observer']} observer) "
+                        f"against a cap of {cap}")
+    if calls["planner"] > loop.MAX_ROUNDS:
+        failures.append(f"{calls['planner']} planner calls against MAX_ROUNDS "
+                        f"{loop.MAX_ROUNDS}")
+
+    # The reserve: the budget must not run out mid-read, leaving nobody to
+    # write the answer. Spending the last call on an Observer buys evidence
+    # the user never receives.
+    if result.get("status") != "ok" or not result.get("response"):
+        failures.append(f"the budget ran out without an answer: status "
+                        f"{result.get('status')!r}, error {result.get('error')!r}")
+
+    # Every planner step states both counts, or the trace re-blurs the
+    # distinction this fix exists to draw.
+    planner_steps = [s for s in result.get("steps", []) if s["module"] == "Planner"]
+    if not planner_steps:
+        failures.append("no Planner steps in the trace")
+    for s in planner_steps:
+        if set(s.get("llm_calls") or {}) != {"planner", "observer", "total", "cap"}:
+            failures.append(f"a Planner step reports llm_calls as {s.get('llm_calls')!r}")
+            break
+
+    # And the published figure must be the enforced one.
+    info = json.loads((_ROOT / "agent_info.json").read_text())
+    published = info["architecture"].get("max_total_llm_calls_per_request")
+    if published != cap:
+        failures.append(f"agent_info publishes max_total_llm_calls_per_request "
+                        f"{published!r}, code enforces {cap}")
+    if info["architecture"].get("max_planner_rounds_per_request") != loop.MAX_ROUNDS:
+        failures.append("agent_info does not publish the planner-round bound separately "
+                        "-- rounds and calls are different quantities")
+    return failures
+
+
 def g09_counts() -> list[str]:
     """Every figure the GUI states, recomputed from the shipped artifacts.
 
@@ -294,6 +402,8 @@ def main() -> int:
         ("G04", g04_models, "the course-provided model deployments are the ones configured"),
         ("G05", g05_runtime_is_structured,
          "runtime is a filter argument, exact and inclusive, and cited back"),
+        ("G06", g06_call_budget,
+         "the total model-call cap binds planner and Observer together"),
         ("G09", g09_counts, "every displayed count comes from the shipped data"),
     ]:
         failures = fn()

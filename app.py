@@ -217,6 +217,9 @@ def prompts_endpoint():
                                          agent_tools.TOOL_SCHEMAS),
         "guardrails": {
             "MAX_ROUNDS": agent_loop.MAX_ROUNDS,
+            # Both, always. Publishing only the rounds is what let "five model
+            # turns" circulate as a cost guarantee it never was.
+            "MAX_TOTAL_LLM_CALLS": agent_loop.MAX_TOTAL_LLM_CALLS,
             "MAX_RECOMMENDATIONS": agent_prompts.MAX_RECOMMENDATIONS,
             "PREVIEW_FILMS": agent_tools.PREVIEW_FILMS,
             "MAX_SEARCH_RESULTS": agent_tools.MAX_SEARCH_RESULTS,

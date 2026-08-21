@@ -3,18 +3,29 @@
     plan -> call tools -> observe -> (repeat) -> answer
 
 The model chooses which tools to call and when to stop. What it cannot choose
-is how long to keep going: MAX_ROUNDS bounds the number of model turns, so
-the worst case cost of a request is fixed no matter what the query asks for
-or how the model behaves.
+is how long to keep going.
+
+**Two bounds, and they are different quantities.** MAX_ROUNDS bounds the
+planner's turns. It does not bound spend, because the planner is not the only
+thing that calls a model: every read_synopses that returns text sends the
+Observer, so one round can cost two calls. A cap on rounds was therefore being
+quoted as a cap on cost, which it never was -- five rounds could be eleven
+calls, and nothing in the code said otherwise.
+
+MAX_TOTAL_LLM_CALLS is the real budget. It counts planner and Observer calls
+together, is enforced here rather than asked for in a prompt, and reserves its
+last call for the planner so a request runs out of budget holding an answer
+instead of a timeout.
 
 Cost per request, worst case:
 
-    <= MAX_ROUNDS model calls   (paid)
-    unlimited tool calls        (free -- local CSV reads and local embeddings)
+    <= MAX_ROUNDS rounds              (planner turns)
+    <= MAX_TOTAL_LLM_CALLS model calls (paid -- planner + Observer)
+    unlimited tool calls              (free -- local CSV reads)
 
-Tools are free here because both backends default to local. That inverts the
-usual tuning problem: there is no reason to skimp on tool calls, only on
-model turns, which is exactly what this loop bounds.
+Tool calls are free, which inverts the usual tuning problem: there is no
+reason to skimp on them, only on model calls, which is exactly what this loop
+bounds.
 """
 
 from __future__ import annotations
@@ -28,6 +39,46 @@ from agent import catalog, llm_client, observer, prompts, tools
 # correction. Queries needing more than this are usually a sign the model is
 # thrashing, and cutting it off is cheaper than letting it continue.
 MAX_ROUNDS = 5
+
+# The one that bounds spend. Five planner rounds plus up to three Observer
+# reads: enough that no observed request has hit it, low enough to state as a
+# guarantee. Raising MAX_ROUNDS without raising this does nothing, which is
+# the right way round -- rounds are a thinking budget, calls are the bill.
+MAX_TOTAL_LLM_CALLS = 8
+
+
+class _Budget:
+    """Counts the two kinds of model call, so neither can hide inside the other.
+
+    Kept as an object rather than two ints because the reserve rule -- never
+    spend the last call on an Observer -- is a question about the pair, and
+    written inline it would be an off-by-one waiting to happen.
+    """
+
+    def __init__(self) -> None:
+        self.planner = 0
+        self.observer = 0
+
+    @property
+    def total(self) -> int:
+        return self.planner + self.observer
+
+    @property
+    def remaining(self) -> int:
+        return MAX_TOTAL_LLM_CALLS - self.total
+
+    def can_observe(self) -> bool:
+        """Only when a planner call would still be affordable afterwards.
+
+        An Observer call that consumes the last of the budget buys evidence
+        nobody can spend: the planner never gets another turn to write it up,
+        so the user pays for a read and receives a timeout.
+        """
+        return self.remaining >= 2
+
+    def as_dict(self) -> dict[str, int]:
+        return {"planner": self.planner, "observer": self.observer,
+                "total": self.total, "cap": MAX_TOTAL_LLM_CALLS}
 
 
 def execute(prompt: str) -> dict[str, Any]:
@@ -52,6 +103,7 @@ def execute(prompt: str) -> dict[str, Any]:
     # read scope themselves to it. It never enters the prompt, and it dies with
     # the request, so there is no cross-request state to reason about.
     ctx = tools.ToolContext()
+    budget = _Budget()
     corrected = False
 
     if not prompt or not prompt.strip():
@@ -72,20 +124,28 @@ def execute(prompt: str) -> dict[str, Any]:
 
     try:
         for round_index in range(MAX_ROUNDS):
-            final_round = round_index == MAX_ROUNDS - 1
+            # Two ways to be on the last turn, and the budget is the one that
+            # can arrive early: an Observer-heavy request exhausts calls before
+            # it exhausts rounds. Either way the tools are withheld, so the
+            # model has to answer with what it already has instead of
+            # requesting a call we would have to discard.
+            last_affordable = budget.remaining <= 1
+            final_round = round_index == MAX_ROUNDS - 1 or last_affordable
 
-            # On the last round, withhold the tools so the model has to answer
-            # with what it already has instead of requesting a call we would
-            # have to discard.
             message, usage = llm_client.complete(
                 messages, tools=None if final_round else tools.TOOL_SCHEMAS
             )
+            budget.planner += 1
             tool_calls = getattr(message, "tool_calls", None) or []
 
             steps.append({
                 "module": "Planner",
                 "round": round_index + 1,
                 "usage": usage,
+                # Both counts, on every planner step. The distinction between
+                # rounds and calls is exactly what was being blurred, so the
+                # trace states it rather than leaving a reader to infer it.
+                "llm_calls": budget.as_dict(),
                 "prompt": {
                     "system_prompt": prompts.SYSTEM_PROMPT,
                     "user_prompt": prompt.strip() if round_index == 0 else "(continued)",
@@ -183,15 +243,43 @@ def execute(prompt: str) -> dict[str, Any]:
                 # what a reviewer can inspect and what the model must carry are
                 # deliberately different things.
                 payload = result
-                if name == "read_synopses" and result.get("synopses"):
+                if (name == "read_synopses" and result.get("synopses")
+                        and not budget.can_observe()):
+                    # Out of budget for a second reader. The text still goes to
+                    # the planner -- unadjudicated evidence beats none -- but it
+                    # is labelled as unread, because the note the Observer path
+                    # attaches ("every quote here was checked against the text")
+                    # would be a lie about this payload.
+                    steps.append({
+                        "module": "Observer",
+                        "round": round_index + 1,
+                        "llm_calls": budget.as_dict(),
+                        "prompt": {"system_prompt": observer.OBSERVER_PROMPT,
+                                   "user_prompt": "(skipped: LLM call budget exhausted)"},
+                        "response": {"findings": [],
+                                     "skipped": f"{budget.total} of "
+                                                f"{MAX_TOTAL_LLM_CALLS} calls spent; "
+                                                f"the last is reserved for the answer"},
+                    })
+                    payload = {
+                        **result,
+                        "note": (
+                            "Read but NOT adjudicated -- the call budget was spent, so "
+                            "no Observer checked this text. Quote it only if you can see "
+                            "the words yourself, and say it was unverified."
+                        ),
+                    }
+                elif name == "read_synopses" and result.get("synopses"):
                     seen = observer.observe(
                         arguments.get("about") or prompt.strip(),
                         result["synopses"],
                     )
+                    budget.observer += 1
                     steps.append({
                         "module": "Observer",
                         "round": round_index + 1,
                         "usage": seen.get("usage"),
+                        "llm_calls": budget.as_dict(),
                         "prompt": {
                             "system_prompt": observer.OBSERVER_PROMPT,
                             "user_prompt": seen.get("prompt", ""),
@@ -221,10 +309,15 @@ def execute(prompt: str) -> dict[str, Any]:
                     "content": json.dumps(payload, default=str),
                 })
 
-        # Fell out of the loop: MAX_ROUNDS turns without a final answer.
+        # Fell out of the loop without a final answer. Name the bound that
+        # actually stopped it: "five rounds" is a misleading thing to tell
+        # someone whose request ended because it spent eight model calls.
         return _error(
-            f"Stopped after {MAX_ROUNDS} rounds without a final answer. "
-            "The query may be too open-ended for the catalog.",
+            f"Stopped after {budget.planner} planner rounds and "
+            f"{budget.total} model calls "
+            f"(bounds: {MAX_ROUNDS} rounds, {MAX_TOTAL_LLM_CALLS} calls) "
+            "without a final answer. The query may be too open-ended for "
+            "the catalog.",
             steps,
         )
 

@@ -748,7 +748,13 @@
         <h2>How it works</h2>
         <p>
           One ReAct loop: <strong>reason &rarr; act &rarr; observe &rarr; stop?</strong>,
-          for at most five model turns. Every tool is on the table on every turn. The
+          for at most five planner rounds and <strong>eight model calls in
+          total</strong>. Those are different numbers because the planner is not the
+          only thing that calls a model: a synopsis read sends the Observer, so one
+          round can cost two calls. The total is the one that bounds the bill, it is
+          enforced in <code>agent/loop.py</code> rather than asked for in a prompt, and
+          its last call is reserved for the planner so a request that runs out of
+          budget still returns an answer. Every tool is on the table on every turn. The
           planner chooses which to call, with what arguments, how many at once, and
           when it has enough to answer. <strong>Exactly one step costs money</strong>
           &mdash; the planner. Three of the four tools are free, and the fourth costs
