@@ -57,7 +57,7 @@ OUTPUT_PATH = os.path.join(_ROOT, "assets", "architecture.png")
 # actually gets. SS only buys resampling quality: the image is drawn SS times
 # larger and shrunk back down at save time, so curves and small type stay clean
 # on a retina display and survive the browser's own scaling.
-WIDTH, HEIGHT = 900, 981
+WIDTH, HEIGHT = 900, 1108
 SS = 2
 
 BG = (255, 255, 255)
@@ -261,7 +261,7 @@ def main() -> None:
          fill=PAID_FILL, line=PAID_LINE, title_size=27, sub_size=15)
     _box(draw, act, "Act", ("run the tools", "it asked for"),
          title_size=27, sub_size=15)
-    _box(draw, observe, "Observe", ("Observer reads a", "plot; else appended"),
+    _box(draw, observe, "Observe", ("a reader answers,", "else appended"),
          fill=MAYBE_FILL, line=MAYBE_LINE, title_size=27, sub_size=15)
     _box(draw, stop, "Stop?", ("did this turn ask", "for a tool?"),
          title_size=27, sub_size=15)
@@ -320,7 +320,7 @@ def main() -> None:
         ("screen_out", "exhaustive scan", "\U0001F6AB", False),
         ("build_shortlist", "one embedding per condition \u00b7 fused", "\U0001F50E", True),
         ("read_synopses", "plot text, on request", "\U0001F4D6", False),
-        ("verify_candidates", "one model call per film \u00b7 all conditions",
+        ("verify_candidates", "walks the shortlist \u00b7 calls the Verifier",
          "\u2705", True),
     ]
     row_h, row_gap, row_y = 44, 7, 694
@@ -337,6 +337,40 @@ def main() -> None:
             tx += 30
         _text(draw, (tx, y0 + 11), tools.TRACE_NAMES[key], INK, 19, bold=True)
         _text(draw, (824 - _width(draw, sub, 15), y0 + 15), sub, MUTED, 15)
+
+    # ---- readers ------------------------------------------------------
+    # The two modules that call a model without the planner asking them to.
+    # They were missing, and the Verifier had been sitting in the tools row
+    # above, which said it was something the planner invokes -- it is not.
+    # SynopsisReader sends the Observer; CandidateWalk sends the Verifier, once
+    # per film. Naming them here is the difference between five tools and five
+    # tools plus two readers, which is what the trace actually shows.
+    rpanel = (36, 971, 864, 1092)
+    draw.rounded_rectangle(_st(rpanel), radius=_s(11), fill=PANEL_FILL,
+                           outline=PANEL_LINE, width=_s(2))
+    _text(draw, (60, 990), "READERS", MUTED, 15, bold=True)
+    _text(draw, (60 + _width(draw, "READERS", 15, True) + 12, 991),
+          "model calls a tool makes on your behalf \u00b7 never called directly",
+          FAINT, 14)
+
+    readers = [
+        ("Observer", "one question, many films",
+         "sent by SynopsisReader", "\U0001F50D"),
+        ("Verifier", "one film, every condition",
+         "sent by CandidateWalk, once per film", "\u2696"),
+    ]
+    for i, (name, what, sent, glyph) in enumerate(readers):
+        y0 = 1020 + i * 51
+        draw.rounded_rectangle(_st((60, y0, 840, y0 + 44)), radius=_s(8),
+                               fill=MAYBE_FILL, outline=MAYBE_LINE, width=_s(1))
+        tx = 76
+        icon = _emoji(glyph, 20)
+        if icon is not None:
+            img.paste(icon, (_s(tx), _s(y0) + int((_s(44) - _s(20)) / 2)), icon)
+            tx += 30
+        _text(draw, (tx, y0 + 11), name, INK, 19, bold=True)
+        _text(draw, (tx + _width(draw, name, 19, True) + 14, y0 + 15), what, MUTED, 15)
+        _text(draw, (824 - _width(draw, sent, 14), y0 + 16), sent, FAINT, 14)
 
     # Saved at full SS resolution rather than resampled back down. The browser
     # caps it at the container width either way, so the layout sizes above are

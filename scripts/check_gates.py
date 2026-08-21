@@ -67,19 +67,29 @@ def g03_module_names() -> list[str]:
         if name not in tools.TRACE_NAMES:
             failures.append(f"tool {name!r} is offered to the model but has no TRACE_NAME")
 
-    # Planner and Observer are modules too, and they are the ones that make the
-    # model calls the steps trace exists to record.
+    # Planner and the readers are modules too, and they are the ones that make
+    # the model calls the steps trace exists to record. They are declared
+    # apart from the tools on purpose: a reader is sent by a tool and cannot
+    # be called by the planner, and collapsing the two is what let a tool step
+    # be logged under the name "Verifier".
     if "Planner" not in (info["architecture"].get("planner_module") or ""):
         failures.append("agent_info does not name the Planner module")
-    if "Observer" not in (info["architecture"].get("observer_module") or ""):
-        failures.append("agent_info does not name the Observer module")
+
+    readers = info["architecture"].get("reader_modules") or {}
+    for name in ("Observer", "Verifier"):
+        if name not in readers:
+            failures.append(f"agent_info does not declare the {name} reader module")
+    for name in readers:
+        if name in declared:
+            failures.append(f"{name!r} is declared both as a tool and as a reader; a "
+                            f"reader is sent by a tool, not called by the planner")
 
     # The worked examples in agent_info are a trace like any other, and they go
     # stale the moment a module is renamed -- which is exactly what happened
     # when PlotSearch became ShortlistFusion and the examples kept naming a
     # module that no longer exists. Nothing checked them, because this gate
     # only ever read the declarations.
-    declared_all = declared | {"Planner", "Observer", "Verifier"}
+    declared_all = declared | {"Planner"} | set(readers)
     for i, example in enumerate(info.get("prompt_examples") or []):
         for step in example.get("steps") or []:
             module = step.get("module")
@@ -394,6 +404,82 @@ def g08_no_follow_up_offers() -> list[str]:
     return failures
 
 
+def g10_verdicts_need_evidence() -> list[str]:
+    """A verdict is only as good as the quote under it. Free, offline.
+
+    Three ways a `yes` was reaching the accepted list without support, all
+    observed on "a movie with an animal that wears a hat":
+
+      the quote was real but showed half the requirement -- a butler's hat
+      for "an animal that wears a hat";
+      the note argued against the verdict in the same object -- "Edgar is a
+      butler, not an animal", "later scenes depict him with a hat";
+      a stray object carrying only a note, no requirement and no verdict,
+      counted as a finding and rendered as "undefined: undefined".
+
+    The model is stubbed here, so this asserts the post-processing rather than
+    the model's judgement, which is the half that can be guaranteed.
+    """
+    from agent import llm_client, verifier
+
+    failures = []
+
+    class _M:
+        def __init__(self, content): self.content = content
+
+    def run(payload, conditions, text):
+        real = llm_client.complete
+        llm_client.complete = lambda msgs, tools=None: (_M(json.dumps(payload)), {})
+        try:
+            return verifier.verify("Film (2000)", conditions, text)
+        finally:
+            llm_client.complete = real
+
+    text = "A butler realises he left his hat in the countryside. A rabbit puts her cap on."
+    cond = ["an animal that wears a hat"]
+
+    # A yes whose note argues against it.
+    r = run({"findings": [{"requirement": cond[0], "verdict": "yes",
+                           "quote": "A butler realises he left his hat in the countryside.",
+                           "note": "Edgar is a butler, not an animal."}]}, cond, text)
+    if r["accepted"] or r["findings"][0]["verdict"] != "unclear":
+        failures.append("a `yes` whose note contradicts it was accepted")
+
+    # A yes with no quote at all is an assertion.
+    r = run({"findings": [{"requirement": cond[0], "verdict": "yes", "quote": ""}]},
+            cond, text)
+    if r["accepted"]:
+        failures.append("a `yes` with no quote was accepted")
+
+    # A yes whose quote is not in the text loses its evidence.
+    r = run({"findings": [{"requirement": cond[0], "verdict": "yes",
+                           "quote": "a hamster wearing a tiny fez"}]}, cond, text)
+    if r["accepted"]:
+        failures.append("a `yes` quoting text that does not exist was accepted")
+
+    # Stray objects are not findings, and every requirement gets exactly one.
+    r = run({"findings": [{"note": "the Cheshire Cat is an animal"},
+                          {"requirement": "something never asked about",
+                           "verdict": "yes", "quote": "A rabbit puts her cap on."}]},
+            cond, text)
+    if len(r["findings"]) != 1:
+        failures.append(f"expected one finding per requirement, got {len(r['findings'])}")
+    if any(f.get("requirement") not in cond for f in r["findings"]):
+        failures.append("a finding survived for a requirement that was never asked")
+    if r["findings"][0]["verdict"] != "unclear":
+        failures.append("a requirement the model ignored was not recorded as unclear")
+    if r["accepted"]:
+        failures.append("a film was accepted on a requirement that got no verdict")
+
+    # A clean identifying note must survive, or every honest yes is punished.
+    r = run({"findings": [{"requirement": cond[0], "verdict": "yes",
+                           "quote": "A rabbit puts her cap on.",
+                           "note": "The rabbit is Judy."}]}, cond, text)
+    if not r["accepted"]:
+        failures.append("a supported `yes` with a plain identifying note was rejected")
+    return failures
+
+
 def g09_counts() -> list[str]:
     """Every figure the GUI states, recomputed from the shipped artifacts.
 
@@ -532,6 +618,8 @@ def main() -> int:
         ("G08", g08_no_follow_up_offers,
          "follow-up offers are caught and honest reports are not"),
         ("G09", g09_counts, "every displayed count comes from the shipped data"),
+        ("G10", g10_verdicts_need_evidence,
+         "a verdict without a quote that shows it is not a verdict"),
     ]:
         failures = fn()
         total += len(failures)

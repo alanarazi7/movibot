@@ -2261,7 +2261,7 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
         } else if (st.module === 'SynopsisReader') {
           rows.push(row('📖', `Read ${n((a.films || []).length)} plots about `
             + `&ldquo;${escapeHtml(String(a.about || 'the whole story'))}&rdquo;`));
-        } else if (st.module === 'Verifier') {
+        } else if (st.module === 'CandidateWalk') {
           rows.push(row('✅', `Read <b>${n(r.verified)} films</b> in full (of ${n((r.budget || {}).allowed)} `
             + `allowed) and checked every condition on each &mdash; `
             + `<b>${n((r.accepted || []).length)} passed</b>, ${n((r.rejected || []).length)} failed, `
@@ -2273,6 +2273,11 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
             }).join(' &middot; ');
             rows.push(sub(`${v.accepted ? '✓' : '✗'} <b>${escapeHtml(v.film)}</b>`
               + (cells ? ` &mdash; ${cells}` : '')));
+            for (const f of (v.findings || [])) {
+              if (f.downgraded) {
+                rows.push(sub(`&nbsp;&nbsp;&nbsp;↳ ${escapeHtml(f.downgraded)}`));
+              }
+            }
           }
           for (const c of (r.unsettleable || [])) {
             rows.push(sub(`⚠️ &ldquo;${escapeHtml(c)}&rdquo; could not be judged from plot text at all`));

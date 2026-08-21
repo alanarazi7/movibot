@@ -74,9 +74,61 @@ applies to every other requirement: an intention is not an event.
 - **A near-miss is `no`, not `yes`.** A film where someone seizes power \
 without pretending to love anyone does not satisfy a requirement about \
 pretending to love someone to seize power.
+- **A requirement with several parts needs ONE thing that has all of them, \
+shown in the text.** "An animal that wears a hat" is not an animal in one \
+sentence and a hat in another. It needs a single creature the text shows \
+wearing a hat. A butler who leaves his hat in the countryside is a person \
+with a hat, so the answer is `no`. A hamster the text never puts a hat on is \
+`unclear`, however sure you are the film shows one. A Mad Hatter is not an \
+animal. Check every part against the same subject before you answer `yes`.
+- **Your quote must show the WHOLE requirement by itself**, not the half of it \
+you could find. If the sentence establishes only one part, you do not have the \
+evidence and the verdict is `unclear`. A real sentence that does not say the \
+thing is worse than no sentence, because it looks like proof.
+- **If your note would explain why the quote is not quite it, the verdict is \
+not `yes`.** "No hat-wearing animal is explicitly named, however..." and \
+"later scenes depict him with a hat" are both you noticing that the text does \
+not support the answer you are about to give. Write `unclear` instead. A note \
+identifies who a name refers to; it never argues a quote into saying more than \
+it says.
 
 Return JSON only: {"findings": [ ... ]}. No prose around it.\
 """
+
+
+# Markers of a note that is arguing rather than identifying. A `yes` carrying
+# one of these is the model telling us, in the same object, that the text does
+# not support the verdict it just gave:
+#
+#   verdict yes, note "Edgar is the animal? No -- Edgar is a butler, not an animal."
+#   verdict yes, note "later scenes depict him with a hat in the film"
+#   verdict yes, note "the Hatter is associated with the hat in the same scene"
+#
+# Three rounds of prompt wording failed to stop this, including one that quoted
+# two of these notes back as examples, so it is checked instead. Only `yes` is
+# examined -- it is the verdict that puts a film in front of someone -- and a
+# hit downgrades to `unclear` rather than to `no`, because what has been shown
+# is an absence of evidence, not evidence of absence.
+#
+# A legitimate `yes` note identifies a subject: "Judy is a rabbit", "Dug is a
+# dog". None of these appear in one.
+_HEDGE_MARKERS = (
+    "not a ", "not an ", "is not", "isn't", "does not", "doesn't", "no—", "no -",
+    "however", "but ", "though", "although",
+    "associated", "implied", "implies", "presumably", "assume", "assuming",
+    "likely", "probably", "seems", "appears to be",
+    "later scene", "later in", "in the film", "outside the text", "elsewhere",
+    "not explicitly", "not named", "not stated", "not shown", "?",
+)
+
+
+def _hedged(note: str) -> str | None:
+    """The marker that gives away a note arguing with its own verdict."""
+    lowered = (note or "").lower()
+    for marker in _HEDGE_MARKERS:
+        if marker in lowered:
+            return marker.strip()
+    return None
 
 
 def _accepted(findings: list[dict[str, Any]], conditions: list[str]) -> bool:
@@ -118,10 +170,31 @@ def verify(film: str, conditions: list[str], text: str) -> dict[str, Any]:
         return {"film": film, "findings": [], "accepted": False, "usage": usage,
                 "raw": raw, "error": "the Verifier did not return usable JSON"}
 
-    checked = []
+    # One finding per requirement asked for, keyed by the requirement text.
+    # Anything else is dropped: the model has returned stray objects carrying
+    # only a `note` and no verdict, which sailed through as a finding and
+    # rendered as "undefined: undefined". A requirement with no finding is
+    # `unclear` -- silence is not assent.
+    by_requirement: dict[str, dict[str, Any]] = {}
     for f in findings:
         if not isinstance(f, dict):
             continue
+        req = f.get("requirement")
+        if req in conditions and req not in by_requirement:
+            by_requirement[req] = f
+
+    checked = []
+    for condition in conditions:
+        f = by_requirement.get(condition)
+        if f is None:
+            checked.append({
+                "requirement": condition,
+                "verdict": "unclear",
+                "quote": "",
+                "note": "the Verifier returned no verdict for this requirement",
+            })
+            continue
+
         quote = (f.get("quote") or "").strip()
         if quote and quote not in text:
             f["quote"] = ""
@@ -129,10 +202,28 @@ def verify(film: str, conditions: list[str], text: str) -> dict[str, Any]:
                 "not a literal substring of the plot text; discarded, so this "
                 "verdict carries no evidence"
             )
-            # An unsupported "yes" is the dangerous direction: it is the one
-            # that puts a film in front of a user. Downgrade it.
-            if f.get("verdict") == "yes":
+            quote = ""
+
+        # A decisive verdict has to cite something. Without this, "yes" with an
+        # empty quote counted as satisfied -- which is the model asserting a
+        # story fact, exactly what this module exists to stop. `unclear` is
+        # allowed to have no quote; it is the verdict that claims nothing.
+        # A `yes` whose note argues against it is not a yes.
+        if f.get("verdict") == "yes":
+            marker = _hedged(str(f.get("note") or ""))
+            if marker:
                 f["verdict"] = "unclear"
+                f["downgraded"] = (
+                    f"the note hedges on {marker!r}, which means the text does not "
+                    f"establish this; a yes that has to be argued for is unclear"
+                )
+
+        if f.get("verdict") in ("yes", "no") and not quote:
+            f["verdict"] = "unclear"
+            f["downgraded"] = (
+                "a decisive verdict with no surviving quote is an assertion, not "
+                "a finding"
+            )
         checked.append(f)
 
     return {

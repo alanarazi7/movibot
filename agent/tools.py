@@ -734,6 +734,9 @@ _STRUCTURED_CONDITION = re.compile(
         | \b(19|20)\d{2}\s+or\s+(later|earlier|newer|older)
         | \bfrom\s+(the\s+)?(19|20)\d0s\b
         | \brelease\s+year\b
+        | \byears?\s+(19|20)\d{2}\s*\+
+        | ^\s*(19|20)\d{2}\s*\+\s*$
+        | \b(from|after|since|before)\s+(19|20)\d{2}\s*\+?\s*$
         | ^\s*(a|an|the)?\s*(walt\s+)?(disney|pixar)(\s+(studio|film|movie|production|picture))?\s*$
         | \bis\s+a\s+(walt\s+)?(disney|pixar)\b
         | \bproduced\s+by\s+(walt\s+)?(disney|pixar)\b
@@ -1368,7 +1371,13 @@ TRACE_NAMES = {
     "screen_out": "LexicalScreen",
     "build_shortlist": "ShortlistFusion",
     "read_synopses": "SynopsisReader",
-    "verify_candidates": "Verifier",
+    # The TOOL, not the module it calls. read_synopses/Observer already made
+    # this distinction and verify_candidates did not, so a tool step was
+    # logged under a subagent's name and the Verifier looked like something
+    # the planner could invoke directly. It cannot: it walks candidates and
+    # sends one model call per film, the way SynopsisReader sends one to the
+    # Observer.
+    "verify_candidates": "CandidateWalk",
 }
 
 

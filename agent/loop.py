@@ -43,7 +43,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from agent import catalog, llm_client, observer, prompts, tools
+from agent import catalog, llm_client, observer, prompts, tools, verifier
 
 # Enough for filter -> search -> read -> answer, with one round spare for a
 # correction. Queries needing more than this are usually a sign the model is
@@ -446,6 +446,7 @@ def execute(prompt: str) -> dict[str, Any]:
 
             for call in tool_calls:
                 name = call.function.name
+                pending_verifier_steps: list[dict[str, Any]] = []
                 try:
                     arguments = json.loads(call.function.arguments or "{}")
                 except json.JSONDecodeError as exc:
@@ -459,6 +460,33 @@ def execute(prompt: str) -> dict[str, Any]:
 
                 if name == "verify_candidates" and not result.get("error"):
                     verified["ran"] = True
+                    # One step per Verifier call, because that is what the spec
+                    # counts: "steps is an array describing every LLM call the
+                    # agent did in order". A walk that read ten films made ten
+                    # model calls and logged one step, so len(steps) and the
+                    # number of calls had stopped being the same number.
+                    #
+                    # They carry the Verifier's own system/user prompt, so
+                    # every entry in steps has the prompt shape the contract
+                    # asks for.
+                    pending_verifier_steps = [
+                        {
+                            "module": "Verifier",
+                            "round": round_index + 1,
+                            "usage": row.get("usage"),
+                            "prompt": {
+                                "system_prompt": verifier.VERIFIER_PROMPT,
+                                "user_prompt": row.get("prompt", ""),
+                            },
+                            "response": {
+                                "film": row.get("film"),
+                                "accepted": row.get("accepted"),
+                                "findings": row.get("findings"),
+                                **({"error": row["error"]} if row.get("error") else {}),
+                            },
+                        }
+                        for row in (result.get("verdicts") or [])
+                    ]
                     verified["accepted"] |= set(result.get("accepted") or [])
                     for bucket in ("accepted", "rejected", "unresolved"):
                         verified["seen"] |= set(result.get(bucket) or [])
@@ -475,6 +503,9 @@ def execute(prompt: str) -> dict[str, Any]:
                     "llm_calls": budget.as_dict(),
                     "response": result,
                 })
+                # After the tool step that caused them, in the order they ran.
+                steps.extend(pending_verifier_steps)
+                pending_verifier_steps = []
 
                 # Plot text is the one payload worth a reader of its own. A
                 # synopsis read is ~5,000 tokens and would otherwise sit in the
