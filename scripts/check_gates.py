@@ -85,6 +85,71 @@ def g03_module_names() -> list[str]:
     return failures
 
 
+def g05_runtime_is_structured() -> list[str]:
+    """Runtime is reachable as a filter argument, exact, and cited back.
+
+    The catalog has always held a runtime for all 238 films, but no filter
+    argument exposed it, so "under 110 minutes" fell through to plot search --
+    which cannot establish a runtime, because no synopsis states one. The
+    agent then reported a deterministic fact as unverifiable. This gate holds
+    the column, the argument, the schema and the returned field together, and
+    checks the bounds the prompt states in prose.
+    """
+    from agent import catalog, prompts, tools
+
+    failures = []
+    df = catalog.movies()
+
+    missing = int(df["runtime_minutes"].isna().sum())
+    if missing:
+        failures.append(f"{missing} films have no runtime_minutes; the filter would "
+                        f"silently drop them")
+
+    # The argument exists, on the function and in the schema the model reads.
+    schema = next(s for s in tools.TOOL_SCHEMAS
+                  if s["function"]["name"] == "filter_catalog")
+    props = schema["function"]["parameters"]["properties"]
+    for arg in ("runtime_min", "runtime_max"):
+        if arg not in props:
+            failures.append(f"filter_catalog's schema does not offer {arg!r}, so the "
+                            f"model cannot use it however well the function works")
+
+    # Inclusive at both ends, and the schema must say so -- an off-by-one here
+    # returns a 110-minute film to someone who asked for under 110.
+    lo, hi = int(df["runtime_minutes"].min()), int(df["runtime_minutes"].max())
+    at_hi = tools.filter_catalog(runtime_max=hi, list_all=True)
+    below_hi = tools.filter_catalog(runtime_max=hi - 1, list_all=True)
+    if at_hi["matched"] != len(df):
+        failures.append(f"runtime_max={hi} matched {at_hi['matched']} of {len(df)}; "
+                        f"the bound is meant to be inclusive")
+    if below_hi["matched"] >= at_hi["matched"]:
+        failures.append(f"runtime_max={hi - 1} matched {below_hi['matched']}, not fewer "
+                        f"than {at_hi['matched']} -- the filter is not being applied")
+    if "INCLUSIVE" not in props.get("runtime_max", {}).get("description", ""):
+        failures.append("runtime_max's description no longer says it is inclusive, which "
+                        "is what stops the model passing 110 for 'under 110'")
+
+    # Below the floor is a real absence, not an empty search.
+    if tools.filter_catalog(runtime_max=lo - 1)["matched"] != 0:
+        failures.append(f"runtime_max={lo - 1} matched something, but the shortest film "
+                        f"is {lo} minutes")
+
+    # Every returned film carries its runtime, or the planner cannot cite one.
+    sample = tools.filter_catalog(year_min=2010, list_all=True)["films"]
+    if not all(isinstance(f.get("runtime"), int) for f in sample):
+        failures.append("filter_catalog returns films without an integer `runtime`, so "
+                        "the planner can filter on length but not show it")
+
+    # The bounds are stated in prose in two places. Typed-in numbers rot.
+    for where, text in [("the system prompt", prompts.SYSTEM_PROMPT),
+                        ("filter_catalog's description",
+                         schema["function"]["description"])]:
+        if f"{lo} to {hi} minutes" not in text:
+            failures.append(f"{where} no longer states the real runtime range "
+                            f"({lo} to {hi} minutes)")
+    return failures
+
+
 def g04_models() -> list[str]:
     """The two deployments the course provides, and no others."""
     from agent import llm_client
@@ -227,6 +292,8 @@ def main() -> int:
          "/api/execute answers with exactly four fields on every malformed input"),
         ("G03", g03_module_names, "module names agree across diagram, agent_info and steps"),
         ("G04", g04_models, "the course-provided model deployments are the ones configured"),
+        ("G05", g05_runtime_is_structured,
+         "runtime is a filter argument, exact and inclusive, and cited back"),
         ("G09", g09_counts, "every displayed count comes from the shipped data"),
     ]:
         failures = fn()

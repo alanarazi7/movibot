@@ -122,6 +122,8 @@ MAX_PASSAGE_CHARS = 1200
 def filter_catalog(
     year_min: int | None = None,
     year_max: int | None = None,
+    runtime_min: int | None = None,
+    runtime_max: int | None = None,
     genres: list[str] | None = None,
     exclude_genres: list[str] | None = None,
     keywords: list[str] | None = None,
@@ -149,6 +151,22 @@ def filter_catalog(
     if year_max is not None:
         df = df[df["release_year"] <= int(year_max)]
         applied["year_max"] = int(year_max)
+
+    # Runtime is a column, and every one of the 238 rows has it. It was
+    # reachable only through plot search before this, which cannot establish
+    # it: no synopsis states how long its film runs, so "under 110 minutes"
+    # scored as a weak thematic match and came back unverifiable. A fact the
+    # catalog stores must never be answered by searching for it.
+    #
+    # Inclusive both ends, matching year. "Under 110" is runtime_max=109 and
+    # the schema says so, because the alternative is the model passing 110 and
+    # returning a 110-minute film to a user who asked for less.
+    if runtime_min is not None:
+        df = df[df["runtime_minutes"] >= int(runtime_min)]
+        applied["runtime_min"] = int(runtime_min)
+    if runtime_max is not None:
+        df = df[df["runtime_minutes"] <= int(runtime_max)]
+        applied["runtime_max"] = int(runtime_max)
 
     # Genres are AND-ed: "animated adventure" means both, not either.
     if genres:
@@ -276,8 +294,14 @@ def filter_catalog(
     if ctx is not None:
         ctx.narrow(set(int(i) for i in df["id"]), _describe(applied))
 
+    # Runtime rides along on every film, not only when a runtime filter was
+    # passed. Citing "Moana (2016), 107 minutes" is the difference between the
+    # planner reporting a constraint as satisfied and showing that it is, and a
+    # field that appears only sometimes is a field the model learns not to
+    # rely on. It costs about 4 tokens a film.
     labelled = [
         {"film": f"{r.title} ({int(r.release_year)})",
+         "runtime": int(r.runtime_minutes),
          "rating": round(float(r.weighted_rating), 2)}
         for r in df.itertuples()
     ]
@@ -696,19 +720,41 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
         "function": {
             "name": "filter_catalog",
             "description": (
-                "Filter the movie catalog on structured facts: year, genre, "
-                "keyword, studio, spoken language, title exclusions. Use this "
-                "FIRST whenever the request contains any hard constraint, and "
-                "for anything about language, era, or studio, which plot "
-                "search cannot see. Results come back best-first by a "
-                "vote-count-weighted rating. The catalog is feature films "
-                "only (238 Disney/Pixar titles, 1940-2017)."
+                "Filter the movie catalog on structured facts: year, "
+                "runtime, genre, keyword, studio, spoken language, title "
+                "exclusions. Use this FIRST whenever the request contains any "
+                "hard constraint, and for anything about language, era, "
+                "runtime or studio, which plot search cannot see. Results "
+                "come back best-first by a vote-count-weighted rating, and "
+                "every film comes back with its runtime in minutes. The "
+                "catalog is feature films only (238 Disney/Pixar titles, "
+                "1940-2017, 47 to 172 minutes)."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "year_min": {"type": "integer", "description": "Earliest release year, inclusive."},
                     "year_max": {"type": "integer", "description": "Latest release year, inclusive."},
+                    "runtime_min": {
+                        "type": "integer",
+                        "description": (
+                            "Shortest runtime in minutes, inclusive. Every "
+                            "film in the catalog has a runtime, so this is "
+                            "exact -- never try to settle a length constraint "
+                            "with search_plots, which cannot see it."
+                        ),
+                    },
+                    "runtime_max": {
+                        "type": "integer",
+                        "description": (
+                            "Longest runtime in minutes, INCLUSIVE, so 'under "
+                            "110 minutes' is runtime_max=109 and 'no more "
+                            "than 110' is runtime_max=110. The catalog holds "
+                            "nothing under 47 minutes -- shorts were excluded "
+                            "-- so a small value returning nothing is a real "
+                            "absence you may report, not a failed search."
+                        ),
+                    },
                     "genres": {
                         "type": "array", "items": {"type": "string"},
                         "description": "Required genres, ALL must match. e.g. ['Animation','Adventure'].",

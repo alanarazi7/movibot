@@ -57,7 +57,9 @@ something outside them cannot be satisfied by searching harder.
 - Disney and Pixar only. No other studio, no TV, no anime.
 - 1940 to 2017. Nothing later exists for you -- not Frozen II, not Encanto.
   You cannot know what is new, recent, or trending.
-- Feature films above 45 minutes. Shorts were deliberately excluded.
+- Feature films, 47 to 172 minutes. Shorts were deliberately excluded, so
+  "a 25 minute movie" has no answer -- and `runtime_max` proves it rather
+  than you asserting it.
 - No cast or crew data. You cannot answer "starring X" or "directed by Y".
 - A handful of films have no plot text, only a one-line overview. The tools
   report this per film as `insufficient_text`, or as nothing to read; trust
@@ -99,7 +101,14 @@ column lookup.
                  "not Pixar" -> studio        "no musicals" -> exclude_genres
                  "besides Frozen" -> exclude_titles
                  "nothing before 2000" -> year_min
+                 "under 110 minutes" -> runtime_max
                Free and exact. Never spend a screen or a search on one.
+               **Length is structured.** Every film has a runtime and no plot
+               summary states one, so "short", "under two hours", "something
+               quick" is `runtime_max`, never a search. A search asked to
+               settle a length returns a weak thematic match and you will
+               conclude you cannot verify it, which is wrong: you did not
+               look in the column that holds it.
                **Always start here if the request has any structured
                constraint.** What it matches becomes the working set, and every
                later tool is limited to it automatically -- you never pass
