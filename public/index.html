@@ -759,107 +759,80 @@
         <h2>How it works</h2>
 
         <p class="lede">
-          Three kinds of thing do the work, and the diagram above is laid out around
-          them: a <b>Planner</b> that decides, <b>tools</b> that fetch and filter, and
-          <b>readers</b> that judge plot text. A fourth step, the <b>answer check</b>,
-          decides whether what the planner wrote is allowed to reach you.
+          Three model calls with fixed plumbing between them. A
+          <b>QueryDecomposer</b> reads the request once and writes a plan; ordinary
+          Python narrows the catalog to candidates; a <b>Verifier</b> reads one film at
+          a time; an <b>Answerer</b> writes the reply from what survived. A check
+          decides whether that reply may be returned.
         </p>
 
-        <h3>The Planner</h3>
+        <h3>1 &middot; QueryDecomposer &mdash; one model call</h3>
         <p>
-          The only part that is asked to think. It is one model call per round: it reads
-          the request, breaks it into conditions, and chooses which tools to call with
-          which arguments. Nothing in the code sequences those tools &mdash; the planner
-          picks, in any order, as many at once as it likes.
-        </p>
-        <p>
-          A round that asks for a tool continues; a round that asks for none is the
-          planner&rsquo;s attempt at an answer. It gets at most five rounds and the
-          request as a whole gets at most sixteen model calls, counting the readers.
+          The only place the request is interpreted. It returns a plan, not prose:
+          which columns to filter on, which words to scan plot text for, which story
+          conditions to search, and which requirements each film must satisfy. It also
+          decides to refuse here &mdash; a film after 2017, a short, a request by actor
+          &mdash; rather than after filtering and verifying something that was never
+          answerable. Nothing later re-reads the request.
         </p>
 
-        <h3>The answer check</h3>
+        <h3>2 &middot; The stages &mdash; no model calls</h3>
         <p>
-          An attempt is not yet a reply. Before anything is returned, the loop checks
-          it against what actually happened during the request, and a failure costs one
-          correction round. It may not name a film verification did not accept, omit one
-          it did, name films after a search without verifying them, name more films than
-          the ceiling, or offer a follow-up this stateless API cannot honour.
+          Fixed order, each feeding the next. A stage runs only if the plan gave it
+          something to do, so which stages appear in a trace is decided by the plan and
+          nothing else.
         </p>
-        <p>
-          This is why the picture has a box there rather than an arrow. The planner
-          decides the route; it does not decide whether a film it recommends was
-          checked.
-        </p>
-
-        <h3>Five tools &mdash; the planner calls these</h3>
         <div class="data-table">
           <table>
-            <thead><tr><th>Tool</th><th>What it does</th><th>Cost</th></tr></thead>
+            <thead><tr><th>Stage</th><th>What it does</th><th>Cost</th></tr></thead>
             <tbody>
-              <tr>
-                <td><code>CatalogFilter</code></td>
-                <td>Columns: year, runtime, genre, studio, language, title exclusions. Exact and exhaustive.</td>
-                <td class="n">free</td>
-              </tr>
-              <tr>
-                <td><code>LexicalScreen</code></td>
-                <td>Scans every plot for a word list the planner writes. The only thing that can answer an <em>absence</em> &mdash; you cannot search for something not happening.</td>
-                <td class="n">free</td>
-              </tr>
-              <tr>
-                <td><code>ShortlistFusion</code></td>
-                <td>Searches <b>each story condition separately</b>, then merges the rankings. Films matching more conditions outrank films matching one of them better.</td>
-                <td class="n">1 embedding per condition</td>
-              </tr>
-              <tr>
-                <td><code>SynopsisReader</code></td>
-                <td>Plot text for named films, when there is one specific question about them.</td>
-                <td class="n">free</td>
-              </tr>
-              <tr>
-                <td><code>CandidateWalk</code></td>
-                <td>Walks the shortlist best-first and sends each film to the Verifier. Returns accepted / rejected / unresolved.</td>
-                <td class="n">free</td>
-              </tr>
+              <tr><td><code>CatalogFilter</code></td>
+                  <td>Stored columns &mdash; year, runtime, genre, studio, language, title exclusions. Exact and exhaustive.</td>
+                  <td class="n">free</td></tr>
+              <tr><td><code>LexicalScreen</code></td>
+                  <td>Scans every plot for the decomposer&rsquo;s word list. The only thing that can address an <em>absence</em>: &ldquo;nobody dies&rdquo; cannot be searched for, since searching returns the films where somebody does. It <b>orders</b> candidates rather than removing any &mdash; a word scan cannot tell a threat from an outcome.</td>
+                  <td class="n">free</td></tr>
+              <tr><td><code>ShortlistFusion</code></td>
+                  <td>Searches <b>each story condition separately</b> and fuses the rankings, so a film matching every condition moderately outranks one matching a single condition perfectly.</td>
+                  <td class="n">1 embedding per condition</td></tr>
+              <tr><td><code>CandidateWalk</code></td>
+                  <td>Walks the shortlist best-first, sending each film to the Verifier. Stops once enough pass or ten have been read.</td>
+                  <td class="n">free</td></tr>
             </tbody>
           </table>
         </div>
 
-        <h3>Two readers &mdash; a tool sends these, the planner cannot</h3>
-        <div class="data-table">
-          <table>
-            <thead><tr><th>Reader</th><th>Shape</th><th>Sent by</th></tr></thead>
-            <tbody>
-              <tr><td><code>Observer</code></td><td>one question &times; many films</td><td>SynopsisReader</td></tr>
-              <tr><td><code>Verifier</code></td><td>one film &times; every condition</td><td>CandidateWalk, once per film</td></tr>
-            </tbody>
-          </table>
-        </div>
+        <h3>3 &middot; Verifier &mdash; one model call per film</h3>
         <p>
-          The <b>Verifier</b> is what makes a film recommendable. It reads one film&rsquo;s
-          plot text with the whole list of requirements and returns
-          <code>yes</code> / <code>no</code> / <code>unclear</code> per requirement, each
-          with a sentence quoted verbatim from the text. A film is accepted only when
-          every requirement says yes.
+          One film, <b>every</b> condition at once, against that film&rsquo;s plot text.
+          Returns <code>yes</code> / <code>no</code> / <code>unclear</code> per
+          condition, each with a sentence quoted verbatim. Quotes are checked to be
+          literal substrings of the source and discarded otherwise; a decisive verdict
+          left without a quote is downgraded, as is a <code>yes</code> whose own note
+          argues against it. <b>A film is accepted only when every condition says
+          yes</b>, and that list is assembled in Python.
         </p>
 
-        <h3>What the code enforces</h3>
+        <h3>4 &middot; Answerer, then the check</h3>
         <p>
-          Guardrails live in the data and the tool code, never in the prompt &mdash; a
-          prompt is the wrong place for a rule that must not be forgotten, and one the
-          model can read past is not a rule. Before any answer is returned, the loop
-          checks it: it may not name more films than the ceiling, may not name a film
-          verification did not accept, may not omit one it did, may not name films
-          after a search without verifying them, and may not offer a follow-up the
-          stateless API cannot honour. Each failure costs one correction turn.
+          The Answerer sees the accepted films, their verdicts and quotes, and the
+          counts. It never touches the catalog and cannot reach a film that is not in
+          front of it &mdash; the last thing to shape the answer is the thing with the
+          least freedom.
         </p>
         <p>
-          Quotes are checked to be literal substrings of the source and discarded
-          otherwise; a decisive verdict left without a quote is downgraded to
-          <code>unclear</code>. The accepted list is assembled in Python, so the count
-          an answer states is a count of a list rather than a claim the model makes
-          about its own reasoning.
+          Then the check, which is not a model call. A reply may not name a film
+          verification did not accept, omit one it did, name more films than were asked
+          for, or offer a follow-up this stateless API cannot honour. A failure costs
+          one correction call. The Answerer decides how the reply reads; it does not
+          decide what counts as checked.
+        </p>
+
+        <h3>What a request costs</h3>
+        <p>
+          One decomposer call, one per film verified, one answerer call. Typically
+          <b>5 to 12</b> model calls, capped at 16 and enforced in
+          <code>agent/loop.py</code> rather than asked for in a prompt.
         </p>
         <div id="guardrails-body"><p class="pending">Loading&hellip;</p></div>
         <p class="fineprint">
@@ -1214,7 +1187,7 @@
       {
         kind: 'answer',
         q: 'A Pixar film that is not sad at the end',
-        expect: 'The escalation case. "Not sad" is a concept, not a vocabulary, so no word list settles it and the screen must not stand in for an answer. Expect SynopsisReader, and therefore the Observer, whose `about` must name ONE thing the text either shows or does not — ask about the sad ending and read `no` as the not-sad films. "Whether the ending is sad or not sad" makes the verdict meaningless and both a death scene and a warm goodbye come back marked the same way.'
+        expect: 'The escalation case. "Not sad" is a concept, not a vocabulary, so no word list settles it and the screen must not stand in for an answer. Expect the decomposer to send it to `verify` as a requirement about the ending, and the Verifier to answer `unclear` where the plot text does not settle it rather than guessing from tone.'
       },
       {
         kind: 'refuse',
@@ -1680,10 +1653,13 @@
       const narrowBlock = document.getElementById('narrowing-block');
       const steps = data.steps || [];
 
-      // The ledger is the content of the first Planner turn -- it was never a
+      // The ledger is the decomposer's condition list -- it was never a
       // separate field, only a copy of one.
-      const first = steps.find(s => s.module === 'Planner' && (s.response || {}).content);
-      const plan = first ? String(first.response.content).trim() : '';
+      // The ledger is the decomposer's condition list, which is the closest
+      // thing to "how the request was understood" the pipeline produces.
+      const first = steps.find(s => s.module === 'QueryDecomposer');
+      const conds = first ? ((first.response || {}).conditions || []) : [];
+      const plan = conds.map(c => '• ' + c).join('\n');
       if (plan) {
         // The ledger is the planner's own decomposition, written on turn 1.
         // It was rendered as a monospace blob; as part of the answer it reads
@@ -1751,9 +1727,6 @@
             + `rankings &mdash; ${n(r.candidates)} candidates, `
             + `<b>${n(r.matching_every_condition)} matched every one</b>`));
           for (const c of cs) rows.push(sub('· ' + escapeHtml(c)));
-        } else if (st.module === 'SynopsisReader') {
-          rows.push(row('📖', `Read ${n((a.films || []).length)} plots about `
-            + `&ldquo;${escapeHtml(String(a.about || 'the whole story'))}&rdquo;`));
         } else if (st.module === 'CandidateWalk') {
           rows.push(row('✅', `Read <b>${n(r.verified)} films</b> in full (of ${n((r.budget || {}).allowed)} `
             + `allowed) and checked every condition on each &mdash; `
@@ -1778,18 +1751,25 @@
           for (const c of (r.not_verifiable || [])) {
             rows.push(sub(`ℹ️ &ldquo;${escapeHtml(c)}&rdquo; is a catalog fact, already guaranteed by the filter`));
           }
-        } else if (st.module === 'Planner' && r.rejected) {
+        } else if (st.module === 'QueryDecomposer') {
+          const c = (r.conditions || []);
+          rows.push(row('🧭', `Read the request as <b>${n(c.length)} condition${c.length === 1 ? '' : 's'}</b>`
+            + (r.outcome && r.outcome !== 'search' ? ` &mdash; ${escapeHtml(r.outcome)}` : '')));
+          for (const x of c) rows.push(sub('· ' + escapeHtml(x)));
+          for (const x of (r.verify_dropped || [])) {
+            rows.push(sub(`ℹ️ &ldquo;${escapeHtml(x)}&rdquo; is a catalog fact, already guaranteed by the filter`));
+          }
+        } else if (st.module === 'AnswerCheck') {
           rows.push(row('↩️', `Rejected its own first answer &mdash; ${escapeHtml(String(r.rejected))}`));
         }
       }
 
       if (!rows.length) { block.style.display = 'none'; return; }
 
-      const planner = steps.filter(x => x.module === 'Planner').length;
+      const models = steps.filter(x => (x.prompt || {}).system_prompt).length;
       const ledger = [...steps].reverse().find(x => x.llm_calls);
-      const calls = ledger ? ledger.llm_calls.total : planner;
-      rows.push(`<div class="sum-foot">⏱️ ${planner} planning round${planner === 1 ? '' : 's'}`
-        + ` &middot; ${calls} model call${calls === 1 ? '' : 's'}`
+      const calls = ledger ? ledger.llm_calls.total : models;
+      rows.push(`<div class="sum-foot">⏱️ ${calls} model call${calls === 1 ? '' : 's'}`
         + ` &middot; ${(elapsedMs / 1000).toFixed(1)}s</div>`);
 
       document.getElementById('summary-text').innerHTML = rows.join('');
@@ -1817,7 +1797,7 @@
       let ledger = null;
       for (const s of steps) {
         if (s.llm_calls) ledger = s.llm_calls;
-        if (s.module === 'Planner' || s.module === 'Observer') {
+        if ((s.prompt || {}).system_prompt && s.module !== 'Verifier') {
           counted++;
           addUsage(s.usage);
         } else if (s.module === 'Verifier') {
@@ -1879,44 +1859,36 @@
         status.textContent = '';
 
         const costs = {
-          filter_catalog: 'free',
-          screen_out: 'free',
-          build_shortlist: '~$0.0000002 per condition',
-          read_synopses: 'free, token-heavy',
-          verify_candidates: '~$0.0013 per film'
+          CatalogFilter: 'free',
+          LexicalScreen: 'free',
+          ShortlistFusion: '~$0.0000002 per condition',
+          CandidateWalk: 'free \u00b7 sends the Verifier'
         };
 
-        // One expander per component. The page used to print every prompt and
-        // every schema end to end, which is thousands of words of instructions
-        // opened on nobody's behalf; collapsed, the list is a map and each
-        // entry is there when it is wanted.
         const box = (t) => `<div class="prompt-box">${escapeHtml(t)}</div>`;
-        const exp = (title, meta, inner, open) => `
-          <details class="subpanel"${open ? ' open' : ''}>
+        const exp = (title, meta, inner) => `
+          <details class="subpanel">
             <summary><b>${title}</b>${meta ? ` <span class="tok">${meta}</span>` : ''}</summary>
             <div style="padding:0.6rem 0.7rem;">${inner}</div>
           </details>`;
 
-        const tc = d.token_cost || {};
-        let html = '';
-
-        html += `<div class="prompt-meta">Planner</div>`;
-        html += exp('System prompt',
-          `${(tc.system_prompt || approxTokens(d.system_prompt)).toLocaleString()} tokens · sent every turn`,
-          `<p style="font-size:0.82rem;">The policy the tool schemas cannot carry: what a good
-           answer is, and the mistakes this catalog invites.</p>` + box(d.system_prompt));
-
-        html += `<div class="prompt-meta">Readers &mdash; a tool sends these, the planner cannot</div>`;
-        for (const r of (d.readers || [])) {
-          html += exp(r.name, `${escapeHtml(r.shape)} · sent by ${escapeHtml(r.sent_by)}`,
-                      box(r.prompt));
+        let html = `<div class="prompt-meta">Model roles &mdash; every model call the agent makes</div>`;
+        for (const r of (d.roles || [])) {
+          let inner = `<p style="font-size:0.82rem;">${escapeHtml(r.does)}</p>` + box(r.prompt);
+          if (r.output_schema) {
+            inner += `<p style="font-size:0.8rem;margin-top:0.6rem;">It answers by filling in
+              this schema, so the shape is enforced by the provider rather than parsed out
+              of prose:</p>` +
+              box(JSON.stringify(r.output_schema, null, 2));
+          }
+          html += exp(escapeHtml(r.name), escapeHtml(r.calls), inner);
         }
 
-        html += `<div class="prompt-meta">Tools &mdash; each schema carries its own rules</div>`;
-        html += `<p style="font-size:0.8rem;">Sent on every turn except the last, when they are
-          withheld deliberately so the planner must answer with what it has rather than
-          request a call that would be discarded.</p>`;
-        for (const t of d.tools) {
+        html += `<div class="prompt-meta">Stages &mdash; ordinary Python, driven by the plan</div>`;
+        html += `<p style="font-size:0.8rem;">No prompts here. Each stage takes its arguments
+          from a field of the plan and reads local data; the descriptions are what a reader
+          needs to follow a trace.</p>`;
+        for (const t of (d.stages || [])) {
           const params = Object.keys(t.parameters || {});
           const inner =
             `<p style="font-size:0.82rem;">${escapeHtml(t.description)}</p>` +
@@ -1925,29 +1897,21 @@
                   `<div class="tool-param"><code>${escapeHtml(n)}</code>` +
                   (t.parameters[n] ? ` &mdash; ${escapeHtml(t.parameters[n])}` : '') +
                   '</div>').join('') + '</div>'
-              : '<div class="tool-params">parameters: none</div>');
-          const meta = [costs[t.name], t.trace_name ? `traced as ${t.trace_name}` : '']
-            .filter(Boolean).join(' · ');
-          html += exp(escapeHtml(t.name), escapeHtml(meta), inner);
+              : '');
+          html += exp(escapeHtml(t.name), escapeHtml(costs[t.name] || ''), inner);
         }
 
         if (d.word_lists) {
           html += `<p class="fineprint">Word lists: ${escapeHtml(d.word_lists)}</p>`;
         }
-
-        const counted = tc.per_turn
-          ? `<b>${tc.per_turn.toLocaleString()}</b> tokens &mdash;
-             ${tc.system_prompt.toLocaleString()} of system prompt plus
-             ${tc.tool_schemas.toLocaleString()} of schemas, counted with
-             ${escapeHtml(tc.encoding)}`
-          : `roughly ${approxTokens(d.system_prompt).toLocaleString()} tokens (estimated)`;
-        html += `
-          <p class="fineprint">
-            Re-sent on every planner turn: ${counted}. It is the same bytes at the front of
-            every request, so whether it is charged once or many times depends on the
-            provider's prefix cache &mdash; the panel under a trace reports how much came
-            back cached.
-          </p>`;
+        const tc = d.token_cost || {};
+        if (tc.per_turn) {
+          html += `<p class="fineprint">The decomposer carries
+            <b>${tc.per_turn.toLocaleString()}</b> tokens per request &mdash;
+            ${tc.system_prompt.toLocaleString()} of prompt plus
+            ${tc.tool_schemas.toLocaleString()} of plan schema, counted with
+            ${escapeHtml(tc.encoding)}. It is sent once, not once per round.</p>`;
+        }
         body.innerHTML = html;
         promptsLoaded = true;
 
