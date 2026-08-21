@@ -229,10 +229,15 @@ def prompts_endpoint():
             "MAX_FLAGGED_EVIDENCE": agent_tools.MAX_FLAGGED_EVIDENCE,
             "MIN_SCREEN_TOKENS": rag_screen.MIN_SCREEN_TOKENS,
         },
-        "vocabularies": {
-            name: words for name, words in rag_screen.VOCABULARIES.items()
-        },
-        "blacklist_phrases": rag_screen.BLACKLIST_PHRASES,
+        # No vocabularies and no blacklist any more. Both were fixed lists,
+        # and a fixed list only ever fits the requests someone thought of: the
+        # planner writes the words it is scanning for and the phrasings that
+        # would trip them, per request. The guardrails above are what remain
+        # fixed, because they are bounds rather than knowledge.
+        "word_lists": (
+            "written per request by the planner, not stored. See screen_out's "
+            "`words` and `exclude_phrases` in the tool descriptions above."
+        ),
     }))
 
 

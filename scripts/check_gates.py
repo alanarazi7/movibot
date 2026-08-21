@@ -480,6 +480,90 @@ def g10_verdicts_need_evidence() -> list[str]:
     return failures
 
 
+def g11_screen_orders_not_filters() -> list[str]:
+    """A scan for an absence must order the candidates, never remove any. Free.
+
+    Deleting the flagged half turned a word scan into a verdict. 194 of 316
+    films flag on death vocabulary, and Toy Story flags on "killing" and
+    "murdered" for a belief that turns out to be false, Monsters, Inc. and
+    Zootopia on attempts nobody dies of. All three were dropped from the
+    request before the Verifier -- whose entire job is telling an attempt from
+    an outcome -- could see them.
+
+    The forward direction is different and must keep narrowing: there a match
+    IS the finding, so films without one are genuinely out of scope.
+    """
+    from agent import catalog, tools
+
+    failures = []
+    words = ["dies", "died", "dead", "killed", "murdered", "perished", "funeral"]
+
+    ctx = tools.ToolContext()
+    tools.filter_catalog(genres=["Animation"], ctx=ctx)
+    pool = set(ctx.working_set or ())
+    r = tools.screen_out(words=words, keep="clear", ctx=ctx)
+
+    if set(ctx.working_set or ()) != pool:
+        failures.append(f"keep='clear' changed the working set from {len(pool)} to "
+                        f"{len(ctx.working_set or ())}; it must order, not remove")
+    if not ctx.preferred:
+        failures.append("keep='clear' recorded no preference, so the walk gains nothing")
+    if len(ctx.preferred) != r["clear"]:
+        failures.append(f"{len(ctx.preferred)} films preferred but {r['clear']} are clear")
+
+    # A flagged film stays reachable -- the whole point.
+    flagged_ids = pool - set(ctx.preferred)
+    if not flagged_ids:
+        failures.append("no film was flagged, so this proves nothing about reachability")
+    for title in ("Toy Story", "Monsters, Inc."):
+        row = catalog.movies()
+        row = row[row["title"] == title]
+        if len(row):
+            mid = int(row.iloc[0]["id"])
+            if mid in pool and mid not in (ctx.working_set or ()):
+                failures.append(f"{title} was removed from the request by a word scan")
+
+    # The forward scan still narrows.
+    ctx2 = tools.ToolContext()
+    tools.filter_catalog(genres=["Animation"], ctx=ctx2)
+    before = len(ctx2.working_set or ())
+    tools.screen_out(words=["train", "trains"], keep="flagged", ctx=ctx2)
+    if len(ctx2.working_set or ()) >= before:
+        failures.append("keep='flagged' did not narrow; a presence match is a finding")
+
+    # The model writes the list; the presets are not on offer.
+    schema = next(x for x in tools.TOOL_SCHEMAS
+                  if x["function"]["name"] == "screen_out")
+    props = schema["function"]["parameters"]["properties"]
+    if "vocabulary" in props:
+        failures.append("screen_out still offers a fixed `vocabulary`; the word list "
+                        "is written per request now")
+    if "words" not in (schema["function"]["parameters"].get("required") or []):
+        failures.append("screen_out does not require `words`")
+
+    # And a short list says so, because that is this design's failure mode.
+    if not tools.screen_out(words=["dies"], keep="clear").get("thin_word_list"):
+        failures.append("a one-word scan for an absence did not warn that it is thin")
+
+    # Nothing about words or phrases ships. A fixed list only ever fits the
+    # requests someone thought of, and both of these grew up fitting each
+    # other rather than any particular question.
+    from rag import screen as rag_screen
+    for gone in ("VOCABULARIES", "BLACKLIST_PHRASES"):
+        if hasattr(rag_screen, gone):
+            failures.append(f"rag/screen.py still ships {gone}; the planner writes "
+                            f"the words and the exclusions per request")
+
+    # The exclusions are the planner's too, and they have to actually apply.
+    hit = rag_screen.screen(["dead"], candidate_ids=None)
+    miss = rag_screen.screen(["dead"], candidate_ids=None,
+                             exclude_phrases=["dead"])
+    if len(miss["flagged"]) >= len(hit["flagged"]):
+        failures.append("exclude_phrases did not remove any match, so a caller "
+                        "cannot correct a false positive it can see")
+    return failures
+
+
 def g09_counts() -> list[str]:
     """Every figure the GUI states, recomputed from the shipped artifacts.
 
@@ -513,15 +597,10 @@ def g09_counts() -> list[str]:
     claim("{} vectors is not a search problem", f"{cov['chunks']:,}", "passage count")
     claim("{}-dim", cov["dim"], "embedding dimension")
 
-    death = tools.screen_out(vocabulary="death")
-    claim("{} films clear on the death screen", death["clear"], "death-screen clear count")
-
-    ctx = tools.ToolContext()
-    animated = tools.filter_catalog(ctx=ctx, genres=["Animation"])["matched"]
-    a_death = tools.screen_out(vocabulary="death", ctx=ctx)
-    claim("{} animated films split", animated, "animated film count")
-    claim("split {} clear", a_death["clear"], "animated clear count")
-    claim("{} flagged", a_death["flagged"], "animated flagged count")
+    # The screen's counts are no longer checked here, and cannot be: the word
+    # list is written per request by the planner, so "films clear on the death
+    # screen" is a property of a run rather than of the shipped data. The GUI
+    # states it as an example of what exhaustive means instead of as a figure.
 
     mpst = int(catalog.movies()["has_mpst_synopsis"].sum())
     summary = json.loads((_ROOT / "public" / "data" / "catalog.json").read_text())["summary"]
@@ -618,6 +697,8 @@ def main() -> int:
         ("G08", g08_no_follow_up_offers,
          "follow-up offers are caught and honest reports are not"),
         ("G09", g09_counts, "every displayed count comes from the shipped data"),
+        ("G11", g11_screen_orders_not_filters,
+         "a scan for an absence orders the candidates and removes none"),
         ("G10", g10_verdicts_need_evidence,
          "a verdict without a quote that shows it is not a verdict"),
     ]:

@@ -72,6 +72,11 @@ class ToolContext:
     shortlist: list[int] = field(default_factory=list)
     conditions: list[str] = field(default_factory=list)
 
+    # Films the lexical screen found clean, best-first. A PRIOR, not a verdict:
+    # it says these are the cheapest candidates to check for an absence, and
+    # nothing more. See screen_out for why it stopped being a filter.
+    preferred: list[int] = field(default_factory=list)
+
     # How many model calls the request can still afford. verify_candidates
     # spends calls inside a single tool call, so without this the loop's cap
     # would be enforced only between tool calls -- which is to say, after the
@@ -350,9 +355,9 @@ def _describe(applied: dict[str, Any]) -> str:
 
 def screen_out(
     words: list[str] | None = None,
-    vocabulary: str | None = None,
     keep: str = "clear",
     and_words: list[str] | None = None,
+    exclude_phrases: list[str] | None = None,
     ctx: "ToolContext | None" = None,
 ) -> dict[str, Any]:
     """Scan every plot passage of every candidate for `words`. Free, both ways.
@@ -375,14 +380,20 @@ def screen_out(
                       retrieves animal films, since one incidental word barely
                       moves a 300-token passage vector.
 
-    The working set narrows to whichever half was kept. In the default
-    direction a flagged film is NOT rejected -- the match may be an attempt or
-    a rumour -- and can still be read by name.
+    keep="clear" ORDERS the working set; it does not shrink it. A word scan
+    cannot tell an attempt from an outcome, so removing the flagged half made
+    the scan into a verdict and put Toy Story, Monsters, Inc. and Zootopia out
+    of reach of a "nobody dies" request over `killing`, `kill` and `murdered`
+    that no character dies of. The clean films become the front of the
+    verification queue instead, and the flagged ones are checked after.
+
+    keep="flagged" does narrow, because there a match is the finding rather
+    than a suspicion.
     """
-    resolved = screening.resolve_words(words, vocabulary)
+    resolved = screening.resolve_words(words)
     if not resolved:
-        return {"error": "Pass `words`, or a `vocabulary` from: "
-                         + ", ".join(screening.VOCABULARIES)}
+        return {"error": "Pass `words`: the words and phrases a plot might use "
+                         "for the one thing you are scanning for."}
 
     keep = (keep or "clear").strip().lower()
     if keep not in ("clear", "flagged"):
@@ -399,16 +410,43 @@ def screen_out(
         candidates = [int(i) for i in catalog.movies()["id"]]
 
     result = screening.screen(resolved, candidate_ids=candidates,
-                              and_words=and_words)
+                              and_words=and_words,
+                              exclude_phrases=exclude_phrases)
+
+    # Writing the list per request is more flexible than a fixed vocabulary and
+    # has one failure the fixed one did not: a list too short to cover how the
+    # thing is actually written. Three words for "nobody dies" reports a clean
+    # scan that means almost nothing, and it reports it exhaustively, which is
+    # what makes it convincing. Said here rather than assumed.
+    thin_list = len(resolved) < 6 and keep == "clear"
 
     clear, flagged = result["clear"], result["flagged"]
     thin = result["insufficient_text"]
 
     if ctx is not None:
         if keep == "clear":
-            ctx.narrow(set(clear), f"screened out {len(resolved)} words, "
-                                   f"{len(flagged)} flagged")
+            # ORDERS, never narrows. Deleting the flagged half is what made a
+            # word scan into a verdict: 194 of 316 films flag on the death
+            # vocabulary, and Toy Story flags on "killing" and "murdered" for
+            # a false belief, Monsters, Inc. and Zootopia on an attempt. All
+            # three were removed from the request before the Verifier -- which
+            # exists precisely to tell an attempt from an outcome -- could look
+            # at one of them.
+            #
+            # So the clean films become a preference: CandidateWalk checks them
+            # first because they are the likeliest to pass, and a flagged film
+            # is checked afterwards rather than discarded. The count stays
+            # exhaustive and free, which is the part nothing else can do.
+            ranked = sorted(clear, key=lambda i: -(catalog.rating_of(i) or 0.0))
+            ctx.preferred = ranked
+            ctx.scope_note = (f"{len(ctx.working_set or [])} films "
+                              f"({len(clear)} clear of {len(resolved)} words, "
+                              f"{len(flagged)} flagged, none removed)")
+            ctx.trace.append(ctx.scope_note)
         else:
+            # The forward scan still narrows. Here a match IS the finding --
+            # "a film with a train" -- so the films without one are genuinely
+            # out of scope rather than merely unproven.
             ctx.narrow(set(flagged), f"kept the {len(flagged)} films mentioning "
                                      f"any of {len(resolved)} words")
 
@@ -440,6 +478,13 @@ def screen_out(
         "clear": len(clear),
         "flagged": len(flagged),
         "insufficient_text": len(thin),
+        **({"thin_word_list": (
+            f"Only {len(resolved)} word(s) were scanned for. An absence "
+            "established over a short list is a weak finding stated "
+            "exhaustively, which is the most convincing way to be wrong. If "
+            "the thing has other common wordings, run the scan again with "
+            "them before you rely on `clear`."
+        )} if thin_list else {}),
         "meaning": (
             "clear = no listed word appears anywhere in the film's plot text, "
             f"and it has at least {result['min_screen_tokens']} tokens of plot "
@@ -818,6 +863,14 @@ def verify_candidates(
                       key=lambda i: -(catalog.rating_of(i) or 0.0))
     else:
         rest = []
+
+    # A lexical screen for an absence puts its clean films first. They are the
+    # likeliest to pass, so the budget reaches an answer sooner -- but the
+    # flagged ones follow rather than being dropped, which is the whole point
+    # of the screen no longer filtering.
+    if ctx is not None and ctx.preferred:
+        pref = [i for i in ctx.preferred if i in set(rest)]
+        rest = pref + [i for i in rest if i not in set(pref)]
     tail = [i for i in rest if i not in set(named)]
     order = named + tail
     if not order:
@@ -1150,26 +1203,45 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "vocabulary": {
-                        "type": "string",
-                        "enum": sorted(screening.VOCABULARIES),
-                        "description": (
-                            "A curated word list. Prefer this over inventing "
-                            "words: 'death' covers 30+ terms including "
-                            "'funeral', 'sacrificed' and 'perished'."
-                        ),
-                    },
                     "words": {
                         "type": "array", "items": {"type": "string"},
                         "description": (
-                            "The synonyms and inflections of ONE thing, "
-                            "matched on word boundaries: ['hat', 'hats', "
-                            "'fez', 'bonnet', 'cap']. Added to `vocabulary` if "
-                            "both are given. **Never mix two things into this "
-                            "list.** ['cat','hat'] matches a cat OR a hat "
-                            "anywhere in a film, which is 51 films of "
-                            "near-misses; the second thing belongs in "
-                            "`and_words`."
+                            "**You write this list, for this request.** Every "
+                            "word and phrase a plot summary might use for ONE "
+                            "thing: inflections, synonyms, and the indirect "
+                            "ways it gets written. For a death that is "
+                            "['dies','died','dead','killed','murdered',"
+                            "'perished','funeral','buried','sacrificed',"
+                            "'passes away','loses his life','never returns'] "
+                            "-- and for a hat, ['hat','hats','cap','bonnet',"
+                            "'fez','top hat']. Multi-word phrases work; "
+                            "matching is on word boundaries and "
+                            "case-insensitive. Be generous: the scan is free "
+                            "and exhaustive, so a missed synonym is a missed "
+                            "film, while a spurious one only sends a film to "
+                            "be checked. Ten to twenty entries is normal for "
+                            "an abstract idea, three to six for a concrete "
+                            "object. **Never mix two things into this list.** "
+                            "['cat','hat'] matches a cat OR a hat anywhere in "
+                            "a film, which is 51 films of near-misses; the "
+                            "second thing belongs in `and_words`."
+                        ),
+                    },
+                    "exclude_phrases": {
+                        "type": "array", "items": {"type": "string"},
+                        "description": (
+                            "Phrasings that contain one of your words without "
+                            "meaning it, blanked before matching. **You write "
+                            "these too**, for the words you chose: scanning "
+                            "for death wants ['dead end','deadline','dead "
+                            "heat','kill time','drop dead'], and scanning for "
+                            "'shot' wants ['shot a photograph','camera shot'] "
+                            "only when the question is violence. Nothing is "
+                            "excluded unless you say so. Getting one wrong is "
+                            "cheap in one direction only: a missing phrase "
+                            "leaves a film flagged and therefore checked, "
+                            "while an over-broad phrase can blank a real "
+                            "event, so keep them literal and specific."
                         ),
                     },
                     "and_words": {
@@ -1198,7 +1270,7 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                         ),
                     },
                 },
-                "required": [],
+                "required": ["words"],
             },
         },
     },

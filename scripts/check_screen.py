@@ -20,7 +20,7 @@ match. The answer then avoided the excluded films by the model's own judgement
 rather than by the filter -- indistinguishable from working, until you read the
 counts in the narrowing trace.
 
-Run this after touching VOCABULARIES, BLACKLIST_PHRASES, MIN_SCREEN_TOKENS, the
+Run this after touching MIN_SCREEN_TOKENS, the
 chunking parameters, or filter_catalog -- rechunking changes what text each
 passage holds, and therefore what the screen can see.
 """
@@ -251,11 +251,39 @@ def check_languages() -> list[str]:
     return failures
 
 
+# A fixture, not a vocabulary. The agent writes its own word list per request;
+# this file needs a fixed one so the safety property below means the same thing
+# from run to run. It is deliberately a plausible list rather than an exhaustive
+# one -- the check is that nothing with a known death comes back clear, and a
+# list that missed a wording would make that check weaker, not louder.
+DEATH_WORDS_FIXTURE = [
+    "die", "dies", "died", "dying", "death", "deaths", "dead", "deceased",
+    "kill", "kills", "killed", "killing", "murder", "murders", "murdered",
+    "perish", "perishes", "perished", "slain", "slay", "slays",
+    "funeral", "grave", "buried", "burial", "coffin", "corpse",
+    "sacrifice", "sacrifices", "sacrificed", "executed", "assassinated",
+    "drowns", "drowned", "fatal", "fatally", "mortally",
+]
+
+# Idioms that carry one of those words without its meaning. Also a fixture:
+# nothing like this ships any more, and the agent supplies its own per request.
+DEATH_IDIOMS_FIXTURE = [
+    "dead heat", "dead end", "dead ends", "deadline", "deadlines",
+    "dead weight", "dead of night", "dead center", "dead centre",
+    "dead on arrival", "dead reckoning", "dead battery", "dead silence",
+    "drop dead", "dead serious", "dead wrong", "dead last", "dead ringer",
+    "graveyard shift", "grave danger", "grave mistake", "grave concern",
+    "kill time", "killing time", "kill the mood", "killer app",
+]
+
+
 def main() -> int:
-    result = tools.screen_out(vocabulary="death")
+    result = tools.screen_out(words=DEATH_WORDS_FIXTURE,
+                              exclude_phrases=DEATH_IDIOMS_FIXTURE)
     full = screen.screen(
-        screen.VOCABULARIES["death"],
+        DEATH_WORDS_FIXTURE,
         candidate_ids=[int(i) for i in catalog.movies()["id"]],
+        exclude_phrases=DEATH_IDIOMS_FIXTURE,
     )
     clear = {catalog.label_of(i) for i in full["clear"]}
     flagged = {catalog.label_of(i) for i in full["flagged"]}

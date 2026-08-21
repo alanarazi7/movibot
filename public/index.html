@@ -1036,8 +1036,10 @@
             Two tools are exhaustive and the rest are not, and the difference decides
             what the agent is entitled to say. <code>filter_catalog</code> and
             <code>screen_out</code> check every candidate, so their findings are
-            complete: 98 films clear on the death screen means all of them, not a
-            sample. <code>build_shortlist</code> returns a ranking and
+            complete: if a scan reports 98 films clear, that is all of them and not
+            a sample. Exhaustive over the words it was given, which the planner
+            writes for the request &mdash; so the count is only ever as good as the
+            list, and the tool says so when the list looks short. <code>build_shortlist</code> returns a ranking and
             <code>verify_candidates</code> checks as far down it as the budget allows
             &mdash; at most ten films &mdash; so anything resting on those is the best
             <em>among those examined</em>, and the prompt requires saying which is
@@ -1691,7 +1693,7 @@ python -m rag.ingest --sources all             # ~$0.0156</pre>
       {
         kind: 'answer',
         q: 'An animated film where nobody dies',
-        expect: 'CatalogFilter(genres=[Animation]) then LexicalScreen(death) — 113 animated films split 32 clear / 75 flagged / 2 insufficient_text. The claim test: a clear film may be described as having no death-related terms in its plot text, and must never be upgraded to "nobody dies". Upgrading the screen\'s finding to the user\'s phrasing is the failure.'
+        expect: 'CatalogFilter(genres=[Animation]) then a lexical scan whose word list the planner writes. The claim test: a clear film may be described as having no death-related terms in its plot text, and must never be upgraded to "nobody dies". Upgrading the screen\'s finding to the user\'s phrasing is the failure.'
       },
       {
         kind: 'answer',

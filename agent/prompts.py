@@ -125,11 +125,24 @@ column lookup.
   lexical      anything a concrete word list can test, either direction.
                `screen_out`, free, and exhaustive in a way ranking cannot be:
                it reads every plot passage of every candidate, so no film
-               escapes by placing eleventh. An absence -- nobody dies, nothing
-               scary -- is keep='clear'; a concrete presence -- an animal in a
-               hat, a train -- is keep='flagged'. It narrows the working set to
-               whichever half you kept. Prefer a curated `vocabulary` when one
-               exists.
+               escapes by placing eleventh.
+               **You write the word list, for this request.** Every word and
+               phrase a plot might use for the one thing you are testing --
+               inflections, synonyms, and the indirect wordings. A death is
+               written as "dies", "killed", "perished", "funeral", "buried",
+               "sacrificed", "passes away". Be generous: a missed synonym is a
+               missed film, a spurious one only sends a film to be checked.
+               Write `exclude_phrases` alongside them: the phrasings that
+               carry one of your words without its meaning -- "dead end",
+               "deadline", "kill time" -- because nothing is excluded unless
+               you say so.
+               An absence -- nobody dies, nothing scary -- is keep='clear',
+               which ORDERS the candidates rather than removing any: the clean
+               films go to the front of the verification queue and the flagged
+               ones follow, because a word scan cannot tell a threat from a
+               death. A concrete presence -- an animal in a hat, a train -- is
+               keep='flagged', which does narrow, because there a match is the
+               finding.
 
   semantic     a story, premise or theme too diffuse for a word list -- a
                coming-of-age arc, an empowering heroine, snow covering a

@@ -46,44 +46,7 @@ MIN_SCREEN_TOKENS = 600
 # Curated vocabularies for the negations that actually get asked. The caller may
 # always pass its own words; these exist so answer quality does not depend on
 # whatever synonyms the model happens to produce on a given turn.
-VOCABULARIES: dict[str, list[str]] = {
-    "death": [
-        "die", "dies", "died", "dying", "death", "deaths", "dead", "deceased",
-        "kill", "kills", "killed", "killing", "murder", "murders", "murdered",
-        "slain", "slay", "slays", "perish", "perishes", "perished",
-        "corpse", "funeral", "grave", "buried", "burial", "coffin",
-        "sacrifice", "sacrifices", "sacrificed", "drowns", "drowned",
-        "fatally", "fatal", "mortally", "executed", "assassinated",
-    ],
-    "violence": [
-        "fight", "fights", "battle", "war", "gun", "guns", "shot", "shoots",
-        "stab", "stabbed", "blood", "bloody", "wound", "wounded", "attack",
-        "attacks", "attacked", "violent", "violence", "beaten", "torture",
-    ],
-    "scary": [
-        "terrifying", "terror", "horror", "nightmare", "monster", "monsters",
-        "haunted", "ghost", "ghosts", "demon", "evil", "frightening",
-        "frightened", "terrified", "scream", "screams", "screaming",
-    ],
-    "romance": [
-        "kiss", "kisses", "kissed", "romance", "romantic", "love", "loves",
-        "marry", "marries", "married", "wedding", "engaged", "fiance",
-    ],
-}
 
-# Idioms that contain a vocabulary word without carrying its meaning. Stripped
-# before matching, so "the race ends in an absolute dead heat" no longer costs
-# Cars its place. This list only ever recovers false positives; a missing entry
-# leaves the tool conservative, which is the safe failure.
-BLACKLIST_PHRASES = [
-    "dead heat", "dead end", "dead ends", "deadline", "deadlines",
-    "dead weight", "dead of night", "dead center", "dead centre",
-    "dead on arrival", "dead reckoning", "dead battery", "dead silence",
-    "drop dead", "dead serious", "dead wrong", "dead last", "dead ringer",
-    "graveyard shift", "grave danger", "grave mistake", "grave concern",
-    "kill time", "killing time", "kill the mood", "killer app",
-    "love interest", "in love with the idea",
-]
 
 # How many matching passages come back per flagged film. One is usually enough
 # to judge modality; three covers a film whose first match is incidental and
@@ -91,18 +54,38 @@ BLACKLIST_PHRASES = [
 MAX_EVIDENCE_PER_FILM = 3
 MAX_EVIDENCE_CHARS = 400
 
-_BLACKLIST_RE = re.compile(
-    r"\b(?:" + "|".join(re.escape(p) for p in BLACKLIST_PHRASES) + r")\b", re.I
-)
+def _blacklist_re(phrases: list[str] | None = None) -> re.Pattern[str] | None:
+    """Strip idioms that contain a scanned word without carrying its meaning.
+
+    Nothing is built in. There used to be a fixed list -- "dead end",
+    "deadline", "kill time" -- which only ever fitted the fixed vocabularies it
+    grew up beside. Both are gone: the caller writes the words it is scanning
+    for and the phrasings that would trip them, because only the caller knows
+    which pairing it means. "Shot" wants "shot a photograph" excluded when the
+    question is violence and not when it is photography, and no list decided in
+    advance can tell those apart.
+
+    None when there is nothing to strip, so the caller skips the substitution.
+    """
+    cleaned = []
+    for phrase in phrases or []:
+        phrase = str(phrase).strip().lower()
+        if phrase and phrase not in cleaned:
+            cleaned.append(phrase)
+    if not cleaned:
+        return None
+    # Longest first, so a phrase wins over a shorter one sharing its start.
+    cleaned.sort(key=len, reverse=True)
+    return re.compile(
+        r"\b(?:" + "|".join(re.escape(p) for p in cleaned) + r")\b", re.I
+    )
 
 
-def resolve_words(words: list[str] | None, vocabulary: str | None) -> list[str]:
-    """Combine an explicit word list with a named curated vocabulary."""
+def resolve_words(words: list[str] | None) -> list[str]:
+    """Normalise the caller's word list: lowercased, trimmed, de-duplicated."""
     out: list[str] = []
-    if vocabulary:
-        out.extend(VOCABULARIES.get(vocabulary.strip().lower(), []))
     for w in words or []:
-        w = w.strip().lower()
+        w = str(w).strip().lower()
         if w and w not in out:
             out.append(w)
     return out
@@ -121,6 +104,7 @@ def screen(
     candidate_ids: list[int] | None = None,
     sources: list[str] | None = None,
     and_words: list[str] | None = None,
+    exclude_phrases: list[str] | None = None,
 ) -> dict[str, Any]:
     """Split candidates into clear / flagged / insufficient_text.
 
@@ -131,6 +115,7 @@ def screen(
         raise ValueError("screen() needs at least one word to look for.")
 
     pattern = _pattern(words)
+    blacklist = _blacklist_re(exclude_phrases)
     passages = store.plot_passages(sources or DEFAULT_SOURCES)
 
     allowed = set(int(c) for c in candidate_ids) if candidate_ids is not None else None
@@ -155,7 +140,9 @@ def screen(
 
         # Blank the idioms rather than the whole passage: a passage containing
         # both "dead heat" and a real death must still flag.
-        text = _BLACKLIST_RE.sub(" ", str(p.get("text", "")))
+        text = str(p.get("text", ""))
+        if blacklist is not None:
+            text = blacklist.sub(" ", text)
         found = pattern.search(text)
         if found is None:
             continue
