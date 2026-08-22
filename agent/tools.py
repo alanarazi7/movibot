@@ -439,17 +439,20 @@ def build_shortlist(
     }
 
 
-# How many films the Verifier will look at before giving up. Ten one-film
+# How many films the Verifier will look at before giving up. Twenty one-film
 # calls is the ceiling on a request that never finds anything; the walk stops
-# the moment MAX_RECOMMENDATIONS are accepted, so the common case costs three
-# or four. This is a demo, and a demo that cannot find an answer says so
-# rather than searching forever.
-MAX_VERIFICATIONS = 10
+# the moment MAX_RECOMMENDATIONS are accepted, so the common case still costs
+# three or four and pays nothing for this bound. What it buys is the hard
+# case: at ten, a request whose answers sat lower than the tenth-best fused
+# candidate ran out of budget before reaching them and reported that nothing
+# verified, which is a different sentence from "there is nothing". This is
+# still a demo, and a demo that cannot find an answer says so rather than
+# searching forever -- it just looks twice as far down the ranking first.
+MAX_VERIFICATIONS = 20
 
-# How many films an answer may name. Owned here rather than in prompts.py
-# because verify_candidates has to enforce it and prompts.py imports from this
-# module, so the dependency only runs one way. prompts.MAX_RECOMMENDATIONS is
-# a re-export, not a second copy.
+# How many films an answer may name. Owned here because verify_candidates is
+# what enforces it: the accepted list stops growing at this length, so the
+# ceiling is a property of the walk rather than a request made in a prompt.
 MAX_RECOMMENDATIONS_CEILING = 3
 
 

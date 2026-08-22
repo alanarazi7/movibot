@@ -23,8 +23,8 @@ Cost:
     <= MAX_TOTAL_LLM_CALLS in total, enforced here rather than requested
 
 The last thing that happens is a check, not a model call. A reply may not name
-a film that was not verified, omit one that was, name more films than were
-asked for, or offer a follow-up this API cannot honour.
+a film that was not verified, omit one that was, or name more films than were
+asked for.
 """
 
 from __future__ import annotations
@@ -35,8 +35,11 @@ from agent import answerer, catalog, decomposer, llm_client, tools, verifier
 
 # The whole request's budget, counting every role. Enforced here and threaded
 # into the stages that spend inside a single call, so a walk cannot overrun it
-# between checks.
-MAX_TOTAL_LLM_CALLS = 16
+# between checks. It is the worst case spelled out -- one Decomposer,
+# MAX_VERIFICATIONS verifiers, two Answerer attempts -- rather than a round
+# number, so raising the walk's reach without raising this would silently clamp
+# the walk instead of extending it, and the published bound would be a lie.
+MAX_TOTAL_LLM_CALLS = 1 + tools.MAX_VERIFICATIONS + 2
 
 # There is no list of closing-offer phrasings here any more. Matching answers
 # against "if you want", "let me know", "happy to" caught those and not the
