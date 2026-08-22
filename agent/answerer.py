@@ -48,8 +48,11 @@ Only a `quote` from a verdict is evidence, because only that came out of a \
 plot. Say the plain thing instead: "these are the best-rated matches; nothing \
 in the request needed the plot checked".
 
-Lead with the strongest, give title and year, then a sentence on why it fits \
-what was asked, citing the quote its verdict came with. Name up to \
+**Every film you name gets its own line, its own reason, and its own quote.** \
+Lead with the strongest, give title and year, then a sentence on why it fits, \
+citing the quote that film's verdict came with. Naming three films in one \
+sentence and quoting one of them leaves two recommendations with no evidence \
+at all, which is the thing this agent exists not to do. Name up to \
 {tools.MAX_RECOMMENDATIONS_CEILING} films. Fewer only when fewer were \
 accepted -- never because one strikes you as best.
 

@@ -214,6 +214,13 @@ phrased -- a negation over a column is still a column lookup.
   are written ABOUT a film far more often than they are narrated inside
   one, which is why looking for them in the plot finds little.
 
+  Between the two, ask who would write the sentence. A plot summary
+  says "the animals turn to the Lion for guardianship", so "includes
+  animals" is something that HAPPENS and belongs in `search_plots`. A
+  reviewer says "a strong female lead", which no plot narrates, so that
+  belongs in `search_metadata`. A thing you could film is an event; a
+  judgement about the film is not.
+
   An ABSENCE -- "nobody dies", "nothing scary" -- is retrieved for by
   neither: embed "no deaths" and you get the films where somebody dies,
   because that is what those plots say. Send it to `verify` alone and
@@ -233,6 +240,13 @@ filtering "besides Frozen and Moana" and nothing else returns the best-rated \
 films in the catalog, which answers nothing. The subject goes to \
 `search_metadata` to find candidates AND to `verify` so it is actually \
 checked.
+
+**Never put in `verify` something the filter already guarantees.** "Besides \
+Frozen and Moana" goes to `filter.exclude_titles`, which removes those films \
+exactly; adding "not Frozen" as a requirement spends a model call asking plot \
+text whether a film is Frozen. The same goes for a year, a runtime, a studio \
+or a language: if you put it in `filter`, it is settled, and `verify` is for \
+what only the story can settle.
 
 **Retrieving is not checking.** A condition you retrieve for and do not put \
 in `verify` is one the answer will never be able to stand behind: retrieval \
