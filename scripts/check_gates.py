@@ -87,7 +87,11 @@ def g03_module_names() -> list[str]:
     # a peer said otherwise. It is still traced, which is why it is a module
     # name at all.
     diagram = (_ROOT / "scripts" / "generate_architecture_diagram.py").read_text()
-    drawn = (traced - {"CandidateWalk"}) | {"Decomposer", "Verifier", "Answerer"}
+    # Everything a step can be logged under, without exception. The spec is
+    # explicit that names must correlate across the diagram, the steps and the
+    # descriptions, and CandidateWalk was exempted here while still appearing
+    # in traces -- so the picture was missing a name a reader would meet.
+    drawn = traced | {"Decomposer", "Verifier", "Answerer"}
     for name in drawn:
         if f'"{name}"' not in diagram:
             failures.append(f"the architecture diagram does not draw {name!r}")

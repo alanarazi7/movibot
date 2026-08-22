@@ -305,7 +305,11 @@ def main() -> None:
     # because it is where a verifying request spends nearly all of its money.
     _elbow(draw, [(300, 552), (300, 582), (186, 582), (186, 470), (208, 470)],
            fill=CYCLE, width=3)
-    _text(draw, (196, 596), "next candidate, until enough pass", MUTED, 14)
+    # Named, because the steps trace logs it and the spec requires every module
+    # name to appear here too. It is not a box: it is the walking itself.
+    _text(draw, (196, 596), "CandidateWalk", INK, 14, bold=True)
+    _text(draw, (196 + _width(draw, "CandidateWalk", 14, True) + 8, 596),
+          "\u00b7 next candidate, until enough pass", MUTED, 14)
     _arrow(draw, (482, 485), (524, 485), fill=CYCLE, width=3)
     _arrow(draw, (730, 485), (758, 485), fill=CYCLE, width=3)
 

@@ -1129,6 +1129,11 @@
     const TEST_CASES = [
       {
         kind: 'answer',
+        q: 'A modern movie with a strong, inspiring female lead character',
+        expect: 'Two kinds of condition in one line. "Modern" is a date against a catalog that ends in 2017, so it belongs to CatalogFilter as a year range, never to retrieval. "A strong, inspiring female lead" describes what the film IS rather than what happens, so it goes to MetadataRetrieval and then to the Verifier.'
+      },
+      {
+        kind: 'answer',
         q: 'A Disney movie from the 90s that includes animals, and nobody dies',
         expect: 'The headline case: three conditions of three different kinds in one sentence. Studio and year are columns and go to CatalogFilter; "no death" is an absence no search can rank for, so it is screened; "animals" is a story fact the Verifier settles per film. Every recommendation must quote the plot text that shows the animal, and the count must equal what verification accepted. Sending "Disney studio" or "1990 or later" to the Verifier is the failure — plot text cannot confirm a studio, and one unsettleable condition makes a request with a real answer return nothing.'
       },

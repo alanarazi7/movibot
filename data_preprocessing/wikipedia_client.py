@@ -37,8 +37,14 @@ PLOT_SECTIONS = ("plot", "synopsis", "story")
 # Excluded when concatenating the non-plot half: the plot sections themselves,
 # plus the trailing apparatus, which is citations and navigation rather than
 # prose about the film.
+# The introduction is NOT excluded here, though it once was. It is the one
+# paragraph written to say what a film is -- "a 2013 American animated musical
+# fantasy film ... about a fearless princess who sets off on a journey" -- and
+# dropping it left this corpus starting at the cast list. It overlaps the plot
+# a little, which is fine: the two corpora answer different questions and are
+# retrieved over separately.
 NON_PLOT_EXCLUDE = {
-    "introduction", "plot", "plot summary", "synopsis", "story",
+    "plot", "plot summary", "synopsis", "story",
     "references", "external links", "see also", "notes", "bibliography",
     "further reading", "citations", "works cited",
 }
@@ -209,16 +215,53 @@ def get_plot(sections: dict[str, str]) -> str | None:
     return None
 
 
-def get_non_plot(sections: dict[str, str], max_chars: int = 4000) -> str | None:
-    """Everything that is not plot -- production, reception, themes, music.
+# What a film IS, in the order that answers it. The cap has to fall somewhere,
+# so what matters is which sections are above it -- and in document order the
+# answer was "the cast list". Frozen kept its introduction, its voice cast and
+# its background, and lost Critical response, Cultural impact and Portrayal of
+# emotions, which is where an encyclopedia actually discusses a film's heroine.
+# Retrieving "a strong, inspiring female lead" over the survivors ranked Frozen
+# fourteenth, behind films whose cast list happened to read better.
+#
+# So sections are ordered by what they answer, not by where they appear. The
+# introduction first, because it is the one paragraph written to summarise the
+# whole film; then how the film was received and what it is thought to be
+# about; then how it was made; and the cast last, since a list of names says
+# almost nothing about what a film is.
+_SECTION_PRIORITY = (
+    ("introduction", "lead", "summary"),
+    ("theme", "reception", "critical response", "interpretation", "impact",
+     "legacy", "portrayal", "criticism", "accolade", "award", "praise",
+     "controversy", "influence", "cultural"),
+    ("production", "development", "writing", "animation", "music", "design",
+     "release", "box office", "commercial", "marketing", "sequel", "franchise",
+     "home media", "lawsuit"),
+    ("cast", "voice", "starring", "character"),
+)
 
-    This is what answers tone questions ("is it lighthearted?") that the plot
-    itself cannot settle.
+
+def _priority(name: str) -> int:
+    """Which band a section belongs to. Unrecognised sits between made and cast."""
+    lowered = name.lower().strip()
+    for rank, words in enumerate(_SECTION_PRIORITY):
+        if any(w in lowered for w in words):
+            return rank
+    return len(_SECTION_PRIORITY) - 1
+
+
+def get_non_plot(sections: dict[str, str], max_chars: int = 4000) -> str | None:
+    """Everything that is not plot -- reception, themes, production, cast.
+
+    This is what answers questions about what a film IS rather than what
+    happens in it, which no plot summary settles.
     """
     parts = [
-        text for name, text in sections.items()
+        (name, text) for name, text in sections.items()
         if name.lower().strip() not in NON_PLOT_EXCLUDE
         and not any(w in name.lower() for w in PLOT_SECTIONS)
     ]
-    combined = "\n\n".join(parts).strip()
+    # Stable within a band, so document order still decides between two
+    # sections of the same kind.
+    parts.sort(key=lambda nt: _priority(nt[0]))
+    combined = "\n\n".join(text for _, text in parts).strip()
     return combined[:max_chars] if combined else None

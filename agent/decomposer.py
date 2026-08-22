@@ -188,6 +188,16 @@ Split the request into conditions, then send each to the stage that can settle \
 it. Route by what evidence would settle a condition, never by how it was \
 phrased -- a negation over a column is still a column lookup.
 
+  a word about WHEN                -> `filter`, as a year range
+  "modern", "recent", "new", "old", "classic", "from the 90s", "in the
+  last ten years". These are dates, not themes: retrieving for "modern"
+  matches text about modernity, which is a different subject. Resolve
+  them against the catalog's range, which ENDS IN 2017 -- so "modern"
+  or "recent" is roughly year_min 2000, "the last ten years" is about
+  2007 onward, and "classic" or "old" is a year_max. Say so in the
+  answer only if the user's sense of now and the catalog's differ
+  enough to matter.
+
   a fact the catalog stores        -> `filter`
   "not Pixar", "no musicals", "besides Frozen", "after 2000",
   "under 110 minutes", "in Hindi". Free and exact. Never send one of
