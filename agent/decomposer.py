@@ -26,6 +26,7 @@ request was never answerable.
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 from agent import llm_client, tools
@@ -227,8 +228,9 @@ phrased -- a negation over a column is still a column lookup.
   let the candidates come from the conditions that can be retrieved.
 
   a claim about what happens       -> `verify`
-  Everything the story has to settle, including the absences you also
-  screened for. The screen finds candidates; only the Verifier decides.
+  Everything the story has to settle, including the absences nothing
+  could retrieve for. Retrieval finds candidates; only the Verifier
+  decides.
 
   nothing can settle it            -> `conditions` only
   Who it is for, what mood it suits. Recorded, not acted on.
@@ -272,9 +274,6 @@ answers would return none.
 Do not invent a proxy for one. "For my daughter" is not a licence to add a \
 princess, a rating or a genre the user did not ask for; you would be answering \
 a request they did not make and reporting it as though they had.
-
-A condition can appear in two places, and often should: "nobody dies" belongs \
-in `screen` to order the candidates cheaply AND in `verify` to be settled.
 
 REFUSING
 
@@ -335,8 +334,6 @@ def _normalise(plan: dict[str, Any], request: str) -> dict[str, Any]:
         "conditions": [c for c in (plan.get("conditions") or []) if str(c).strip()],
         "filter": {k: v for k, v in (plan.get("filter") or {}).items()
                    if v not in (None, [], "")},
-        "screen": {k: v for k, v in (plan.get("screen") or {}).items()
-                   if v not in (None, [], "")},
         "search_plots": [x for x in (plan.get("search_plots") or []) if str(x).strip()],
         "search_metadata": [x for x in (plan.get("search_metadata") or [])
                             if str(x).strip()],
@@ -355,9 +352,99 @@ def _normalise(plan: dict[str, Any], request: str) -> dict[str, Any]:
         out["verify"] = list(dict.fromkeys(retrieved))
         out["verify_filled_from_retrieval"] = True
 
+    _drop_what_the_filter_settled(out, retrieved)
+
     ceiling = tools.MAX_RECOMMENDATIONS_CEILING
     try:
         out["max_films"] = max(1, min(int(plan.get("max_films") or ceiling), ceiling))
     except (TypeError, ValueError):
         out["max_films"] = ceiling
     return out
+
+
+# Columns whose value the filter settles exactly, and which plot text has no
+# way to confirm. The genre lists are deliberately absent: a genre is a word
+# that turns up inside real requirements, and a wrong drop costs a condition,
+# which is worse than the duplicate it would have removed.
+_SETTLED_KEYS = ("studio", "languages", "year_min", "year_max",
+                 "runtime_min", "runtime_max")
+
+# Excluded titles settle a film exactly too -- "besides Frozen" is removal, not
+# something to ask a plot about -- but their words are ordinary English, so a
+# short one collides: an excluded "Up" is inside "a boy grows up". The length
+# floor drops the shortest, and the retrieval test below catches the rest,
+# since a real requirement is one the plan also searched for.
+_MIN_TITLE_CHARS = 5
+
+
+def _tokens(text: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9']+", text.lower()))
+
+
+def _drop_what_the_filter_settled(out: dict[str, Any], retrieved: list[str]) -> None:
+    """Remove requirements the plan's own filter already guarantees.
+
+    "A Pixar film about growing up" came back as filter {studio: Pixar} plus
+    verify ["it is a Pixar film", "it is about growing up"]. The first cannot
+    be answered from a plot summary, so it returned `unclear` on all ten films
+    checked, and because acceptance needs every condition, four films that
+    genuinely were about growing up were rejected. The request was answerable
+    and the answer was "nothing verified".
+
+    The prompt says not to do this and the model does it anyway, so the plan is
+    repaired here instead. Nothing is stored and nothing is known about films:
+    the values looked for are the ones the plan itself just wrote into
+    `filter`, matched in the plan's own `verify` text.
+
+    Naming a filtered value is not enough on its own. "A Disney princess
+    appears" names a filtered studio and is still a real requirement, so the
+    second half of the test is whether the plan also asked for the condition
+    over a corpus: a story condition is retrieved for AND verified, while a
+    column fact is only ever verified. That is what separates the two, and it
+    compares two fields of one plan rather than consulting any vocabulary.
+    """
+    settled = []
+    for key, floor in ([(k, 3) for k in _SETTLED_KEYS]
+                       + [("exclude_titles", _MIN_TITLE_CHARS)]):
+        value = out["filter"].get(key)
+        for item in (value if isinstance(value, list) else [value]):
+            item = str(item).strip().lower()
+            if len(item) >= floor:
+                settled.append(item)
+    if not settled or not out["verify"]:
+        return
+
+    def names_a_column(entry: str) -> bool:
+        low = entry.lower()
+        return any(re.search(rf"(?<![a-z0-9]){re.escape(s)}(?![a-z0-9])", low)
+                   for s in settled)
+
+    settled_words = {w for s in settled for w in _tokens(s)}
+
+    def was_retrieved(entry: str) -> bool:
+        """Whether the plan also searched a corpus for this condition.
+
+        Proportional overlap was the obvious test and it was wrong: "the
+        kingdom is frozen over" shares two words with "a frozen kingdom in
+        endless winter" and still scored 0.4, because the rest of both
+        sentences is grammar. What matters is whether they share any
+        SUBSTANTIVE word at all, once the filter value that triggered the
+        match is set aside -- "kingdom", here. Short words carry the grammar
+        and are dropped by length, which is a property of the string rather
+        than a list of words someone chose.
+        """
+        mine = {w for w in _tokens(entry) if len(w) > 3} - settled_words
+        return any(mine & {w for w in _tokens(r) if len(w) > 3} for r in retrieved)
+
+    kept, dropped = [], []
+    for entry in out["verify"]:
+        (dropped if names_a_column(entry) and not was_retrieved(entry)
+         else kept).append(entry)
+
+    if dropped:
+        # Emptying `verify` is allowed and is sometimes right: "a Pixar film"
+        # on its own has no story condition, and a ranking is the honest
+        # answer. What is recorded is what was removed, so the trace shows the
+        # repair rather than hiding it.
+        out["verify"] = kept
+        out["verify_dropped_as_filtered"] = dropped

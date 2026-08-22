@@ -43,8 +43,8 @@ def cases() -> list[str]:
 
 def summarise(prompt: str, result: dict, elapsed: float) -> dict:
     steps = result.get("steps") or []
-    model = [s for s in steps if s["module"] in ("Planner", "Observer")]
-    tools_used = [s["module"] for s in steps if s["module"] not in ("Planner", "Observer")]
+    model = [s for s in steps if s["module"] in ("Decomposer", "Verifier", "Answerer")]
+    tools_used = [s["module"] for s in steps if s["module"] not in ("Decomposer", "Verifier", "Answerer")]
     return {
         "prompt": prompt,
         "status": result.get("status"),
@@ -55,11 +55,13 @@ def summarise(prompt: str, result: dict, elapsed: float) -> dict:
         "tools": tools_used,
         "tool_args": [
             {k: v for k, v in (s["prompt"].get("arguments") or {}).items()}
-            for s in steps if s["module"] not in ("Planner", "Observer")
+            for s in steps if s["module"] not in ("Decomposer", "Verifier", "Answerer")
         ],
-        "observer": [
-            {f.get("film"): f.get("verdict") for f in (s["response"].get("findings") or [])}
-            for s in steps if s["module"] == "Observer"
+        "verdicts": [
+            {s["response"].get("film"):
+             {f.get("requirement"): f.get("verdict")
+              for f in (s["response"].get("findings") or [])}}
+            for s in steps if s["module"] == "Verifier"
         ],
         "response": result.get("response") or result.get("error"),
     }

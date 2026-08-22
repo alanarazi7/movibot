@@ -45,7 +45,7 @@ def main() -> int:
     elapsed = time.time() - started
 
     steps = result.get("steps") or []
-    model_steps = [s for s in steps if s["module"] in ("Planner", "Observer")]
+    model_steps = [s for s in steps if s["module"] in ("Decomposer", "Verifier", "Answerer")]
     prompt_tok = sum((s.get("usage") or {}).get("prompt_tokens", 0) for s in model_steps)
     out_tok = sum((s.get("usage") or {}).get("completion_tokens", 0) for s in model_steps)
     cached = sum((s.get("usage") or {}).get("cached_tokens", 0) for s in model_steps)
@@ -58,16 +58,15 @@ def main() -> int:
     print("\ntrace")
     for s in steps:
         mod = s["module"]
-        if mod == "Planner":
-            calls = [c["name"] for c in (s["response"].get("tool_calls") or [])]
-            note = ", ".join(calls) if calls else "(no tool call -- this is the answer)"
-            print(f"   Planner        -> {note}")
-        elif mod == "Observer":
+        if mod == "Verifier":
             f = s["response"].get("findings") or []
-            verdicts = ", ".join(f"{x.get('film')}={x.get('verdict')}" for x in f)
+            verdicts = ", ".join(f"{x.get('requirement')}={x.get('verdict')}" for x in f)
             rejected = sum(1 for x in f if x.get("quote_rejected"))
-            print(f"   Observer       -> {verdicts or s['response'].get('error')}"
+            print(f"   Verifier       -> {s['response'].get('film') or ''}: "
+                  f"{verdicts or s['response'].get('error')}"
                   + (f"   [{rejected} quote(s) rejected]" if rejected else ""))
+        elif mod in ("Decomposer", "Answerer"):
+            print(f"   {mod:14} -> {json.dumps(s['response'], ensure_ascii=False)[:118]}")
         else:
             args = {k: v for k, v in (s["prompt"].get("arguments") or {}).items()}
             print(f"   {mod:14} <- {json.dumps(args, ensure_ascii=False)[:118]}")

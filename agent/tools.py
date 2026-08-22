@@ -3,23 +3,22 @@
 Design note -- why four tools, and why in this order:
 
 The catalog is 316 films. At that size the expensive thing is not searching, it
-is reasoning: every model turn costs money and latency. So the tools are ordered
+is reasoning: every model call costs money and latency. So the tools are ordered
 cheapest-and-most-exhaustive first, and each one hands the next a smaller
 candidate set:
 
-    filter_catalog   columns      316 -> N     free, exact, exhaustive
-    screen_out       regex        N -> clear   free, one-sided, word-list only
-    retrieve_*       vectors      ranks N      one embedding per condition
-    read_synopses    full text    <= 8 films   free, but token-heavy
+    filter_catalog      columns    316 -> N     free, exact, exhaustive
+    retrieve_plots      vectors    ranks N      one embedding per condition
+    retrieve_metadata   vectors    ranks N      one embedding per condition
+    verify_candidates   full text  <= 10 films  one model call per film
 
 Each answers something the others cannot. Columns settle era, studio, language
 and their negative forms -- "not Pixar" and "no musicals" are column lookups,
-not screens. A lexical screen tests an absence the way ranking cannot: embed
-"nobody dies" and the top hits are the films where somebody does. It is
-exhaustive over its word list, not over the event, so what it certifies is that
-no listed word appears in the stored text. Vectors settle positive story
-questions, and full text settles what actually happens -- including whatever a
-screen left unresolved.
+and nothing else needs to be spent on them. The two retrievals settle different
+questions over disjoint corpora: plot text narrates what HAPPENS, while cast,
+production and reception describe what a film IS. Both rank, neither decides.
+Only the last tool decides, by reading one film's full plot text and answering
+every requirement against it.
 
 The consequence is that the token-heavy tool only ever sees what survived the
 free ones, and a query pays for exactly the layers its conditions require.
@@ -28,10 +27,10 @@ Guardrails live here, not in the prompt. The model cannot forget them, and a
 bad plan cannot bypass them:
 
   * results are ordered by `weighted_rating`, never raw `vote_average`
-  * `screen_out` refuses to certify a film with less than MIN_SCREEN_TOKENS of
-    plot text, so absence of evidence can never be reported as evidence
-  * `read_synopses` reads at most MAX_SYNOPSES movies, truncated to
-    MAX_SYNOPSIS_CHARS each, which is what bounds the context cost per turn
+  * the candidate walk stops at MAX_VERIFICATIONS films or
+    MAX_RECOMMENDATIONS_CEILING acceptances, whichever comes first
+  * each film's plot text is trimmed to MAX_SYNOPSIS_CHARS, which is what
+    bounds the context cost of a verification
 """
 
 from __future__ import annotations
@@ -44,7 +43,6 @@ from dataclasses import dataclass, field
 
 from agent import catalog, shortlist, verifier
 from rag import config as ragcfg
-from rag import screen as screening
 from rag import store as retrieval
 from rag.corpora import DEFAULT_SOURCES
 
@@ -92,17 +90,9 @@ class ToolContext:
 # list_all=true lifts it. Not a cost guard -- all 316 labels are ~3,100 tokens.
 PREVIEW_FILMS = 15
 
-# How many flagged films come back with a quote attached. A quote is ~100 tokens
-# against ~1,500 for reading the same film's synopsis, so shipping the evidence
-# with the flag is what lets most negations resolve without a fourth tool call.
-MAX_FLAGGED_EVIDENCE = 8
-
-# Full plot texts are large (median ~5 KB). These two caps together bound the
-# worst-case tool payload at ~48 KB, which is what keeps a turn affordable.
-MAX_SYNOPSES = 8
+# Full plot texts are large (median ~5 KB). One verification sees one film, so
+# this is what bounds the context cost of a single call.
 MAX_SYNOPSIS_CHARS = 6000
-
-MAX_SEARCH_RESULTS = 25
 
 # Below this, the top hit is usually a sign the query was phrased as a theme
 # rather than as an event. Measured on this corpus, seven queries:
@@ -126,11 +116,6 @@ MAX_SEARCH_RESULTS = 25
 # Advisory only: a real answer can score below this, so it warns, never filters.
 WEAK_MATCH_SIMILARITY = 0.42
 
-# Each search hit carries the passage that matched, as evidence. Long enough
-# to judge a story beat, short enough that 25 of them stay affordable.
-MAX_PASSAGE_CHARS = 1200
-
-
 # ---------------------------------------------------------------------
 # Tool 1: structured filtering
 # ---------------------------------------------------------------------
@@ -152,9 +137,9 @@ def filter_catalog(
 ) -> dict[str, Any]:
     """Filter the catalog on structured columns. Free, no model call.
 
-    Every match becomes the request's candidate set, so search_plots and
-    read_synopses are automatically limited to it -- nothing has to be carried
-    forward. What comes back is a count and a handful of labels, not rows: the
+    Every match becomes the request's candidate set, so the retrievals and
+    the candidate walk are automatically limited to it -- nothing has to be
+    carried forward. What comes back is a count and a handful of labels, not rows: the
     ids stay in Python, where they cost nothing.
     """
     df = catalog.movies()
@@ -314,11 +299,11 @@ def filter_catalog(
     out: dict[str, Any] = {
         "matched": matched,
         "filters_applied": applied or "none",
-        "scope": "the screen and the shortlist now cover exactly these films",
+        "scope": "retrieval and the shortlist now cover exactly these films",
     }
     if list_all or matched <= PREVIEW_FILMS:
         # Labels are ~10 tokens each, so even all 316 costs less than a fifth
-        # of one read_synopses call. Completeness is affordable; hiding matches
+        # of one verification call. Completeness is affordable; hiding matches
         # behind a cap was not a saving worth making.
         out["films"] = labelled
     else:
@@ -332,11 +317,6 @@ def filter_catalog(
 
 def _describe(applied: dict[str, Any]) -> str:
     return ", ".join(f"{k}={v}" for k, v in applied.items()) if applied else "no filter"
-
-
-# ---------------------------------------------------------------------
-# Tool 2: lexical screen, for negations
-# ---------------------------------------------------------------------
 
 
 
@@ -402,8 +382,8 @@ def build_shortlist(
 
     sources = sources or PLOT_SOURCES
     scoped = ctx.candidates() if ctx is not None else None
-    # Everything in scope, unless a caller asks for less. MAX_SEARCH_RESULTS
-    # still bounds what is SHOWN; it has no business bounding what is ranked.
+    # Everything in scope, unless a caller asks for less. What is SHOWN is
+    # bounded downstream; that has no business bounding what is ranked.
     top_k = int(top_k) if top_k else (len(scoped) if scoped else len(catalog.movies()))
 
     lists: dict[str, list[int]] = {}
@@ -557,9 +537,9 @@ def verify_candidates(
 
     # The tail is the fused shortlist when there is one, and the working set
     # in rating order when there is not. Without that fallback a request that
-    # never needed a semantic search -- everything settled by filter and
-    # screen -- could only ever check the films the planner happened to name,
-    # so thirteen survivors got six verifications and the budget went unspent.
+    # never needed a semantic search -- everything settled by the filter --
+    # could only ever check the films the plan happened to name, so thirteen
+    # survivors got six verifications and the budget went unspent.
     if ctx is not None and ctx.shortlist:
         rest = list(ctx.shortlist)
     elif ctx is not None and ctx.working_set:
@@ -792,9 +772,10 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                             "Every condition the film must satisfy, phrased "
                             "as a REQUIREMENT rather than a question -- 'no "
                             "character dies', 'a princess appears'. Include "
-                            "the negative ones here: this is where an absence "
-                            "is actually adjudicated, and a lexical flag is "
-                            "only a reason to look. Defaults to the "
+                            "the negative ones here: this is the only place "
+                            "an absence is adjudicated, because nothing can "
+                            "be retrieved for by not happening. Defaults to "
+                            "the "
                             "conditions you passed to build_shortlist."
                         ),
                     },
@@ -841,8 +822,8 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                 "perfectly. Scoped to the current working set, so run "
                 "filter_catalog first when the request has structured "
                 "constraints. A position in this list is a search ranking, "
-                "NOT evidence -- verify with read_synopses before "
-                "recommending."
+                "NOT evidence -- verify_candidates decides, and nothing may "
+                "be recommended before it does."
             ),
             "parameters": {
                 "type": "object",
@@ -857,16 +838,17 @@ TOOL_SCHEMAS: list[dict[str, Any]] = [
                             "runtime, studio, language): those belong in "
                             "filter_catalog, which is exact. Do not put a "
                             "pure absence here ('nobody dies') either: "
-                            "nothing can be searched for by not happening, so "
-                            "that is screen_out's job."
+                            "nothing can be retrieved for by not happening, "
+                            "so send it straight to verify_candidates."
                         ),
                     },
                     "top_k": {
                         "type": "integer",
                         "description": (
-                            "Films per condition, default 20. Raise it when a "
-                            "condition is broad and you want more of the "
-                            "middle of its ranking to reach the fusion."
+                            "Films per condition. Defaults to everything in "
+                            "scope, which is what you want: truncating a "
+                            "ranking before the fusion is how a film that "
+                            "satisfies every condition gets lost."
                         ),
                     },
                 },
@@ -898,18 +880,10 @@ TRACE_NAMES = {
     "filter_catalog": "CatalogFilter",
     "retrieve_plots": "PlotRetrieval",
     "retrieve_metadata": "MetadataRetrieval",
-    # Both of these read plot text, and the old names described how rather
-    # than what: "LexicalScan" and "SemanticRetrieval" put a word scan and a
-    # vector search at arm's length from each other when the useful
-    # distinction is exact versus approximate over the same corpus. Fusing
-    # several conditions' rankings is something SemanticRetrieval does, not a
-    # thing of its own.
-    # The TOOL, not the module it calls. read_synopses/Observer already made
-    # this distinction and verify_candidates did not, so a tool step was
-    # logged under a subagent's name and the Verifier looked like something
-    # the planner could invoke directly. It cannot: it walks candidates and
-    # sends one model call per film, the way SynopsisReader sends one to the
-    # Observer.
+    # The TOOL, not the module it calls. Naming this step "Verifier" logged a
+    # tool under a subagent's name and made the Verifier look like something
+    # the plan could invoke directly. It cannot: the walk chooses candidates
+    # and sends one model call per film, and the Verifier answers one film.
     "verify_candidates": "CandidateWalk",
 }
 

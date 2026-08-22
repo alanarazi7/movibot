@@ -1,11 +1,11 @@
 """Verifier: one film at a time, every condition at once.
 
-This replaces a reader that had the axes the wrong way round. The Observer took
-ONE question and up to eight films, which is efficient and answers the wrong
-thing: a request with three conditions got one of them adjudicated and the
-other two were left resting on whatever the search happened to return. A film
-could be recommended having been checked for deaths and never checked for the
-princess or the ice it was asked to have.
+This replaces a reader that had the axes the wrong way round. It took ONE
+question and up to eight films, which is efficient and answers the wrong thing:
+a request with three conditions got one of them adjudicated and the other two
+were left resting on whatever the search happened to return. A film could be
+recommended having been checked for deaths and never checked for the princess
+or the ice it was asked to have.
 
 So the axes flip. The Verifier takes ONE film and EVERY condition, with that
 film's plot text in front of it, and answers each condition separately. What
@@ -14,7 +14,7 @@ only when every cell says yes. That list is built in Python, which is the
 point: "I can stand behind one title" stops being a claim the model makes about
 its own reasoning and becomes a count of a list.
 
-Two properties carried over from the Observer, both load-bearing:
+Two properties carried over from that reader, both load-bearing:
 
   Quotes are verbatim and verified. Every quote is checked to be a literal
   substring of the text it claims to come from, and discarded otherwise, so a

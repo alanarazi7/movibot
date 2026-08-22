@@ -120,9 +120,9 @@ def title_of(movie_id: int) -> str | None:
 def _by_id() -> dict[int, dict[str, Any]]:
     """id -> label and rating, built once.
 
-    A dict rather than a DataFrame filter per lookup: the lexical screen labels
-    up to 316 films in a single tool call, and `df[df.id == x]` scans the whole
-    table every time. Same answer, one pass instead of 316.
+    A dict rather than a DataFrame filter per lookup: one tool call labels up
+    to 316 films, and `df[df.id == x]` scans the whole table every time. Same
+    answer, one pass instead of 316.
     """
     return {
         int(r.id): {

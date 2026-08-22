@@ -1,0 +1,513 @@
+{
+  "status": "ok",
+  "error": null,
+  "response": "3 films were checked and accepted:\n\nUp (2009) — Carl’s life arc centers on moving from grief and routine into a new stage of life; “A musical montage shows Carl and Ellie eventually getting married and moving into the old house where they first met.”\n\nThe Incredibles (2004) — It fits as a family-and-childhood coming-of-age story around Dash’s desire to grow into his powers and place in the world; “Dash pleads with his mother to be allowed to play sports as an outlet for his super-speed powers but Helen refuses to give him that kind of temptation, repeating that they must try and live normal lives.”\n\nThe Good Dinosaur (2015) — It matches through its growth-and-proving-yourself theme; “Henry tells the kids they have to earn the right to make their mark, by doing something big, for something bigger than themselves.”",
+  "steps": [
+    {
+      "module": "Decomposer",
+      "usage": {
+        "prompt_tokens": 2352,
+        "completion_tokens": 66,
+        "total_tokens": 2418,
+        "cached_tokens": 0
+      },
+      "llm_calls": {
+        "decomposer": 1,
+        "verifier": 0,
+        "answerer": 0,
+        "total": 1,
+        "cap": 16
+      },
+      "prompt": {
+        "system_prompt": "You are the Decomposer inside MoviBot, a Disney and Pixar film recommender. You read one movie request and return a plan by calling `plan` exactly once. You never write prose for the user and you never recommend a film: something later does that, from evidence you will not see.\n\n**You are a part of MoviBot, not a thing the user talks to.** When the request asks what this is or what it can do, the `message` you write is MoviBot's answer about MoviBot -- what it recommends, from what catalog, and what it cannot do. Never mention the Decomposer, the Verifier, or any other part by name: the user asked about a film recommender, not about its internals.\n\nWHAT THE CATALOG IS\n\n- 316 Disney and Pixar feature films, 1937 to 2017. No other studio, no TV, no anime.\n- Nothing later than 2017 exists for you -- not Frozen II, not Encanto. You cannot know what is new, recent or trending.\n- Feature films only, 47 to 172 minutes. Shorts were excluded, so nothing shorter than 47 minutes can be found.\n- No cast or crew data. \"Starring X\" and \"directed by Y\" cannot be answered.\n- 307 of 316 films have full plot text; the rest carry only a one-line overview, and a story claim about those cannot be settled.\n\nROUTING, WHICH IS THE WHOLE JOB\n\nSplit the request into conditions, then send each to the stage that can settle it. Route by what evidence would settle a condition, never by how it was phrased -- a negation over a column is still a column lookup.\n\n  a word about WHEN                -> `filter`, as a year range\n  \"modern\", \"recent\", \"new\", \"old\", \"classic\", \"from the 90s\", \"in the\n  last ten years\". These are dates, not themes: retrieving for \"modern\"\n  matches text about modernity, which is a different subject. Resolve\n  them against the catalog's range, which ENDS IN 2017 -- so \"modern\"\n  or \"recent\" is roughly year_min 2000, \"the last ten years\" is about\n  2007 onward, and \"classic\" or \"old\" is a year_max. Say so in the\n  answer only if the user's sense of now and the catalog's differ\n  enough to matter.\n\n  a fact the catalog stores        -> `filter`\n  \"not Pixar\", \"no musicals\", \"besides Frozen\", \"after 2000\",\n  \"under 110 minutes\", \"in Hindi\". Free and exact. Never send one of\n  these to `verify`: plot text cannot confirm a release year, and a\n  requirement nothing can settle makes the whole request fail.\n\n  something that HAPPENS            -> `search_plots`\n  \"snow covers the kingdom\", \"a prince reveals he never loved her\".\n  Retrieved over plot text, which narrates events.\n\n  what a film IS or is known for    -> `search_metadata`\n  \"a princess movie\", \"a strong female protagonist\", \"a coming-of-age\n  story\". Retrieved over cast, production, reception and themes. These\n  are written ABOUT a film far more often than they are narrated inside\n  one, which is why looking for them in the plot finds little.\n\n  Between the two, ask who would write the sentence. A plot summary\n  says \"the animals turn to the Lion for guardianship\", so \"includes\n  animals\" is something that HAPPENS and belongs in `search_plots`. A\n  reviewer says \"a strong female lead\", which no plot narrates, so that\n  belongs in `search_metadata`. A thing you could film is an event; a\n  judgement about the film is not.\n\n  An ABSENCE -- \"nobody dies\", \"nothing scary\" -- is retrieved for by\n  neither: embed \"no deaths\" and you get the films where somebody dies,\n  because that is what those plots say. Send it to `verify` alone and\n  let the candidates come from the conditions that can be retrieved.\n\n  a claim about what happens       -> `verify`\n  Everything the story has to settle, including the absences nothing\n  could retrieve for. Retrieval finds candidates; only the Verifier\n  decides.\n\n  nothing can settle it            -> `conditions` only\n  Who it is for, what mood it suits. Recorded, not acted on.\n\n**What the request is ABOUT is a condition, and the easiest one to lose.** \"A princess movie\", \"a pirate film\", \"something with robots\" name the subject. A request whose only routed condition is an exclusion has been read wrong: filtering \"besides Frozen and Moana\" and nothing else returns the best-rated films in the catalog, which answers nothing. The subject goes to `search_metadata` to find candidates AND to `verify` so it is actually checked.\n\n**Never put in `verify` something the filter already guarantees.** \"Besides Frozen and Moana\" goes to `filter.exclude_titles`, which removes those films exactly; adding \"not Frozen\" as a requirement spends a model call asking plot text whether a film is Frozen. The same goes for a year, a runtime, a studio or a language: if you put it in `filter`, it is settled, and `verify` is for what only the story can settle.\n\n**Retrieving is not checking.** A condition you retrieve for and do not put in `verify` is one the answer will never be able to stand behind: retrieval ranks, it does not decide. Anything in `search_plots` or `search_metadata` belongs in `verify` too, phrased as a requirement. Leave `verify` empty only when the request has no condition at all beyond stored columns.\n\nAim to route every condition somewhere; the only ones that go nowhere are the ones nothing could settle.\n\n**Every condition goes somewhere, and `conditions` lists all of them.** That is the ledger: what you understood the request to be asking. Nothing is left out of it.\n\nWhere each one goes is a separate question, and some have no stage that can settle them. \"For my daughter\", \"for a family evening\", \"something to relax to\" say who is watching, not what happens in the film. There is nothing in a plot summary that confirms or denies one, and no fact about the catalog that does either. Record them in `conditions` and send them nowhere -- not to `verify`, where every film would come back unclear and a request with sixty answers would return none.\n\nDo not invent a proxy for one. \"For my daughter\" is not a licence to add a princess, a rating or a genre the user did not ask for; you would be answering a request they did not make and reporting it as though they had.\n\nREFUSING\n\nRefuse when no amount of searching would help: a film after 2017, anything shorter than the catalog holds, a request by actor or director, a studio it does not carry. Say what is missing and offer the nearest real thing. Do not refuse a request that is merely narrower than the user assumes -- \"a nice comedy\" is answerable, it just needs saying which universe the answer came from.",
+        "user_prompt": "A Pixar film about growing up"
+      },
+      "response": {
+        "request": "A Pixar film about growing up",
+        "outcome": "search",
+        "message": "",
+        "conditions": [
+          "a Pixar film",
+          "about growing up"
+        ],
+        "filter": {
+          "studio": "Pixar"
+        },
+        "search_plots": [],
+        "search_metadata": [
+          "a coming-of-age story"
+        ],
+        "verify": [
+          "is about growing up"
+        ],
+        "verify_dropped_as_filtered": [
+          "is a Pixar film"
+        ],
+        "max_films": 3
+      }
+    },
+    {
+      "module": "CatalogFilter",
+      "prompt": {
+        "tool": "CatalogFilter",
+        "arguments": {
+          "studio": "Pixar"
+        }
+      },
+      "scope": "18 films (studio=Pixar)",
+      "llm_calls": {
+        "decomposer": 1,
+        "verifier": 0,
+        "answerer": 0,
+        "total": 1,
+        "cap": 16
+      },
+      "response": {
+        "matched": 18,
+        "filters_applied": {
+          "studio": "Pixar"
+        },
+        "scope": "retrieval and the shortlist now cover exactly these films",
+        "best_rated": [
+          {
+            "film": "Inside Out (2015)",
+            "runtime": 94,
+            "rating": 7.83
+          },
+          {
+            "film": "Up (2009)",
+            "runtime": 96,
+            "rating": 7.74
+          },
+          {
+            "film": "WALL·E (2008)",
+            "runtime": 98,
+            "rating": 7.73
+          },
+          {
+            "film": "Toy Story (1995)",
+            "runtime": 81,
+            "rating": 7.62
+          },
+          {
+            "film": "Finding Nemo (2003)",
+            "runtime": 100,
+            "rating": 7.54
+          },
+          {
+            "film": "Toy Story 3 (2010)",
+            "runtime": 103,
+            "rating": 7.52
+          },
+          {
+            "film": "Monsters, Inc. (2001)",
+            "runtime": 92,
+            "rating": 7.44
+          },
+          {
+            "film": "Ratatouille (2007)",
+            "runtime": 111,
+            "rating": 7.42
+          },
+          {
+            "film": "The Incredibles (2004)",
+            "runtime": 115,
+            "rating": 7.34
+          },
+          {
+            "film": "Toy Story 2 (1999)",
+            "runtime": 92,
+            "rating": 7.22
+          },
+          {
+            "film": "Monsters University (2013)",
+            "runtime": 104,
+            "rating": 6.94
+          },
+          {
+            "film": "Finding Dory (2016)",
+            "runtime": 97,
+            "rating": 6.76
+          },
+          {
+            "film": "A Bug's Life (1998)",
+            "runtime": 95,
+            "rating": 6.73
+          },
+          {
+            "film": "Brave (2012)",
+            "runtime": 93,
+            "rating": 6.67
+          },
+          {
+            "film": "Cars (2006)",
+            "runtime": 117,
+            "rating": 6.57
+          }
+        ],
+        "note": "Showing the 15 best rated of 18. All 18 are in scope for search and reading; pass list_all=true to see every title."
+      }
+    },
+    {
+      "module": "MetadataRetrieval",
+      "prompt": {
+        "tool": "MetadataRetrieval",
+        "arguments": {
+          "conditions": [
+            "a coming-of-age story"
+          ]
+        }
+      },
+      "scope": "18 films (studio=Pixar)",
+      "llm_calls": {
+        "decomposer": 1,
+        "verifier": 0,
+        "answerer": 0,
+        "total": 1,
+        "cap": 16
+      },
+      "response": {
+        "conditions": [
+          "a coming-of-age story"
+        ],
+        "over": [
+          "wiki_context",
+          "overview"
+        ],
+        "searched_within": "18 films in scope",
+        "candidates": 18,
+        "matching_every_condition": 18,
+        "shortlist": [
+          {
+            "film": "Up (2009)",
+            "conditions_matched": "1/1",
+            "ranks": {
+              "a coming-of-age story": 1
+            },
+            "average_rank": 1.0
+          },
+          {
+            "film": "The Incredibles (2004)",
+            "conditions_matched": "1/1",
+            "ranks": {
+              "a coming-of-age story": 2
+            },
+            "average_rank": 2.0
+          },
+          {
+            "film": "Brave (2012)",
+            "conditions_matched": "1/1",
+            "ranks": {
+              "a coming-of-age story": 3
+            },
+            "average_rank": 3.0
+          },
+          {
+            "film": "The Good Dinosaur (2015)",
+            "conditions_matched": "1/1",
+            "ranks": {
+              "a coming-of-age story": 4
+            },
+            "average_rank": 4.0
+          },
+          {
+            "film": "Inside Out (2015)",
+            "conditions_matched": "1/1",
+            "ranks": {
+              "a coming-of-age story": 5
+            },
+            "average_rank": 5.0
+          },
+          {
+            "film": "A Bug's Life (1998)",
+            "conditions_matched": "1/1",
+            "ranks": {
+              "a coming-of-age story": 6
+            },
+            "average_rank": 6.0
+          },
+          {
+            "film": "Cars (2006)",
+            "conditions_matched": "1/1",
+            "ranks": {
+              "a coming-of-age story": 7
+            },
+            "average_rank": 7.0
+          },
+          {
+            "film": "Toy Story (1995)",
+            "conditions_matched": "1/1",
+            "ranks": {
+              "a coming-of-age story": 8
+            },
+            "average_rank": 8.0
+          },
+          {
+            "film": "Finding Dory (2016)",
+            "conditions_matched": "1/1",
+            "ranks": {
+              "a coming-of-age story": 9
+            },
+            "average_rank": 9.0
+          },
+          {
+            "film": "Toy Story 3 (2010)",
+            "conditions_matched": "1/1",
+            "ranks": {
+              "a coming-of-age story": 10
+            },
+            "average_rank": 10.0
+          },
+          {
+            "film": "Toy Story 2 (1999)",
+            "conditions_matched": "1/1",
+            "ranks": {
+              "a coming-of-age story": 11
+            },
+            "average_rank": 11.0
+          },
+          {
+            "film": "Finding Nemo (2003)",
+            "conditions_matched": "1/1",
+            "ranks": {
+              "a coming-of-age story": 12
+            },
+            "average_rank": 12.0
+          },
+          {
+            "film": "Monsters, Inc. (2001)",
+            "conditions_matched": "1/1",
+            "ranks": {
+              "a coming-of-age story": 13
+            },
+            "average_rank": 13.0
+          },
+          {
+            "film": "Cars 3 (2017)",
+            "conditions_matched": "1/1",
+            "ranks": {
+              "a coming-of-age story": 14
+            },
+            "average_rank": 14.0
+          },
+          {
+            "film": "Monsters University (2013)",
+            "conditions_matched": "1/1",
+            "ranks": {
+              "a coming-of-age story": 15
+            },
+            "average_rank": 15.0
+          }
+        ],
+        "note": "18 films ranked; 18 have text for all 1 conditions. Ordered by conditions covered, then average rank -- so the top of this list is the best place to start verifying, and a film's position here is a search ranking, NOT evidence that it satisfies anything. Verify before recommending.",
+        "model_call": {
+          "model": "MB5R2CF-azure/text-embedding-3-small",
+          "kind": "embedding",
+          "calls": 1,
+          "inputs": [
+            "a coming-of-age story"
+          ]
+        }
+      }
+    },
+    {
+      "module": "CandidateWalk",
+      "prompt": {
+        "tool": "CandidateWalk",
+        "arguments": {
+          "conditions": [
+            "is about growing up"
+          ],
+          "max_accept": 3
+        }
+      },
+      "scope": "18 films (studio=Pixar)",
+      "llm_calls": {
+        "decomposer": 1,
+        "verifier": 4,
+        "answerer": 0,
+        "total": 5,
+        "cap": 16
+      },
+      "response": {
+        "conditions": [
+          "is about growing up"
+        ],
+        "verified": 4,
+        "by_condition": {
+          "is about growing up": {
+            "yes": 3,
+            "no": 0,
+            "unclear": 1
+          }
+        },
+        "accepted": [
+          "Up (2009)",
+          "The Incredibles (2004)",
+          "The Good Dinosaur (2015)"
+        ],
+        "rejected": [],
+        "unresolved": [
+          "Brave (2012)"
+        ],
+        "budget": {
+          "checked": 4,
+          "allowed": 10,
+          "ceiling": 10
+        },
+        "exhausted": false,
+        "note": "3 film(s) satisfied every condition. **Only these may be recommended, and the number you state must be this number.** A film in `rejected` failed a condition; one in `unresolved` was not settled by its text, which is not the same as satisfying it. If `accepted` is empty, say plainly that nothing could be verified and how many films were checked -- do not offer an unresolved title as a near-miss."
+      }
+    },
+    {
+      "module": "Verifier",
+      "usage": {
+        "prompt_tokens": 2115,
+        "completion_tokens": 47,
+        "total_tokens": 2162,
+        "cached_tokens": 0
+      },
+      "llm_calls": {
+        "decomposer": 1,
+        "verifier": 4,
+        "answerer": 0,
+        "total": 5,
+        "cap": 16
+      },
+      "prompt": {
+        "system_prompt": "You are the Verifier. You are given ONE film's plot text and a list of REQUIREMENTS. For each requirement, decide whether this film satisfies it, using only the text in front of you.\n\nFor each requirement return one object:\n\n  requirement  the requirement text, copied exactly as given\n  verdict      yes      the text establishes that the film satisfies it\n               no       the text establishes that the film does NOT satisfy it\n               unclear  the text does not settle it either way\n  quote        the exact sentence or clause that decides it, copied character\n               for character from the text. Empty string when unclear.\n  note         at most one short sentence, only where the quote needs it --\n               who a name refers to, or that an act was attempted rather than\n               completed.\n\nRules that decide most cases:\n\n- **Only the text counts.** Never use anything you know about this film from outside the passage you were given. If the text does not settle a requirement, the answer is `unclear`, however certain you feel.\n- **The quote must be a literal substring of the text.** Do not tidy it, shorten it with ellipses, or reconstruct it from memory. A quote that is not found in the text is discarded and its verdict loses all evidence.\n- **A requirement of absence -- \"no character dies\", \"nothing frightening\" -- is satisfied only by substantial text in which the thing does not occur.** If the text is short or fragmentary, that is `unclear`, not `yes`.\n- **Threats, attempts, metaphors, accusations, false beliefs and near-misses do not establish that a thing happened.** \"He tried to kill him\", \"believing Woody had murdered Buzz\" and \"I'll kill you\" all leave an actual death NOT established. Only a death the text actually states is a death. The same applies to every other requirement: an intention is not an event.\n- **A near-miss is `no`, not `yes`.** A film where someone seizes power without pretending to love anyone does not satisfy a requirement about pretending to love someone to seize power.\n- **A requirement with several parts needs ONE thing that has all of them, shown in the text.** \"An animal that wears a hat\" is not an animal in one sentence and a hat in another. It needs a single creature the text shows wearing a hat. A butler who leaves his hat in the countryside is a person with a hat, so the answer is `no`. A hamster the text never puts a hat on is `unclear`, however sure you are the film shows one. A Mad Hatter is not an animal. Check every part against the same subject before you answer `yes`.\n- **Your quote must show the WHOLE requirement by itself**, not the half of it you could find. If the sentence establishes only one part, you do not have the evidence and the verdict is `unclear`. A real sentence that does not say the thing is worse than no sentence, because it looks like proof.\n- **If your note would explain why the quote is not quite it, the verdict is not `yes`.** \"No hat-wearing animal is explicitly named, however...\" and \"later scenes depict him with a hat\" are both you noticing that the text does not support the answer you are about to give. Write `unclear` instead. A note identifies who a name refers to; it never argues a quote into saying more than it says.\n\n**The user's request is context, never evidence.** It tells you what a requirement means -- whether \"a hat\" is one someone wears or one on a shelf -- and nothing more. It cannot make a film satisfy anything, and wanting to answer it is not a reason to read a passage generously. Judge each requirement from the plot text alone.\n\nReturn JSON only: {\"findings\": [ ... ]}. No prose around it.",
+        "user_prompt": "WHAT THE USER ASKED FOR\nA Pixar film about growing up\n\nFILM: Up (2009)\n\nREQUIREMENTS\n- is about growing up\n\nPLOT TEXT\nYoung Carl Fredricksen (Jeremy Leary), a quiet bespectacled boy wearing an old pilot's cap and goggles, watches a film reel in a theater depicting his hero Charles Muntz (Christopher Plummer), a famous explorer. The reporter speaks of Muntz's various accomplishments and discoveries before commenting that he was recently dishonored by scientists who believed his latest find, the large skeleton of a bird, was a hoax. Intent on proving them wrong, Muntz is seen boarding his zeppelin with his team of dogs and promises to return once he has brought back living proof of his find. After the show, Carl runs down the street with his balloon, named after Muntzs zeppelin The Spirit of Adventure. He passes an old, rundown house where he hears someone shout out Muntz's famous slogan: Adventure is out there!Carl goes inside to investigate and meets a young, outgoing tomboy who shares his passion for exploration and admiration of Charles Muntz. Startled by her loud, boyish demeanor at first, Carl loses his balloon in the rafters. The girl, Ellie (Elie Docter), helps him retrieve it, though Carl falls from a beam and breaks his arm. Ellie sneaks into his room that night and shows him her adventure book where she expresses a desire to one day move to the top of Paradise Falls in South America, showing him a picture that she 'ripped right out of a library book'. She makes him promise that they will go together someday before leaving. A musical montage shows Carl and Ellie eventually getting married and moving into the old house where they first met. Their marriage is blissful and they get jobs as a balloon salesman and zookeeper, respectively. When they discover that Ellie is unable to have children, they make a pact to save money to travel to Paradise Falls. However, as the years pass, they are forced to dig into their Falls fund for other obligations. One day, an elderly Carl realizes that, despite living happily together, they never fulfilled their old promise and decides to surprise Ellie on a picnic with tickets to South America. However, Ellie's declining health puts her in the hospital and she eventually passes away, leaving Carl alone.Carl remains in his home, a retired and sour recluse, as the city grows around him. He is encouraged to move to a retirement home due to increased construction, but often argues with the foreman (John Ratzenberger) and refuses to leave. One day, he meets Russell (Jordan Nagai), a young wilderness explorer scout who attempts to assist Carl in order to earn his 'assisting the elderly' badge. Carl tricks Russell into 'assisting' him by telling him to find and get rid of a 'snipe' that invades his yard. When a construction worker accidentally breaks Carl's mailbox, a part of the house and a part of Ellie that Carl cherishes, Carl hits him over the head with his walker. The assault lands him in court where he is forced to move out of his home by the next day. Workers from Shady Oaks retirement home arrive to pick him up the following morning but are shocked to find Carl releasing millions of helium balloons into the air which detach his house from its foundation, lifting it over the city and into the sky.Comfortably away from the city, Carl sets a course for South America and rests in his chair until hes interrupted by a knock at the door. Upon answering, he discovers Russell hanging on to dear life on his porch; apparently, Russell had been snipe searching under Carls porch. Carl lets him in and decides to descend to return Russell home before a severe storm hits. The house is knocked around in the turbulence but Carl manages to tie most of his items down before falling asleep. He's woken the next morning by Russell, who tells him that they're over South America (thanks to a GPS device that he accidentally throws out the window), though the ground is hidden by a dense fog. Carl releases some balloons to descend but they hit ground early and are knocked out of the house. They manage to hold onto it using a hose attached to the porch while the fog lifts to reveal that they are standing on a high plateau opposite Paradise Falls. Unable to climb back into the house, they resolve to walk to the falls before the helium in the balloons lets out.Meanwhile, a chase is progressing in the jungle. Three dogs with red lights on their collars are in hot pursuit of what appears to be a giant bird, but they lose the trail when their sensitive ears pick up the fine tuning of Carl's hearing aid. Russell stops to go to the bathroom and happens upon a giant bird which he lures closer with a chocolate bar. He introduces the colorful creature to Carl and gives it the name Kevin. Kevin follows them as they continue their journey but runs off when they approach the silhouette of a man who calls out to them. However, they see that the man is nothing more than a trick of the eye caused by overlapping stones. They are then approached by a golden retriever with a red light on his collar. Russell tells him to sit and speak and is surprised when the dog answers, using the device on his collar. He tells them his name is Dug (Bob Peterson) and that he is a tracker looking for a bird, at which point Kevin tackles him. The foursome continue their journey, Carl begrudging the additional company. At one point, Kevin loudly calls out and is answered by smaller calls. Dug says that Kevin is calling to her babies and Russell realizes that Kevin is a girl.Meanwhile, the three dogs seen chasing the bird earlier have picked up the scent of Carl and Russell, who they nickname the mailman. The leader Alpha (Bob Peterson), a doberman pinscher, tells Beta (Delroy Lindo), a rottweiler, and Gamma (Jerome Ranft), a bulldog, that they must be vigilant and continue their search. His speaking device appears to be damaged, causing him to talk in a high pitch. Using the device on Gamma's collar, Alpha calls to Dug, who they'd sent on a false mission in order to get rid of him, but finds him in the company of the bird they'd..."
+      },
+      "response": {
+        "film": "Up (2009)",
+        "accepted": true,
+        "findings": [
+          {
+            "requirement": "is about growing up",
+            "verdict": "yes",
+            "quote": "A musical montage shows Carl and Ellie eventually getting married and moving into the old house where they first met."
+          }
+        ]
+      }
+    },
+    {
+      "module": "Verifier",
+      "usage": {
+        "prompt_tokens": 2137,
+        "completion_tokens": 89,
+        "total_tokens": 2226,
+        "cached_tokens": 0
+      },
+      "llm_calls": {
+        "decomposer": 1,
+        "verifier": 4,
+        "answerer": 0,
+        "total": 5,
+        "cap": 16
+      },
+      "prompt": {
+        "system_prompt": "You are the Verifier. You are given ONE film's plot text and a list of REQUIREMENTS. For each requirement, decide whether this film satisfies it, using only the text in front of you.\n\nFor each requirement return one object:\n\n  requirement  the requirement text, copied exactly as given\n  verdict      yes      the text establishes that the film satisfies it\n               no       the text establishes that the film does NOT satisfy it\n               unclear  the text does not settle it either way\n  quote        the exact sentence or clause that decides it, copied character\n               for character from the text. Empty string when unclear.\n  note         at most one short sentence, only where the quote needs it --\n               who a name refers to, or that an act was attempted rather than\n               completed.\n\nRules that decide most cases:\n\n- **Only the text counts.** Never use anything you know about this film from outside the passage you were given. If the text does not settle a requirement, the answer is `unclear`, however certain you feel.\n- **The quote must be a literal substring of the text.** Do not tidy it, shorten it with ellipses, or reconstruct it from memory. A quote that is not found in the text is discarded and its verdict loses all evidence.\n- **A requirement of absence -- \"no character dies\", \"nothing frightening\" -- is satisfied only by substantial text in which the thing does not occur.** If the text is short or fragmentary, that is `unclear`, not `yes`.\n- **Threats, attempts, metaphors, accusations, false beliefs and near-misses do not establish that a thing happened.** \"He tried to kill him\", \"believing Woody had murdered Buzz\" and \"I'll kill you\" all leave an actual death NOT established. Only a death the text actually states is a death. The same applies to every other requirement: an intention is not an event.\n- **A near-miss is `no`, not `yes`.** A film where someone seizes power without pretending to love anyone does not satisfy a requirement about pretending to love someone to seize power.\n- **A requirement with several parts needs ONE thing that has all of them, shown in the text.** \"An animal that wears a hat\" is not an animal in one sentence and a hat in another. It needs a single creature the text shows wearing a hat. A butler who leaves his hat in the countryside is a person with a hat, so the answer is `no`. A hamster the text never puts a hat on is `unclear`, however sure you are the film shows one. A Mad Hatter is not an animal. Check every part against the same subject before you answer `yes`.\n- **Your quote must show the WHOLE requirement by itself**, not the half of it you could find. If the sentence establishes only one part, you do not have the evidence and the verdict is `unclear`. A real sentence that does not say the thing is worse than no sentence, because it looks like proof.\n- **If your note would explain why the quote is not quite it, the verdict is not `yes`.** \"No hat-wearing animal is explicitly named, however...\" and \"later scenes depict him with a hat\" are both you noticing that the text does not support the answer you are about to give. Write `unclear` instead. A note identifies who a name refers to; it never argues a quote into saying more than it says.\n\n**The user's request is context, never evidence.** It tells you what a requirement means -- whether \"a hat\" is one someone wears or one on a shelf -- and nothing more. It cannot make a film satisfy anything, and wanting to answer it is not a reason to read a passage generously. Judge each requirement from the plot text alone.\n\nReturn JSON only: {\"findings\": [ ... ]}. No prose around it.",
+        "user_prompt": "WHAT THE USER ASKED FOR\nA Pixar film about growing up\n\nFILM: The Incredibles (2004)\n\nREQUIREMENTS\n- is about growing up\n\nPLOT TEXT\nThe film opens with a series of short interviews between three famous superheroes including Mr. Incredible (Craig T. Nelson), who possesses super strength, Elastigirl (Holly Hunter), able to stretch her body with amazing flexibility, and Frozone (Samuel L. Jackson), gifted with the ability to create ice.While en route to a special event, Mr. Incredible picks up a police report of a high speed pursuit and suits up before driving to intercept it, seeing as he 'has time'. On the way, he is forced to stop and assist an old woman get her cat out of a tree. Mr. Incredible picks up the tree and shakes the cat out and into its owner's arms just in time to swing the tree onto the road and bring an abrupt halt to the car of the fleeing thieves. As another report comes in, he returns to his car to find a boy dressed in a superhero outfit sitting in the passenger seat. Recognizing the boy as Buddy (Jason Lee), an over-enthusiastic fan who declares to be Mr. Incredibles new ward, 'Incredi-boy', Mr. Incredible ejects him out of the car. On a nearby rooftop, he confronts a burglar sifting through stolen purses but the man is knocked out by the outstretched fist of Elastigirl. Mr. Incredible and Elastigirl engage in some playful banter before she runs off. As Mr. Incredible secures the burglar, Frozone glides by on a bridge of ice, shouting out a reminder that he needs to 'get ready'. However, Mr. Incredible's attention is suddenly drawn to an adjacent building where spotlights illuminate a man preparing to jump to his death. Mr. Incredible foils the suicide attempt by launching himself off the roof and knocking the falling man into an office of the building. He places the injured man aside when he senses something else amiss and walks to a nearby vault that is suddenly blasted open. The super villain, Bomb Voyage (Dominique Louis), emerges with sacks of money.As Mr. Incredible and the French-speaking Voyage face off, they are interrupted by Buddy, displaying rocket boots that he proudly announces to have invented himself. Despite Buddy's eagerness to help, Mr. Incredible tells him to go home. Adding insult to injury, Voyage criticizes Buddy's ridiculous outfit before placing a small bomb on the boy's cape as he leaves to get back-up. Mr. Incredible is forced to drop Voyage and grabs onto Buddy as he takes off, removing the bomb and dropping himself onto an elevated train track. The bomb detonates and destroys part of the track as a train approaches. Mr. Incredible uses his strength to stop the train just in time and later advises responding officers to Voyage's last location. He tells them to send Buddy home before he excuses himself, seeing as he's now late for his event. He hurries to the town church where he de-masks into his alter ego, Robert Parr, greets his friend Lucius Best (alter ego of Frozone), and walks down the aisle to marry Helen (Elastigirl). At the altar, he promises to be more than just Mr. Incredible to his new wife as they are wed in front of an ensemble of witnesses. Unfortunately, their bliss is short-lived as a series of news reports announce (with Teddy Newton) that, in the face of one lawsuit after another involving civilian injuries and collateral damage, Mr. Incredible and other superheroes alike are forced to hang up their suits and assume their secret identities permanently.The Superhero Relocation Program is created to provide ex-superheroes with new jobs and homes and amnesty for past actions. Robert is relocated to the suburbs and, 15 years later, is working a cubicle job in insurance under Gilbert Huph (Wallace Shawn) who is as strict as he is short. Despite his monotonous work, Robert still tries to help people, including Mrs. Hogenson (Jean Sincere), by showing them loopholes in the system to file their claims. Meanwhile, Helen goes to pick up their 9 year-old son, Dash (Spencer Fox), from the principal's office at his school. His teacher, Bernie (Lou Romano), insists that he knows Dash is responsible for a series of humiliating spats during class and presents a video that he claims shows Dash placing a tack on his chair during class, but moving too fast for the camera to see. Unconvinced, the principal (Wayne Canney) dismisses Dash and Helen, much to Bernie's outrage. On the way home, Dash pleads with his mother to be allowed to play sports as an outlet for his super-speed powers but Helen refuses to give him that kind of temptation, repeating that they must try and live normal lives. She then picks up daughter Violet (Sarah Vowell) from junior high. Violet has a crush on schoolmate Tony (Michael Bird) but is too shy to speak to him and uses her invisibility powers to that advantage.Robert returns home, severely disgruntled, and barely manages to restrain his frustration when he slips on a skateboard in the driveway and disfigures his car door. He lifts the car in the air right in front of a boy on a tricycle who remains stunned as Robert calmly lowers the car and walks inside. He joins his family for dinner but seems distant until Helen mentions Dash's sprint in school. While Dash and Violet begin a physical argument, much to baby Jack-Jack's (Eli Fucile and Maeve Andrews) entertainment, Robert goes into the kitchen and notices in the paper that an advocate for superhero rights and fellow super, Gazerbeam, has gone missing. As he returns to the dining room and attempts to quell his family's arguing, Lucius comes knocking and invites Robert out for a night of bowling.In reality, they drive to an alley where they use a police scanner to find local disturbances as a woman with white hair monitors them from nearby. While Lucius proposes that they actually go bowling, Robert picks up a report of a fire. The white-haired woman follows them to an apartment consumed by flames where the ex-heroes, donning masks, manage to find everyone trapped inside. When Lucius is dehydrated to the point of being unable to create ice, Robert plows through an outside wall and into the build..."
+      },
+      "response": {
+        "film": "The Incredibles (2004)",
+        "accepted": true,
+        "findings": [
+          {
+            "requirement": "is about growing up",
+            "verdict": "yes",
+            "quote": "Dash pleads with his mother to be allowed to play sports as an outlet for his super-speed powers but Helen refuses to give him that kind of temptation, repeating that they must try and live normal lives.",
+            "note": "This centers on Dash's childhood and his family's push toward normal life."
+          }
+        ]
+      }
+    },
+    {
+      "module": "Verifier",
+      "usage": {
+        "prompt_tokens": 2197,
+        "completion_tokens": 67,
+        "total_tokens": 2264,
+        "cached_tokens": 0
+      },
+      "llm_calls": {
+        "decomposer": 1,
+        "verifier": 4,
+        "answerer": 0,
+        "total": 5,
+        "cap": 16
+      },
+      "prompt": {
+        "system_prompt": "You are the Verifier. You are given ONE film's plot text and a list of REQUIREMENTS. For each requirement, decide whether this film satisfies it, using only the text in front of you.\n\nFor each requirement return one object:\n\n  requirement  the requirement text, copied exactly as given\n  verdict      yes      the text establishes that the film satisfies it\n               no       the text establishes that the film does NOT satisfy it\n               unclear  the text does not settle it either way\n  quote        the exact sentence or clause that decides it, copied character\n               for character from the text. Empty string when unclear.\n  note         at most one short sentence, only where the quote needs it --\n               who a name refers to, or that an act was attempted rather than\n               completed.\n\nRules that decide most cases:\n\n- **Only the text counts.** Never use anything you know about this film from outside the passage you were given. If the text does not settle a requirement, the answer is `unclear`, however certain you feel.\n- **The quote must be a literal substring of the text.** Do not tidy it, shorten it with ellipses, or reconstruct it from memory. A quote that is not found in the text is discarded and its verdict loses all evidence.\n- **A requirement of absence -- \"no character dies\", \"nothing frightening\" -- is satisfied only by substantial text in which the thing does not occur.** If the text is short or fragmentary, that is `unclear`, not `yes`.\n- **Threats, attempts, metaphors, accusations, false beliefs and near-misses do not establish that a thing happened.** \"He tried to kill him\", \"believing Woody had murdered Buzz\" and \"I'll kill you\" all leave an actual death NOT established. Only a death the text actually states is a death. The same applies to every other requirement: an intention is not an event.\n- **A near-miss is `no`, not `yes`.** A film where someone seizes power without pretending to love anyone does not satisfy a requirement about pretending to love someone to seize power.\n- **A requirement with several parts needs ONE thing that has all of them, shown in the text.** \"An animal that wears a hat\" is not an animal in one sentence and a hat in another. It needs a single creature the text shows wearing a hat. A butler who leaves his hat in the countryside is a person with a hat, so the answer is `no`. A hamster the text never puts a hat on is `unclear`, however sure you are the film shows one. A Mad Hatter is not an animal. Check every part against the same subject before you answer `yes`.\n- **Your quote must show the WHOLE requirement by itself**, not the half of it you could find. If the sentence establishes only one part, you do not have the evidence and the verdict is `unclear`. A real sentence that does not say the thing is worse than no sentence, because it looks like proof.\n- **If your note would explain why the quote is not quite it, the verdict is not `yes`.** \"No hat-wearing animal is explicitly named, however...\" and \"later scenes depict him with a hat\" are both you noticing that the text does not support the answer you are about to give. Write `unclear` instead. A note identifies who a name refers to; it never argues a quote into saying more than it says.\n\n**The user's request is context, never evidence.** It tells you what a requirement means -- whether \"a hat\" is one someone wears or one on a shelf -- and nothing more. It cannot make a film satisfy anything, and wanting to answer it is not a reason to read a passage generously. Judge each requirement from the plot text alone.\n\nReturn JSON only: {\"findings\": [ ... ]}. No prose around it.",
+        "user_prompt": "WHAT THE USER ASKED FOR\nA Pixar film about growing up\n\nFILM: Brave (2012)\n\nREQUIREMENTS\n- is about growing up\n\nPLOT TEXT\nIn a prologue, we see Lord Fergus and Lady Elinor in a forested area, celebrating the birthday of their young daughter, Merida. Though Elinor happily plays with Merida, she grows perturbed when Fergus gives the little girl her own bow and set of arrows.As Merida tries to hit a target, one of the arrows sails off into the forest nearby. Merida runs off and retrieves it, but soon encounters a glowing blue willo-the-wisp. Going back to her parents, she tells what she saw, and her mother explains that they can lead a person to their destiny.Suddenly, the mood is broken as an enormous black bear enters the camp grounds. Merida and her mother quickly take leave as Lord Fergus and his men fight against the bear.Time passes, and we see that Lord Fergus has lost his leg to the bear. In the time that has passed, Lady Elinor has given birth to three mischievous boys (triplets), and Merida is now a teenager. While her mother wants her to be proper, Merida is moreso intent on practicing archery, and journeying off in the forest.One evening, a messenger brings word that the 3 neighboring clans have accepted the offer to fight for Merida's hand in marriage. Naturally, the young woman is not at all happy with this situation. Elinor explains to her daughter that the clans must be kept in harmony, or chaos may reign. She relates the story of how the clans were descended from four brothers, but one of them wanted more power than the others, and caused the balance of power to crumble. Even so, this does little to quell Merida's resentment of the betrothal.The three clans soon arrive, and Lords MacGuffin, Macintosh, and Dingwall arrive with each of their sons. Per tradition, each of the first-born of the clans will fight in the event that the Princess chooses. This causes Merida to perk up, and she eagerly suggests archery.When it comes to the sport, almost none of the sons are good at the sport, but everyone is shocked when Merida appears before everyone, claiming that since she's a first-born as well, she'll be 'fighting for her own hand.' Elinor demands Merida stop, but she defies her mother, and makes a bulls-eye on each of the targets.Naturally, Elinor feels angry and humiliated at this, and both mother and daughter have a heated conversation in her room later on. Merida claims she does not want to be like her mother, and in anger, slashes a tapestry depicting the family, slicing a hole between her and her mother in the piece.Upset by this as well, Elinor loses her temper, and throws Merida's bow in a fireplace nearby. Upset by this, Merida flees the castle. Unseen by Merida, her mother regrets what she has done a few moments later, and manages to retrieve the bow from the fire.Merida flees to the forest, where she comes across a circle of stones, and several willo-the-wisps. Following them, she finds a small cottage inhabited by an old woman. The old woman claims she is just a wood carver, but Merida soon realizes she's actually a witch, when she notices an enchanted broom, and the woman's crow (which can talk!).Merida eagerly asks for a spell to change her mother, but the witch refuses, claiming she did a spell once before, and regretted it. However, Merida gets her to reconsider when she agrees to purchase all her wood carvings. The offer is too much to resist, and the witch brews a concoction that produces a small pie. Merida is instructed to give it to her mother, and she eagerly ruses off to do so.Returning to the castle, King Fergus is doing his best to quell the Lords after the events of the tournament. Merida encounters her mother in the kitchen, and eagerly gives her the pie, but after one bite, Elinor claims she does not feel well.Merida happily leads her to her chambers, but soon her happiness that her mother will change turns to shock...when her mother turns into a black bear!Knowing that King Fergus will surely kill Elinor, Merida enlists the aid of her brothers to distract Fergus and the Lords, while she sneaks her mother out of the castle, and back into the forest.The two manage to find the witch's hovel, but find it is now empty. A message left for Merida tells that the Witch has gone away until the next Spring, and that the spell will become permanent within 2 sunrises. However, if Merida wants to reverse the effects, she has heed some specific words, in regards to 'mending.' Merida is unsure just what this means, and the two sleep in the woods that evening, before having breakfast in the morning.Merida manages to catch some fish for her mother, but when her mother demands more, Merida tells her mother she will need to catch them herself. The mother and daughter bond over this method, but when her mother wanders off into the woods, Merida chases after her. However, upon finding her, her mother suddenly attempts to attack Merida, before returning to normal. With less than 24 hours, it seems that if they do not find a way to reverse the spell, Elinor will lose her humanity, and become a bear forever!As they wander in the woods, the two come across the willo-the-wisps again, and follow them. They are lead to a high mountain, and the ruins of a great castle. Inside, Merida finds a stone tablet depicting 4 men, with one of them separated from the group. Soon, Merida realizes that she is in the castle in the legend her mother told her about, and soon makes the connection:The brother who attempted to seize power from his siblings went to the witch, and her spell turned him into a bear...powerful and stronger than his brothers, but he was unable to change back, and became a rampaging beast, the same one who took Lord Fergus' leg!Suddenly, the bear emerges from the darkness and attempts to attack Merida. Elinor manages to save her daughter, and the two head back to the circle of stones. However, Merida is now sure what needs to be done. The witch's spell mentioned mending, and Merida feels that if she can mend the tapestry she cut the day before, her mother will be saved."
+      },
+      "response": {
+        "film": "Brave (2012)",
+        "accepted": false,
+        "findings": [
+          {
+            "requirement": "is about growing up",
+            "verdict": "unclear",
+            "quote": "",
+            "quote_rejected": "not a literal substring of the plot text; discarded, so this verdict carries no evidence",
+            "downgraded": "a decisive verdict with no surviving quote is an assertion, not a finding"
+          }
+        ]
+      }
+    },
+    {
+      "module": "Verifier",
+      "usage": {
+        "prompt_tokens": 2281,
+        "completion_tokens": 58,
+        "total_tokens": 2339,
+        "cached_tokens": 0
+      },
+      "llm_calls": {
+        "decomposer": 1,
+        "verifier": 4,
+        "answerer": 0,
+        "total": 5,
+        "cap": 16
+      },
+      "prompt": {
+        "system_prompt": "You are the Verifier. You are given ONE film's plot text and a list of REQUIREMENTS. For each requirement, decide whether this film satisfies it, using only the text in front of you.\n\nFor each requirement return one object:\n\n  requirement  the requirement text, copied exactly as given\n  verdict      yes      the text establishes that the film satisfies it\n               no       the text establishes that the film does NOT satisfy it\n               unclear  the text does not settle it either way\n  quote        the exact sentence or clause that decides it, copied character\n               for character from the text. Empty string when unclear.\n  note         at most one short sentence, only where the quote needs it --\n               who a name refers to, or that an act was attempted rather than\n               completed.\n\nRules that decide most cases:\n\n- **Only the text counts.** Never use anything you know about this film from outside the passage you were given. If the text does not settle a requirement, the answer is `unclear`, however certain you feel.\n- **The quote must be a literal substring of the text.** Do not tidy it, shorten it with ellipses, or reconstruct it from memory. A quote that is not found in the text is discarded and its verdict loses all evidence.\n- **A requirement of absence -- \"no character dies\", \"nothing frightening\" -- is satisfied only by substantial text in which the thing does not occur.** If the text is short or fragmentary, that is `unclear`, not `yes`.\n- **Threats, attempts, metaphors, accusations, false beliefs and near-misses do not establish that a thing happened.** \"He tried to kill him\", \"believing Woody had murdered Buzz\" and \"I'll kill you\" all leave an actual death NOT established. Only a death the text actually states is a death. The same applies to every other requirement: an intention is not an event.\n- **A near-miss is `no`, not `yes`.** A film where someone seizes power without pretending to love anyone does not satisfy a requirement about pretending to love someone to seize power.\n- **A requirement with several parts needs ONE thing that has all of them, shown in the text.** \"An animal that wears a hat\" is not an animal in one sentence and a hat in another. It needs a single creature the text shows wearing a hat. A butler who leaves his hat in the countryside is a person with a hat, so the answer is `no`. A hamster the text never puts a hat on is `unclear`, however sure you are the film shows one. A Mad Hatter is not an animal. Check every part against the same subject before you answer `yes`.\n- **Your quote must show the WHOLE requirement by itself**, not the half of it you could find. If the sentence establishes only one part, you do not have the evidence and the verdict is `unclear`. A real sentence that does not say the thing is worse than no sentence, because it looks like proof.\n- **If your note would explain why the quote is not quite it, the verdict is not `yes`.** \"No hat-wearing animal is explicitly named, however...\" and \"later scenes depict him with a hat\" are both you noticing that the text does not support the answer you are about to give. Write `unclear` instead. A note identifies who a name refers to; it never argues a quote into saying more than it says.\n\n**The user's request is context, never evidence.** It tells you what a requirement means -- whether \"a hat\" is one someone wears or one on a shelf -- and nothing more. It cannot make a film satisfy anything, and wanting to answer it is not a reason to read a passage generously. Judge each requirement from the plot text alone.\n\nReturn JSON only: {\"findings\": [ ... ]}. No prose around it.",
+        "user_prompt": "WHAT THE USER ASKED FOR\nA Pixar film about growing up\n\nFILM: The Good Dinosaur (2015)\n\nREQUIREMENTS\n- is about growing up\n\nPLOT TEXT\n65 million years ago, an asteroid made its way out of the belt and sped toward Earth. It turned red as it entered the atmosphere, and then it sped past, missing the planet entirely. Millions of years later, two Apaterosauruses named Henry (Jeffrey Wright) and Ida (Frances McDormand) are busy cultivating a field next to a river at the base of Clawtooth Mountain. Henry sprays the crops with water from his mouth, when Ida calls out, \"It's time!\" She has a large egg and two small ones in her nest, and the small ones hatch first, giving them a boy and a girl, Buck (Marcus Scribner) and Libby. The large egg still doesn't hatch, so Buck hits it with a stick. The top pops off, and they look inside and see a tiny dinosaur clinging to the egg. Slowly, Arlo (Raymond Ochoa) climbs out and tries to walk, awkwardly falling over at first. Henry shows them all the farm and the mountain, saying they will all take care of it together.At the age of five, Buck and Libby are helping out with the chores, but Arlo's fear made him hate his chore of feeding the chickens. Ida puts a bucket of corn around his neck and coaxes him into the coop. He sees a chick trapped in some weeds and frees him, only to have the mother chicken come up behind him and squawk loudly. Scared, Arlo runs into the silo, where Henry is storing corn. He seals the door with a boulder, keeping the food safe from scavengers. Ida tells him he should make his mark, and he presses his foot down in the mud and stamps it on a rock, then places it on top of the silo. He tells Ida to make her mark, since she made the cabin, the fence and three children. Henry tells the kids they have to earn the right to make their mark, by doing something big, for something bigger than themselves.When they are ten, Buck and Libby have earned their marks by clearing trees and plowing a field. But Arlo still hasn't done anything to earn his mark. Arlo is determined to complete his chore, but Buck plays a prank on him, scaring him off before he can finish. Henry decides to take Arlo out into the field at night, telling him to walk to the middle. A bug lands on his nose, and he screams for his dad. Henry walks up and blows on the bug, revealing it to be a firefly. \"Sometimes, you gotta get through your fear to see the beauty on the other side,\" he tells Arlo. Then he waves his tail through the grass, causing more fireflies to pop out. Excited, Arlo does the same thing. Then Henry tells him that he has a special chore for Arlo, so he can make his mark.The next day, Henry takes Arlo to the silo and tells him that there's a critter climbing over the fence and stealing the corn. He tells Arlo that his chore is to catch it, then shows him how to build a trap with a rope and net, and an ear of corn on the ground for bait. Using a pumpkin for demonstration, he tells Arlo that when he smashes the critter with a mallet, then he'll be able to make his mark.Later, Arlo hears the sound of the trap. With the mallet in hand, he approaches and sees a human child (Jack Bright) trapped and choking with the net wrapped around his neck. Arlo sighs and lets the boy go, but the boy approaches him, sniffing around. Arlo backs away, tripping over a rock and letting out a scream. Startled, the boy runs off as Henry runs over. Henry sees the boy escaping and yells at Arlo for letting him go. Henry tells Arlo to come with him as he follows the boy's tracks. Just then, it started to rain. Arlo worries that they'll get lost, but Henry tells him that as long as he can find the river, he can find home. Henry tells Arlo that the boy's tracks are getting washed out in the rain, so they have to move quickly. Lightning and thunder are crackling all around them, and Arlo slips and falls in the mud. Henry tells him that they should head home. Just then, a landslide causes the river to overflow. Henry uses his strength to push Arlo to safety, before being swept away.With Henry gone, Ida and the kids struggle to keep up with the chores. Arlo takes corn into the silo for the winter, but he finds the boy eating it. Arlo chases after him, grabbing an ear of corn from his mouth. As they struggle, Arlo falls into the river and cries for help, but nobody hears him. Careening down the river, Arlo smacks his head against a large rock and is knocked unconscious. He wakes up lying on a sandbar, and sees that he's miles from home. The only sound he can hear is a howl coming from the boy, and he sees him at the top of a cliff. The boy watches as Arlo awkwardly climbs up the cliff, then he jumps on Arlo's face. Arlo shakes him off, and then climbs up to the cliff edge, when he sees that the boy has disappeared.Arlo climbs up to the top of a ridge, trying to find home. He sees the river, and remembers Henry's words. After walking up the river for a while, he sees a berry tree, and balances on a rock to get the berries. He loses his balance and falls, landing with a pile of rocks trapping his leg. Stuck, he closes his eyes and falls asleep. The next morning, the sound of geysers wakes him up, and he sees that the rocks have been moved, freeing his leg. He sees human tracks, and wonders if it was the boy who helped him. As he resumes walking up the river, heavy rain comes down. Arlo sees all the other animals take shelter, but he has none. He hears a rattle in the bushes, and the boy comes out and offers him a lizard, and then a bug. Arlo has no interest in eating either one. Then the boy brings back some berries, and Arlo happily eats them. He asks the boy if he knows where to find more, not sure if the boy understands. The boy runs off, and Arlo follows him to a cliff ledge. Arlo falls over, with his mouth gripping one edge and his legs on the other. The boy uses Arlo for a bridge, and then shows him a berry bush. Arlo flings himself to the other side, then runs toward the bush. Just then, a snake falls out and attacks Arlo. The boy grabs the snake's tail and starts to gnaw on its skin. The snake slithers away, and Arlo..."
+      },
+      "response": {
+        "film": "The Good Dinosaur (2015)",
+        "accepted": true,
+        "findings": [
+          {
+            "requirement": "is about growing up",
+            "verdict": "yes",
+            "quote": "Henry tells the kids they have to earn the right to make their mark, by doing something big, for something bigger than themselves."
+          }
+        ]
+      }
+    },
+    {
+      "module": "Answerer",
+      "usage": {
+        "prompt_tokens": 1212,
+        "completion_tokens": 181,
+        "total_tokens": 1393,
+        "cached_tokens": 0
+      },
+      "llm_calls": {
+        "decomposer": 1,
+        "verifier": 4,
+        "answerer": 1,
+        "total": 6,
+        "cap": 16
+      },
+      "prompt": {
+        "system_prompt": "You write MoviBot's reply. You are given the user's request and the result of checking films against it. Turn that into a short answer.\n\n**You may name only films in `accepted`.** They are the ones whose plot text satisfied every condition. `rejected` failed one, `unresolved` was never settled -- and unresolved is not a weaker kind of pass, it is the absence of one. Naming a film from either is the worst thing you can do here.\n\n**State the number, and let it be the number in `accepted`.** If it is zero, say so plainly and say how many films were checked. Zero verified is a real answer and an honest one; a near-miss dressed as a recommendation is neither.\n\n**When you are given `ranked_not_verified` instead of `accepted`, no film was read and none needed to be.** Do not state a verified count, not even zero: \"0 verified\" invites the reader to think something failed, and no number in the evidence is a count of films checked, so quoting one is inventing it. Open with the films.** The request had no condition that plot text could settle, so these are simply the best-rated films matching the catalog constraints. Say that. Do not write \"verified\", and do not describe them as satisfying anything beyond the constraints they were filtered on.\n\n**Never quote a `basis` or `note` field back to the user.** Those are the system telling you how the result was produced, not sentences about a film. Only a `quote` from a verdict is evidence, because only that came out of a plot. Say the plain thing instead: \"these are the best-rated matches; nothing in the request needed the plot checked\".\n\n**Every film you name gets its own line, its own reason, and its own quote.** Lead with the strongest, give title and year, then a sentence on why it fits, citing the quote that film's verdict came with. Naming three films in one sentence and quoting one of them leaves two recommendations with no evidence at all, which is the thing this agent exists not to do. Name up to 3 films. Fewer only when fewer were accepted -- never because one strikes you as best.\n\n**A film gets a line of its own only if you are recommending it.** Anything in that shape reads as an option however the words beside it hedge.\n\nSay only what the answer needs. No greeting, no preamble, no restating the question, no closing pleasantry. Speak up when there is a mismatch between what was asked and what could be given: the catalog stops at 2017, only one film verified, the search covered part of the catalog rather than all of it. That is information; everything else in that register is filler.\n\n**There is no conversation.** Each request arrives with no memory of any other, so never end with \"want two more?\", \"I can refine these\" or any invitation that assumes a next turn. If more films qualified, they are in `accepted` and you should have named them.\n\nWrite plainly. Do not mention tools, modules or internal names: the user asked for a film, not for a description of the machine.",
+        "user_prompt": "REQUEST\nA Pixar film about growing up\n\nWHAT WAS CHECKED\n{\n  \"conditions\": [\n    \"a Pixar film\",\n    \"about growing up\"\n  ],\n  \"filtered_to\": 18,\n  \"retrieval\": {\n    \"MetadataRetrieval\": {\n      \"conditions\": [\n        \"a coming-of-age story\"\n      ],\n      \"candidates\": 18,\n      \"matching_every_condition\": 18\n    }\n  },\n  \"accepted\": [\n    \"Up (2009)\",\n    \"The Incredibles (2004)\",\n    \"The Good Dinosaur (2015)\"\n  ],\n  \"unresolved\": [\n    \"Brave (2012)\"\n  ],\n  \"verified\": 4,\n  \"verdicts\": [\n    {\n      \"film\": \"Up (2009)\",\n      \"accepted\": true,\n      \"findings\": [\n        {\n          \"requirement\": \"is about growing up\",\n          \"verdict\": \"yes\",\n          \"quote\": \"A musical montage shows Carl and Ellie eventually getting married and moving into the old house where they first met.\"\n        }\n      ]\n    },\n    {\n      \"film\": \"The Incredibles (2004)\",\n      \"accepted\": true,\n      \"findings\": [\n        {\n          \"requirement\": \"is about growing up\",\n          \"verdict\": \"yes\",\n          \"quote\": \"Dash pleads with his mother to be allowed to play sports as an outlet for his super-speed powers but Helen refuses to give him that kind of temptation, repeating that they must try and live normal lives.\",\n          \"note\": \"This centers on Dash's childhood and his family's push toward normal life.\"\n        }\n      ]\n    },\n    {\n      \"film\": \"Brave (2012)\",\n      \"accepted\": false,\n      \"findings\": [\n        {\n          \"requirement\": \"is about growing up\",\n          \"verdict\": \"unclear\",\n          \"quote\": \"\",\n          \"quote_rejected\": \"not a literal substring of the plot text; discarded, so this verdict carries no evidence\",\n          \"downgraded\": \"a decisive verdict with no surviving quote is an assertion, not a finding\"\n        }\n      ]\n    },\n    {\n      \"film\": \"The Good Dinosaur (2015)\",\n      \"accepted\": true,\n      \"findings\": [\n        {\n          \"requirement\": \"is about growing up\",\n          \"verdict\": \"yes\",\n          \"quote\": \"Henry tells the kids they have to earn the right to make their mark, by doing something big, for something bigger than themselves.\"\n        }\n      ]\n    }\n  ]\n}"
+      },
+      "response": {
+        "content": "3 films were checked and accepted:\n\nUp (2009) — Carl’s life arc centers on moving from grief and routine into a new stage of life; “A musical montage shows Carl and Ellie eventually getting married and moving into the old house where they first met.”\n\nThe Incredibles (2004) — It fits as a family-and-childhood coming-of-age story around Dash’s desire to grow into his powers and place in the world; “Dash pleads with his mother to be allowed to play sports as an outlet for his super-speed powers but Helen refuses to give him that kind of temptation, repeating that they must try and live normal lives.”\n\nThe Good Dinosaur (2015) — It matches through its growth-and-proving-yourself theme; “Henry tells the kids they have to earn the right to make their mark, by doing something big, for something bigger than themselves.”"
+      }
+    }
+  ]
+}

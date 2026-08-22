@@ -1,16 +1,16 @@
 """LLM access for MoviBot, via the course's LLMod.ai OpenAI-compatible endpoint.
 
-This is where the text model is called, and both callers of it are here: the
-planner, once per round, and the Verifier, once per candidate film. It is not
-the only module that spends -- rag/embed.py calls the course's embedding
-deployment, once per condition per shortlist -- so "everything else is free"
-was never quite true and is less true now. What is genuinely free is the
-catalog, the lexical screen and every local read, which is why the agent can
-be developed and tested a long way before either deployment is touched.
+This is where the text model is called, and all three callers of it are here:
+the Decomposer once, the Verifier once per candidate film, and the Answerer
+once. It is not the only module that spends -- rag/embed.py calls the course's
+embedding deployment, once per condition -- so "everything else is free" was
+never quite true. What is genuinely free is the catalog and every local read,
+which is why the agent can be developed and tested a long way before either
+deployment is touched.
 
-Rough shape of a request's bill: one text call per planner round, one per film
-verified, and one embedding per story condition. The text calls dominate by
-about four orders of magnitude.
+Rough shape of a request's bill: one text call to plan, one per film verified,
+one to answer, and one embedding per retrieved condition. The text calls
+dominate by about four orders of magnitude.
 
 There is no mock fallback by design. A silent stand-in that answers without
 the model would make a broken configuration look like a working agent, which

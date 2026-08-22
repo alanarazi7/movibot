@@ -188,7 +188,6 @@ def prompts_endpoint():
     from agent import loop as agent_loop
     from agent import tools as agent_tools
     from agent import verifier as agent_verifier
-    from rag import screen as rag_screen
 
     return _cors(jsonify({
         # The three roles, in the order a request meets them. Served from the
@@ -240,22 +239,13 @@ def prompts_endpoint():
             "MAX_VERIFICATIONS": agent_tools.MAX_VERIFICATIONS,
             "MAX_RECOMMENDATIONS": agent_tools.MAX_RECOMMENDATIONS_CEILING,
             "PREVIEW_FILMS": agent_tools.PREVIEW_FILMS,
-            "MAX_SEARCH_RESULTS": agent_tools.MAX_SEARCH_RESULTS,
-            "MAX_SYNOPSES": agent_tools.MAX_SYNOPSES,
+            "SHORTLIST_ROWS": agent_tools.SHORTLIST_ROWS,
             "MAX_SYNOPSIS_CHARS": agent_tools.MAX_SYNOPSIS_CHARS,
-            "MAX_PASSAGE_CHARS": agent_tools.MAX_PASSAGE_CHARS,
-            "MAX_FLAGGED_EVIDENCE": agent_tools.MAX_FLAGGED_EVIDENCE,
-            "MIN_SCREEN_TOKENS": rag_screen.MIN_SCREEN_TOKENS,
         },
-        # No vocabularies and no blacklist any more. Both were fixed lists,
-        # and a fixed list only ever fits the requests someone thought of: the
-        # planner writes the words it is scanning for and the phrasings that
-        # would trip them, per request. The guardrails above are what remain
-        # fixed, because they are bounds rather than knowledge.
-        "word_lists": (
-            "written per request by the planner, not stored. See screen_out's "
-            "`words` and `exclude_phrases` in the tool descriptions above."
-        ),
+        # No vocabularies, no blacklist, no word lists. Each was a fixed list,
+        # and a fixed list only ever fits the requests someone thought of. The
+        # guardrails above are what remain fixed, because they are bounds
+        # rather than knowledge.
     }))
 
 

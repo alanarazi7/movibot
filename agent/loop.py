@@ -86,8 +86,8 @@ def execute(prompt: str) -> dict[str, Any]:
     if not llm_client.is_configured():
         return _error(
             "MoviBot cannot compose an answer: OPENAI_API_KEY is unset or "
-            "still a placeholder value. The catalog and screen run locally "
-            "and are unaffected.",
+            "still a placeholder value. The catalog and every local read "
+            "are unaffected.",
             steps,
         )
 
